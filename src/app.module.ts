@@ -72,7 +72,7 @@ if (process.env.QUEUE_ENABLED === 'true') {
             __dirname + '/modules/webhook/**/*.entity{.ts,.js}',
             __dirname + '/modules/message/**/*.entity{.ts,.js}',
           ],
-          synchronize: configService.get<boolean>('dataDatabase.synchronize', false),
+          migrations: [__dirname + '/database/migrations/*{.ts,.js}'],
           logging: configService.get<boolean>('dataDatabase.logging', false),
         };
 
@@ -85,6 +85,9 @@ if (process.env.QUEUE_ENABLED === 'true') {
             username: configService.get<string>('dataDatabase.username'),
             password: configService.get<string>('dataDatabase.password'),
             database: 'openwa',
+            // Never auto-sync Postgres in production; rely on migrations.
+            synchronize: configService.get<boolean>('dataDatabase.synchronize', false),
+            migrationsRun: true,
             retryAttempts: 10,
             retryDelay: 3000,
             extra: {
@@ -93,10 +96,15 @@ if (process.env.QUEUE_ENABLED === 'true') {
           };
         }
 
+        // SQLite: zero-config. Default to synchronize=true so the embedded
+        // database "just works" on first boot without a separate migration step.
+        // Users can opt out with DATABASE_SYNCHRONIZE=false to use migrations instead.
         return {
           ...baseConfig,
           type: 'sqlite' as const,
           database: configService.get<string>('dataDatabase.database', './data/openwa.sqlite'),
+          synchronize: configService.get<boolean>('dataDatabase.synchronize', true),
+          migrationsRun: !configService.get<boolean>('dataDatabase.synchronize', true),
         };
       },
     }),
