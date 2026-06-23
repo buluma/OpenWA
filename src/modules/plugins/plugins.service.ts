@@ -2,7 +2,7 @@ import { Injectable, NotFoundException, BadRequestException, ConflictException, 
 import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs';
 import * as path from 'path';
-import { PluginLoaderService, PluginStatus } from '../../core/plugins';
+import { PluginLoaderService, PluginStatus, resolvePluginMainPath } from '../../core/plugins';
 import { PluginDto } from './dto/plugin.dto';
 import { redactSecretConfig, restoreSecretConfig } from './redact-config';
 import { parsePluginPackage } from './plugin-installer';
@@ -34,6 +34,7 @@ export class PluginsService {
       builtIn: this.pluginLoader.isBuiltIn(plugin.manifest.id),
       provides: plugin.manifest.provides ?? [],
       configSchema: plugin.manifest.configSchema,
+      configUi: plugin.manifest.configUi,
       sessionScoped: plugin.manifest.sessionScoped !== false,
       activeSessions: plugin.activeSessions ?? ['*'],
       loadedAt: plugin.loadedAt?.toISOString(),
@@ -61,6 +62,7 @@ export class PluginsService {
       builtIn: this.pluginLoader.isBuiltIn(plugin.manifest.id),
       provides: plugin.manifest.provides ?? [],
       configSchema: plugin.manifest.configSchema,
+      configUi: plugin.manifest.configUi,
       sessionScoped: plugin.manifest.sessionScoped !== false,
       activeSessions: plugin.activeSessions ?? ['*'],
       loadedAt: plugin.loadedAt?.toISOString(),
@@ -145,6 +147,43 @@ export class PluginsService {
         message: error instanceof Error ? error.message : String(error),
       };
     }
+  }
+
+  /**
+   * Read a plugin's sandboxed config-UI entry HTML (manifest `configUi.entry`). The dashboard fetches
+   * this with the API key and injects it as an iframe `srcdoc`, so the file must be self-contained.
+   * Path is escape-guarded against the plugin directory; the entry is plugin-author-supplied.
+   */
+  getConfigUiHtml(id: string): string {
+    const plugin = this.pluginLoader.getPlugin(id);
+    if (!plugin) {
+      throw new NotFoundException(`Plugin ${id} not found`);
+    }
+    const entry = plugin.manifest.configUi?.entry;
+    // `entry` is untrusted manifest JSON — a non-string (or escaping) value is treated as "no config
+    // UI" (404), never a raw 500.
+    if (!entry || typeof entry !== 'string') {
+      throw new NotFoundException(`Plugin ${id} has no config UI`);
+    }
+    const base = path.resolve(this.pluginLoader.getPluginsDir(), id);
+    let file: string;
+    try {
+      file = resolvePluginMainPath(this.pluginLoader.getPluginsDir(), id, entry);
+    } catch {
+      throw new NotFoundException(`Config UI entry not found for plugin ${id}`);
+    }
+    if (!fs.existsSync(file) || !fs.statSync(file).isFile()) {
+      throw new NotFoundException(`Config UI entry not found for plugin ${id}`);
+    }
+    // Defense-in-depth: the lexical guard above is symlink-blind; resolve links on BOTH the file and
+    // the plugin dir (so a symlinked tmp root like macOS /var→/private/var doesn't false-positive) and
+    // re-check containment before reading an arbitrary host file into the main process and serving it.
+    const real = fs.realpathSync(file);
+    const realBase = fs.realpathSync(base);
+    if (real !== realBase && !real.startsWith(realBase + path.sep)) {
+      throw new NotFoundException(`Config UI entry not found for plugin ${id}`);
+    }
+    return fs.readFileSync(real, 'utf-8');
   }
 
   /** Install a plugin from an uploaded .zip: validate the package, write it to the plugins dir, and load it. */
