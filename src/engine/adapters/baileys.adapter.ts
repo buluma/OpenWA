@@ -32,7 +32,7 @@ import {
   Status,
   StatusResult,
   ChatSummary,
-  TextStatusOptions,
+  StatusPostOptions,
 } from '../interfaces/whatsapp-engine.interface';
 import { loadRemoteMediaBuffer } from '../../common/media/load-remote-media';
 import { EngineNotReadyError } from '../../common/errors/engine-not-ready.error';
@@ -797,13 +797,13 @@ export class BaileysAdapter implements IWhatsAppEngine {
   getContactStatus(_contactId: string): Promise<Status[]> {
     return this.unsupported('getContactStatus');
   }
-  postTextStatus(_text: string, _options?: TextStatusOptions): Promise<StatusResult> {
+  postTextStatus(_text: string, _options: StatusPostOptions): Promise<StatusResult> {
     return this.unsupported('postTextStatus');
   }
-  postImageStatus(_media: MediaInput, _caption?: string): Promise<StatusResult> {
+  postImageStatus(_media: MediaInput, _options: StatusPostOptions): Promise<StatusResult> {
     return this.unsupported('postImageStatus');
   }
-  postVideoStatus(_media: MediaInput, _caption?: string): Promise<StatusResult> {
+  postVideoStatus(_media: MediaInput, _options: StatusPostOptions): Promise<StatusResult> {
     return this.unsupported('postVideoStatus');
   }
   deleteStatus(_statusId: string): Promise<void> {

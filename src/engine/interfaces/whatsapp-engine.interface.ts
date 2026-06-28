@@ -227,9 +227,15 @@ export interface Status {
   expiresAt: Date;
 }
 
-export interface TextStatusOptions {
+export interface StatusPostOptions {
+  /** REQUIRED. Neutral JIDs (@c.us / @lid) permitted to see the status. Maps to Baileys statusJidList. */
+  recipients: string[];
+  /** Hex background colour (#RRGGBB). Text status only. */
   backgroundColor?: string;
+  /** Font index. Text status only. */
   font?: number;
+  /** Caption. Image/video status only. */
+  caption?: string;
 }
 
 export interface StatusResult {
@@ -475,9 +481,9 @@ export interface IWhatsAppEngine {
   // Status/Stories (Phase 3)
   getContactStatuses(): Promise<Status[]>;
   getContactStatus(contactId: string): Promise<Status[]>;
-  postTextStatus(text: string, options?: TextStatusOptions): Promise<StatusResult>;
-  postImageStatus(media: MediaInput, caption?: string): Promise<StatusResult>;
-  postVideoStatus(media: MediaInput, caption?: string): Promise<StatusResult>;
+  postTextStatus(text: string, options: StatusPostOptions): Promise<StatusResult>;
+  postImageStatus(media: MediaInput, options: StatusPostOptions): Promise<StatusResult>;
+  postVideoStatus(media: MediaInput, options: StatusPostOptions): Promise<StatusResult>;
   deleteStatus(statusId: string): Promise<void>;
 
   // Catalog (Phase 3) - WhatsApp Business only

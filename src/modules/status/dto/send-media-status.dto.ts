@@ -1,7 +1,7 @@
-import { IsString, IsOptional, ValidateNested } from 'class-validator';
+import { IsString, IsOptional, ValidateNested, IsArray, ArrayMinSize } from 'class-validator';
 import { Type } from 'class-transformer';
 
-class MediaInput {
+class StatusMediaInput {
   @IsOptional()
   @IsString()
   url?: string;
@@ -9,24 +9,38 @@ class MediaInput {
   @IsOptional()
   @IsString()
   base64?: string;
+
+  @IsOptional()
+  @IsString()
+  mimetype?: string;
 }
 
 export class SendImageStatusDto {
   @ValidateNested()
-  @Type(() => MediaInput)
-  image: MediaInput;
+  @Type(() => StatusMediaInput)
+  image: StatusMediaInput;
 
   @IsOptional()
   @IsString()
   caption?: string;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @IsString({ each: true })
+  recipients: string[];
 }
 
 export class SendVideoStatusDto {
   @ValidateNested()
-  @Type(() => MediaInput)
-  video: MediaInput;
+  @Type(() => StatusMediaInput)
+  video: StatusMediaInput;
 
   @IsOptional()
   @IsString()
   caption?: string;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @IsString({ each: true })
+  recipients: string[];
 }

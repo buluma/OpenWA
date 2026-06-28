@@ -21,7 +21,7 @@ import {
   Channel,
   ChannelMessage,
   Status,
-  TextStatusOptions,
+  StatusPostOptions,
   StatusResult,
   Catalog,
   Product,
@@ -1404,21 +1404,21 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
     return [];
   }
 
-  async postTextStatus(_text: string, _options?: TextStatusOptions): Promise<StatusResult> {
+  async postTextStatus(_text: string, _options?: StatusPostOptions): Promise<StatusResult> {
     this.ensureReady();
     // whatsapp-web.js doesn't have native status posting
     // This would require using the underlying WhatsApp Web API directly
-    throw new EngineNotSupportedError('postTextStatus');
+    throw new EngineNotSupportedError('postTextStatus (Baileys-only; wwebjs blocked upstream, see #455)');
   }
 
-  async postImageStatus(_media: MediaInput, _caption?: string): Promise<StatusResult> {
+  async postImageStatus(_media: MediaInput, _options?: StatusPostOptions): Promise<StatusResult> {
     this.ensureReady();
-    throw new EngineNotSupportedError('postImageStatus');
+    throw new EngineNotSupportedError('postImageStatus (Baileys-only; wwebjs blocked upstream, see #455)');
   }
 
-  async postVideoStatus(_media: MediaInput, _caption?: string): Promise<StatusResult> {
+  async postVideoStatus(_media: MediaInput, _options?: StatusPostOptions): Promise<StatusResult> {
     this.ensureReady();
-    throw new EngineNotSupportedError('postVideoStatus');
+    throw new EngineNotSupportedError('postVideoStatus (Baileys-only; wwebjs blocked upstream, see #455)');
   }
 
   async deleteStatus(_statusId: string): Promise<void> {
