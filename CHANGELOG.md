@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Stats endpoint now returns chat names in top chats.** The `GET /stats/messages` and `GET /sessions/:id/stats` endpoints include a `chatName` field on each top-chat entry, populated from the contact's pushName or saved name at message time. The dashboard uses it to show readable names instead of raw JIDs. A backfill script updates existing rows from the current contact/chat list. (#557) Thanks @shadowwalker.
+
 ### Fixed
 
 - **Sending to — or operating on — a WhatsApp Channel (newsletter) no longer logs internal errors.** On the whatsapp-web.js engine a channel JID (`…@newsletter`) resolves to a `Channel`, which has none of the per-chat operations; the gateway now skips those for channels instead of throwing. The typing indicator that precedes a send, the typing/recording presence endpoint and its MCP tool, mark-unread, and delete-chat now cleanly no-op for a channel (presence does nothing; mark-unread and delete-chat report no change) rather than emitting an internal `TypeError`. Fetching chat labels for a channel previously failed with HTTP 500 — it now returns an empty list. Direct chats, groups, and broadcast lists are unaffected. (#554) Thanks @DanielOberlechner.
