@@ -15,6 +15,7 @@ import {
   PluginNetCapability,
   PluginConversationsCapability,
   PluginHandoverCapability,
+  PluginMappingsCapability,
   PluginInstance,
   PluginStatus,
   PluginContext,
@@ -31,7 +32,7 @@ import { WorkerThreadChannel } from './sandbox/worker-thread-channel';
 import { dispatchCapabilityVerb } from './sandbox/capability-router';
 import { PluginLogLevel } from './sandbox/protocol';
 import { buildConversationSendFacade } from './conversation-send-facade';
-import { shouldDispatchInbound } from './handover-gate';
+import { shouldDispatchToPlugin } from './handover-gate';
 import { makeOnWebhookSubscribe } from './webhook-subscribe.util';
 import { INGRESS_DISPATCH_TIMEOUT_MS } from '../../modules/integration/integration.constants';
 import type { MessageService } from '../../modules/message/message.service';
@@ -802,12 +803,11 @@ export class PluginLoaderService implements OnModuleInit, OnModuleDestroy {
             try {
               const chatId = (hookCtx.data as { chatId?: string } | undefined)?.chatId;
               if (chatId && hookCtx.sessionId) {
-                const mapping = await this.getConversationMappingService().findForChat(
+                const handover = await this.getConversationMappingService().findHandoverForChat(
                   hookCtx.sessionId,
                   chatId,
-                  pluginId,
                 );
-                if (!shouldDispatchInbound(mapping)) return { continue: true };
+                if (!shouldDispatchToPlugin(handover, pluginId)) return { continue: true };
               }
             } catch (error) {
               this.logger.debug(`Handover gate lookup failed for plugin ${pluginId}; dispatching normally`, {
@@ -1038,6 +1038,38 @@ export class PluginLoaderService implements OnModuleInit, OnModuleDestroy {
           await this.getConversationMappingService().setHandover(mapping.id, state);
         },
       } satisfies PluginHandoverCapability,
+      mappings: {
+        upsert: async (key, providerConversationId) => {
+          this.assertPermission(plugin.manifest, PluginCapabilityPermission.CONVERSATION_SEND);
+          this.assertSessionAllowed(plugin.manifest, key.sessionId);
+          await this.getConversationMappingService().upsert(
+            { sessionId: key.sessionId, chatId: key.chatId, pluginId: plugin.manifest.id, instanceId: key.instanceId },
+            providerConversationId,
+          );
+        },
+        get: async key => {
+          this.assertPermission(plugin.manifest, PluginCapabilityPermission.CONVERSATION_SEND);
+          this.assertSessionAllowed(plugin.manifest, key.sessionId);
+          const m = await this.getConversationMappingService().get({
+            sessionId: key.sessionId,
+            chatId: key.chatId,
+            pluginId: plugin.manifest.id,
+            instanceId: key.instanceId,
+          });
+          return m ? { providerConversationId: m.providerConversationId, handoverState: m.handoverState } : null;
+        },
+        getByProvider: async (instanceId, providerConversationId) => {
+          this.assertPermission(plugin.manifest, PluginCapabilityPermission.CONVERSATION_SEND);
+          const m = await this.getConversationMappingService().getByProvider(
+            plugin.manifest.id,
+            instanceId,
+            providerConversationId,
+          );
+          // Parity with get/upsert: a plugin may only read a mapping for a session it is scoped to.
+          if (m) this.assertSessionAllowed(plugin.manifest, m.sessionId);
+          return m ? { sessionId: m.sessionId, chatId: m.chatId, handoverState: m.handoverState } : null;
+        },
+      } satisfies PluginMappingsCapability,
     };
   }
 
