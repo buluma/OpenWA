@@ -807,7 +807,9 @@
         "confirm": "Regenerate the signing secret for {{id}}? The current secret stops working immediately.",
         "action": "Regenerate"
       },
-      "edit": { "title": "Edit {{id}}" },
+      "edit": {
+        "title": "Edit {{id}}"
+      },
       "delete": {
         "title": "Delete instance",
         "confirm": "Delete instance {{id}}? Its ingress URL and secret stop working immediately.",
@@ -834,6 +836,7 @@
         "secretRegenerated": "Secret regenerated",
         "actionFailed": "Action failed"
       }
-    }
+    },
+    "hookPriority": "Priority"
   }
 }
