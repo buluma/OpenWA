@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Dashboard `<select>` elements replaced with a custom dropdown component.** The "All Status" filter (Sessions), "All Severities" filter (Logs), and language picker (Login) now use a reusable `CustomSelect` component that matches the dashboard design system with proper dark/light theming, keyboard navigation (arrows, Home/End, type-ahead, Escape), and responsive behavior. Focus returns to the trigger on close, matching native `<select>` semantics. Thanks @haseeblodhi1899.
+- The **"Install a plugin" modal is wider on desktop** (480px → 680px) to give the plugin catalog list more room, while still collapsing to a full-width bottom sheet on small screens.
+
+### Fixed
+
+- **A terminally-failed or un-reinitializable session no longer strands its browser process or wedges at "already started".** When an engine reports a terminal error, and when a reconnect attempt's re-initialization throws, the dead or half-built engine is now evicted from the session registry and its Chromium process is force-killed instead of being left in place — previously it kept holding a concurrency slot and caused a later start to be rejected as already running. Deleting a session likewise force-kills its browser (rather than a graceful close that could hang on a wedged Chromium and orphan the process).
+- **The dark theme now covers every dashboard surface.** A number of components used hardcoded colors instead of the theme's CSS variables, so several surfaces stayed light in dark mode — most visibly the Infrastructure "Database Migrations" card, plus status/severity badges, toasts, danger-hover states, and toggle tracks across most pages. They now use the theme tokens (and translucent semantic fills) so they follow the active theme in both light and dark. A new `--info` token themes the blue badges (permission, SQLite, info logs, qr-ready pill) that previously had no theme-aware color, and the root `<html>` background no longer stays white when the dark theme is selected on a light-OS device (visible on overscroll).
+
+## [0.8.8] - 2026-07-05
+
 ### Added
 
 - **Native WhatsApp polls** via `POST /api/sessions/:sessionId/messages/send-poll`: question, 2–12 options and an optional `allowMultipleAnswers` flag (default single choice), implemented on both engines (whatsapp-web.js `Poll`, Baileys `poll` content with `selectableCount` 1/0). The message history stores the poll question as the body so the log stays readable. Polls are a first-class `poll` message type end to end — both engines map incoming poll messages to it, so the websocket/webhook events, persisted rows, and dashboard all report `poll` consistently. Thanks @alejo117.
