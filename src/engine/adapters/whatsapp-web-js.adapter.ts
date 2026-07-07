@@ -1783,7 +1783,7 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
 
     // Self-heal: if the WA state is not CONNECTED the page may be reloading. Wait briefly for
     // recovery before falling back to the retry loop below.
-    if (this.currentWaState && this.currentWaState !== WAState.CONNECTED) {
+    if (this.currentWaState && this.currentWaState !== 'CONNECTED') {
       this.logger.warn(`WA state is ${this.currentWaState} — waiting for page to reconnect`);
       await this.waitForPageReady(5000);
       this.ensureReady();
@@ -1819,9 +1819,7 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
           msg.includes('Protocol error');
 
         if (isDetached && attempt < MAX_RETRIES) {
-          this.logger.warn(
-            `getChats attempt ${attempt + 1}/${MAX_RETRIES} failed (page reloading): ${msg}`,
-          );
+          this.logger.warn(`getChats attempt ${attempt + 1}/${MAX_RETRIES} failed (page reloading): ${msg}`);
           const recovered = await this.waitForPageReady(RETRY_DELAY_MS);
           if (recovered) continue;
           // Page didn't recover in time — fall through to the next attempt (last attempt throws).
@@ -1838,7 +1836,16 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
   }
 
   /** Map raw whatsapp-web.js chat objects to library-agnostic ChatSummary, skipping entries with no id. */
-  private buildChatSummaries(chats: { id?: { _serialized?: string }; name?: string; isGroup?: boolean; unreadCount?: number; timestamp?: number; lastMessage?: { type?: string; body?: string } }[]): ChatSummary[] {
+  private buildChatSummaries(
+    chats: {
+      id?: { _serialized?: string };
+      name?: string;
+      isGroup?: boolean;
+      unreadCount?: number;
+      timestamp?: number;
+      lastMessage?: { type?: string; body?: string };
+    }[],
+  ): ChatSummary[] {
     const summaries: ChatSummary[] = [];
     let skipped = 0;
 
