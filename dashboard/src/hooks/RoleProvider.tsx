@@ -1,5 +1,5 @@
 import { useState, useCallback, type ReactNode } from 'react';
-import type { UserRole } from '../types/role';
+import type { UserRole, RoleContextType } from '../types/role';
 import { RoleContext } from './roleContext';
 
 export type { UserRole } from '../types/role';
