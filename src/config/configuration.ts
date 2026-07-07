@@ -136,9 +136,11 @@ export default () => ({
     // Where installed plugins live on disk (matches the plugin loader's default).
     dir: process.env.PLUGINS_DIR || './plugins',
     // Remote catalog of installable plugins (JSON array; the OpenWA-plugins repo's plugins.json).
-    // Fetched through the SSRF guard — add its host to SSRF_ALLOWED_HOSTS if it is not publicly resolvable.
-    catalogUrl:
-      process.env.PLUGIN_CATALOG_URL || 'https://raw.githubusercontent.com/rmyndharis/OpenWA-plugins/main/plugins.json',
+    // Defaults to a sibling `OpenWA-plugins/plugins.json` on disk (file://) so a side-by-side checkout
+    // works out of the box in development. Override via PLUGIN_CATALOG_URL to point at the canonical
+    // GitHub release: https://raw.githubusercontent.com/rmyndharis/OpenWA-plugins/main/plugins.json
+    catalogUrl: process.env.PLUGIN_CATALOG_URL ||
+      `file://${process.cwd()}/../OpenWA-plugins/plugins.json`,
     // Cap on a plugin .zip downloaded by install-from-URL (matches the 5 MB upload limit). Fail-safe:
     // a non-numeric or non-positive value (parseInt → NaN/0/-n) falls back to the default rather than
     // silently disabling the cap (a downstream `??` would not catch NaN).

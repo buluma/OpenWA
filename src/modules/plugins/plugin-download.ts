@@ -1,3 +1,5 @@
+import { readFile } from 'fs/promises';
+import { fileURLToPath } from 'url';
 import { withSafeFetch } from '../../common/security/ssrf-guard';
 
 /** Default cap on a server-side plugin download: 5 MiB (matches the upload limit). */
@@ -6,12 +8,14 @@ const DEFAULT_MAX_BYTES = 5 * 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 30_000;
 
 /**
- * Fetch a remote resource (plugin .zip or catalog JSON) as a Buffer, always behind the SSRF guard:
- * every host (the original URL and every redirect hop) is validated before its socket opens and a hop
- * resolving to an internal/reserved address is refused. Redirects ARE followed — public release hosts
- * (e.g. GitHub Releases) legitimately 302 to a CDN — but each hop is re-validated, so following them
- * cannot reach an internal target. The byte cap is enforced while streaming (Content-Length may be
- * absent or wrong) so a hostile or oversized response can't exhaust memory.
+ * Fetch a resource (plugin .zip or catalog JSON) as a Buffer. Supports two schemes:
+ *
+ * - **`file://`** — reads from the local filesystem (bypasses the SSRF guard). Useful for local
+ *   development: set `PLUGIN_CATALOG_URL=file:///path/to/plugins/plugins.json` to point the plugin
+ *   catalog at a local checkout of the OpenWA-plugins repo.
+ * - **`http://` / `https://`** — fetches remotely behind the SSRF guard: every host (the original URL
+ *   and every redirect hop) is validated before its socket opens and a hop resolving to an
+ *   internal/reserved address is refused. The byte cap is enforced while streaming.
  *
  * Operators must add a non-public catalog/release host to `SSRF_ALLOWED_HOSTS`; public hosts
  * (github.com, objects.githubusercontent.com, raw.githubusercontent.com) resolve and pass normally.
@@ -25,6 +29,19 @@ export async function fetchSafeBuffer(
   const maxBytes =
     Number.isFinite(opts.maxBytes) && (opts.maxBytes as number) > 0 ? (opts.maxBytes as number) : DEFAULT_MAX_BYTES;
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+
+  // Local file system path — read directly, bypass the SSRF guard.
+  if (url.startsWith('file://')) {
+    const filePath = fileURLToPath(url);
+    const stat = await import('fs/promises').then(m => m.stat(filePath)).catch(() => null);
+    if (!stat) {
+      throw new Error(`local catalog file not found: ${filePath}`);
+    }
+    if (stat.size > maxBytes) {
+      throw new Error(`local file exceeds the ${maxBytes}-byte limit`);
+    }
+    return readFile(filePath);
+  }
 
   return withSafeFetch(
     url,
