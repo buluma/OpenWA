@@ -1,8 +1,8 @@
 import { useContext } from 'react';
-import { RoleContext } from './RoleProvider';
-import type { RoleContextType, UserRole } from '../types/role';
+import { RoleContext } from './roleContext';
+import type { RoleContextType } from '../types/role';
 
-export type { UserRole, RoleContextType } from '../types/role';
+export type { RoleContextType } from '../types/role';
 
 export function useRole(): RoleContextType {
   const context = useContext(RoleContext);
