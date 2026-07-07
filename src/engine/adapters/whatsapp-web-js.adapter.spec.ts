@@ -1377,6 +1377,49 @@ describe('WhatsAppWebJsAdapter inbound media (MEDIA_DOWNLOAD_ENABLED=false)', ()
     expect(msg.media?.sizeBytes).toBe(5000);
   });
 
+  it('downloads media for a phone-composed self-message (message_create), same as an incoming one', async () => {
+    process.env[ENV] = 'false'; // deterministic omitted:true path — exercises capInboundMediaFor is called at all
+
+    const adapter = new WhatsAppWebJsAdapter({
+      sessionId: 'sess-media-test-2',
+      sessionDataPath: './data/sessions',
+      puppeteer: {},
+    });
+    const client = Object.assign(new EventEmitter(), {
+      info: { wid: { user: '628123' }, pushname: 'Tester' },
+      getState: jest.fn().mockResolvedValue(WAState.CONNECTED),
+      pupPage: { evaluate: jest.fn().mockResolvedValue(true) },
+    });
+    (adapter as unknown as { client: unknown }).client = client;
+    const onMessageCreate = jest.fn();
+    (adapter as unknown as { callbacks: unknown }).callbacks = { onMessageCreate };
+    (adapter as unknown as { setupEventHandlers: () => void }).setupEventHandlers();
+
+    const mockMsg = {
+      id: { _serialized: 'SELF_MEDIA_1' },
+      from: '628123@c.us',
+      to: '628111@c.us',
+      body: 'caption',
+      type: 'image',
+      timestamp: 1700000070,
+      fromMe: true,
+      hasMedia: true,
+      _data: { mimetype: 'image/jpeg', size: 12345 },
+    };
+
+    client.emit('message_create', mockMsg);
+    await new Promise(r => setImmediate(r));
+
+    expect(onMessageCreate).toHaveBeenCalledTimes(1);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    const msg = onMessageCreate.mock.calls[0][0] as {
+      media?: { omitted?: boolean; mimetype?: string; sizeBytes?: number };
+    };
+    expect(msg.media).toBeDefined();
+    expect(msg.media?.mimetype).toBe('image/jpeg');
+    expect(msg.media?.sizeBytes).toBe(12345);
+  });
+
   it('surfaces call detail on a live incoming call_log message (#494)', async () => {
     const adapter = new WhatsAppWebJsAdapter({
       sessionId: 'sess-call-test',

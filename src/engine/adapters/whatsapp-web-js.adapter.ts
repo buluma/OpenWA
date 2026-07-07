@@ -536,7 +536,8 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
       }
     });
 
-    this.client.on('message_create', msg => {
+    // eslint-disable-next-line @typescript-eslint/no-misused-promises
+    this.client.on('message_create', async msg => {
       // `message_create` fires for every message the account creates — including ones composed on a
       // linked phone, which the `message` event above never delivers. Incoming messages are already
       // handled there, so forward only the account's own outgoing (`fromMe`) messages; this is the
@@ -546,7 +547,22 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
       }
 
       try {
-        this.callbacks.onMessageCreate?.(buildIncomingMessageBase(msg));
+        const outgoingMessage: IncomingMessage = buildIncomingMessageBase(msg);
+
+        // Phone-composed sends carry their media here too — an API send already has its bytes
+        // persisted by the REST send path, but this is the ONLY place a phone-composed attachment's
+        // bytes are ever available, so download it the same way the `message` handler does for
+        // received media (same cap/timeout/concurrency limits apply).
+        if (msg.hasMedia) {
+          try {
+            const capped = await this.capInboundMediaFor(msg);
+            if (capped) outgoingMessage.media = capped;
+          } catch (error) {
+            this.logger.error('Error downloading media for outgoing message', String(error));
+          }
+        }
+
+        this.callbacks.onMessageCreate?.(outgoingMessage);
       } catch (error) {
         this.logger.error('Error processing outgoing message', String(error));
       }

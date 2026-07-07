@@ -5,7 +5,7 @@ import { NotFoundException, ConflictException, BadRequestException } from '@nest
 import { ConfigService } from '@nestjs/config';
 import { SessionService, ACK_RECONCILE_DELAY_MS } from './session.service';
 import { Session, SessionStatus } from './entities/session.entity';
-import { Message, MessageStatus } from '../message/entities/message.entity';
+import { Message, MessageDirection, MessageStatus } from '../message/entities/message.entity';
 import { MessageBatch } from '../message/entities/message-batch.entity';
 import { EngineFactory } from '../../engine/engine.factory';
 import { LidMappingStoreService } from '../../engine/identity/lid-mapping-store.service';
@@ -1010,19 +1010,44 @@ describe('SessionService', () => {
       expect(sent[0][0]).toBe('sess-uuid-1');
     });
 
-    it('does NOT persist an outgoing (message_create) self-message to the messages table', async () => {
-      // Contract lock: message_create also fires for API sends (already persisted by the REST send
-      // path), so a naive save here would double-persist. Phone-composed sends are therefore
-      // webhooked/emitted but not mirrored to local history; safe persistence (unique index + dedup)
-      // is a separate enhancement. This guards against the omission silently changing.
+    it('persists an outgoing (message_create) self-message to the messages table', async () => {
+      // Phone-composed sends never reach the REST send path, so message_create is the only place
+      // they can be captured — including their media (#see whatsapp-web-js.adapter media download).
       const callbacks = await startAndCaptureCallbacks();
+      (messageRepository.insert as jest.Mock).mockClear();
+      (messageRepository.create as jest.Mock).mockImplementation((data: Record<string, unknown>) => ({ ...data }));
+      // The default hookManager mock returns an empty `data: {}`; echo the message through so the
+      // real fields (id, chatId, direction) survive the hook and reach the persist step below.
+      (hookManager.execute as jest.Mock).mockImplementation((_event: string, data: unknown) =>
+        Promise.resolve({ continue: true, data }),
+      );
 
       callbacks.onMessageCreate!(makeMessage({ id: 'wa-out-2', from: 'me@c.us', to: 'peer@c.us', fromMe: true }));
       await flush();
 
-      expect(dispatchedEvents('message.sent')).toHaveLength(1); // it IS webhooked/emitted
-      expect(messageRepository.create).not.toHaveBeenCalled(); // but NOT persisted
-      expect(messageRepository.save).not.toHaveBeenCalled();
+      expect(dispatchedEvents('message.sent')).toHaveLength(1);
+      expect(messageRepository.insert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionId: 'sess-uuid-1',
+          waMessageId: 'wa-out-2',
+          direction: MessageDirection.OUTGOING,
+        }),
+      );
+    });
+
+    it('de-dupes an outgoing (message_create) self-message already persisted by the REST send path', async () => {
+      // message_create ALSO fires for API-originated sends, which the REST send path already
+      // persisted with the same waMessageId — UNIQUE(sessionId, waMessageId) must swallow the
+      // resulting insert conflict rather than throwing or blocking the webhook/WS dispatch.
+      const callbacks = await startAndCaptureCallbacks();
+      (messageRepository.insert as jest.Mock).mockRejectedValueOnce({
+        driverError: { code: 'SQLITE_CONSTRAINT_UNIQUE', message: 'UNIQUE constraint failed' },
+      });
+
+      callbacks.onMessageCreate!(makeMessage({ id: 'wa-out-3', from: 'me@c.us', to: 'peer@c.us', fromMe: true }));
+      await flush();
+
+      expect(dispatchedEvents('message.sent')).toHaveLength(1); // still webhooked/emitted despite the conflict
     });
 
     it('scopes the ack status UPDATE by sessionId, not just waMessageId', async () => {

@@ -844,18 +844,49 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
             sessionId: id,
             source: 'Engine',
           })
-          .then(({ continue: shouldContinue, data: finalMessage }) => {
+          .then(async ({ continue: shouldContinue, data: finalMessage }) => {
             if (!shouldContinue) {
               return;
             }
 
-            // NOTE: unlike onMessage (incoming), this path intentionally does NOT mirror the message
-            // to the `messages` table. message_create ALSO fires for API-originated sends, which the
-            // REST send path already persists — saving here would double-persist them. Safe
-            // persistence of phone-composed sends needs a unique (sessionId, waMessageId) index +
-            // de-dup and is tracked as a separate enhancement; until then this path only webhooks/
-            // emits. So local message history reflects API sends + all inbound, but not sends
-            // composed on a linked phone.
+            // Mirror to the `messages` table so phone-composed sends (which the REST send path never
+            // sees) also show up in the dashboard chat view — including their media, which
+            // whatsapp-web.js's message_create handler now downloads the same way `message` does.
+            // message_create ALSO fires for API-originated sends, which the REST send path already
+            // persists with the same waMessageId; UNIQUE(sessionId, waMessageId) is the atomic de-dup
+            // oracle here too, so that insert just loses the race and is skipped. Fail-open and never
+            // gated on the dispatch below: this path has always webhooked/emitted unconditionally, and
+            // a persistence hiccup must not start silently dropping message.sent for existing consumers.
+            const outgoing: IncomingMessage = finalMessage;
+            const metadata: Record<string, unknown> = {};
+            if (outgoing.media) metadata.media = outgoing.media;
+            if (outgoing.quotedMessage) metadata.quotedMessage = outgoing.quotedMessage;
+            if (outgoing.call) metadata.call = outgoing.call;
+
+            const dbMessage = this.messageRepository.create({
+              sessionId: id,
+              waMessageId: outgoing.id,
+              chatId: outgoing.chatId,
+              from: outgoing.from,
+              to: outgoing.to,
+              body: outgoing.body,
+              type: outgoing.type,
+              direction: MessageDirection.OUTGOING,
+              timestamp: outgoing.timestamp,
+              status: MessageStatus.SENT,
+              metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
+            });
+
+            if (this.isLiveEngine(id, engine)) {
+              try {
+                await this.messageRepository.insert(dbMessage as unknown as QueryDeepPartialEntity<Message>);
+              } catch (err) {
+                if (!isUniqueConstraintError(err)) {
+                  this.logger.error(`Failed to save outgoing message ${outgoing.id} to database`, String(err));
+                }
+              }
+            }
+
             void this.webhookService.dispatch(id, 'message.sent', finalMessage);
             // Emit real-time event to WebSocket clients (as message.sent, not message.received)
             this.eventsGateway.emitMessageSent(id, finalMessage);

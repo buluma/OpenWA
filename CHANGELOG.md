@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Media sent from the linked phone now shows up in the dashboard chat view (whatsapp-web.js).**
+  Messages composed on the phone (not through OpenWA's own API) arrive via a separate
+  `message_create` event, which previously neither downloaded their media nor persisted them to
+  local history — so any image/video/document/audio sent from the phone permanently rendered as a
+  generic "📎 Media" placeholder, with no local record at all. `message_create` now downloads media
+  the same way inbound messages do (same size cap/timeout/concurrency limits) and mirrors the
+  message to the `messages` table, de-duplicating against the REST send path via the existing
+  `UNIQUE(sessionId, waMessageId)` index so API-originated sends are never double-persisted.
 - **`GET /api/sessions/:id/chats` no longer returns 500 when WhatsApp Web reloads its page.**
   The whatsapp-web.js engine's `getChats()` threw `Attempted to use detached Frame` every few hours
   when WhatsApp Web internally reloaded its UI, detaching the Puppeteer execution context. The
