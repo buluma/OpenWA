@@ -270,6 +270,35 @@ export class BaileysSessionStore {
     return parsed.kind === 'user' ? `${parsed.userPart}@s.whatsapp.net` : jid;
   }
 
+  getChatName(id: string): string | undefined {
+    const chat = this.chats.get(id) ?? this.chats.get(this.toEngineJid(id));
+    if (chat?.name) {
+      return chat.name;
+    }
+    const direct = this.contactDisplayName(id) ?? this.contactDisplayName(this.toEngineJid(id));
+    if (direct) {
+      return direct;
+    }
+    const parsed = parseWaId(id);
+    if (parsed.kind === 'lid') {
+      const lidJid = `${parsed.userPart}@lid`;
+      const pn =
+        this.lidToPn.get(lidJid) ??
+        this.lidToPn.get(id) ??
+        (this.contacts.get(lidJid) ?? this.contacts.get(id))?.phoneNumber;
+      if (pn) {
+        const viaPhone =
+          this.contactDisplayName(pn) ??
+          this.contactDisplayName(`${userPart(pn)}@s.whatsapp.net`) ??
+          this.contactDisplayName(`${userPart(pn)}@c.us`);
+        if (viaPhone) {
+          return viaPhone;
+        }
+      }
+    }
+    return undefined;
+  }
+
   private toNeutralContact(c: BaileysContactWithPhone): Contact {
     const number = c.phoneNumber ? userPart(c.phoneNumber) : c.id.endsWith('@s.whatsapp.net') ? userPart(c.id) : '';
     return {

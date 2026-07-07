@@ -348,4 +348,21 @@ describe('BaileysSessionStore', () => {
       expect(s.resolvePhone('666@lid')).toBeNull();
     });
   });
+
+  describe('getChatName', () => {
+    it('returns the chat name, then contact name, then lid-resolved contact name', () => {
+      store.upsertChats([{ id: '120363-9@g.us', name: 'My Group Chat' }]);
+      expect(store.getChatName('120363-9@g.us')).toBe('My Group Chat');
+
+      store.upsertContacts([{ id: '628111@s.whatsapp.net', name: 'Alice' }]);
+      expect(store.getChatName('628111@s.whatsapp.net')).toBe('Alice');
+
+      store.addLidMappings([{ lid: '111@lid', pn: '628111@s.whatsapp.net' }]);
+      expect(store.getChatName('111@lid')).toBe('Alice');
+    });
+
+    it('returns undefined if no name is available', () => {
+      expect(store.getChatName('999@s.whatsapp.net')).toBeUndefined();
+    });
+  });
 });

@@ -100,6 +100,8 @@ export interface IncomingMessage {
    * populated for `isLidSender` messages.
    */
   senderPhone?: string | null;
+  /** Best-effort display name of the chat itself (e.g. group name, or contact's name). */
+  chatName?: string;
   /** Sender contact info, best-effort from the WhatsApp Web cache. Sync fields only (no network). */
   contact?: MessageContact;
   media?: {

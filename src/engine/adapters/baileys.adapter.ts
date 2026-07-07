@@ -1235,7 +1235,7 @@ export class BaileysAdapter implements IWhatsAppEngine {
       quotedMessage = { id: contextInfo.stanzaId, body: qBody };
     }
 
-    return buildIncomingMessageFromBaileys(
+    const incoming = buildIncomingMessageFromBaileys(
       {
         id: msg.key.id ?? '',
         remoteJid: msg.key.remoteJid!,
@@ -1255,6 +1255,11 @@ export class BaileysAdapter implements IWhatsAppEngine {
       },
       jid => this.sessionStore.toNeutralJid(jid),
     );
+    const chatName = this.sessionStore.getChatName(msg.key.remoteJid!);
+    if (chatName) {
+      incoming.chatName = chatName;
+    }
+    return incoming;
   }
 
   /**

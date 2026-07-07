@@ -563,6 +563,7 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
             sessionId: id,
             waMessageId: m.id,
             chatId: m.chatId,
+            chatName: m.chatName ?? m.contact?.pushName ?? m.contact?.name ?? undefined,
             from: m.from,
             to: m.to,
             body: m.body,
@@ -589,6 +590,17 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
           .orIgnore()
           .execute();
         inserted += rows.length;
+
+        // Backfill chatName for existing messages of each chat that has a newly-resolved name.
+        for (const row of rows) {
+          if (row.chatName) {
+            void this.messageRepository
+              .update({ sessionId: id, chatId: row.chatId, chatName: IsNull() }, { chatName: row.chatName })
+              .catch(backfillErr =>
+                this.logger.debug('Failed to backfill chatName from history sync', String(backfillErr)),
+              );
+          }
+        }
       }
     }
     if (inserted) {
@@ -690,6 +702,22 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
               error: err instanceof Error ? err.message : String(err),
             }),
           );
+
+        // Backfill chatName for existing messages from the engine's chat list (fire-and-forget).
+        // This resolves the display name for chats that only have old null-chatName messages.
+        void engine
+          .getChats()
+          .then(chats => {
+            for (const chat of chats) {
+              if (!chat.name) continue;
+              void this.messageRepository
+                .update({ sessionId: id, chatId: chat.id, chatName: IsNull() }, { chatName: chat.name })
+                .catch(backfillErr =>
+                  this.logger.debug('Failed to backfill chatName from chat list', String(backfillErr)),
+                );
+            }
+          })
+          .catch(err => this.logger.debug('Failed to get chats for chatName backfill', String(err)));
       },
       onMessage: (message): void => {
         if (!this.isLiveEngine(id, engine)) return;
@@ -757,7 +785,7 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
               metadata.call = incoming.call;
             }
 
-            const chatName = incoming.contact?.pushName ?? incoming.contact?.name ?? undefined;
+            const chatName = incoming.chatName ?? incoming.contact?.pushName ?? incoming.contact?.name ?? undefined;
 
             const dbMessage = this.messageRepository.create({
               sessionId: id,
@@ -797,6 +825,16 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
             }
             if (!isNewMessage) {
               return; // duplicate re-fire — the original already persisted and dispatched
+            }
+
+            // Backfill chatName for existing messages of this chat that have null chatName,
+            // so the Top-charts stat query picks up the display name straight away.
+            if (chatName) {
+              void this.messageRepository
+                .update({ sessionId: id, chatId: incoming.chatId, chatName: IsNull() }, { chatName })
+                .catch(backfillErr =>
+                  this.logger.debug('Failed to backfill chatName for existing messages', String(backfillErr)),
+                );
             }
 
             // Dispatch to webhooks with potentially modified message
@@ -862,11 +900,13 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
             if (outgoing.media) metadata.media = outgoing.media;
             if (outgoing.quotedMessage) metadata.quotedMessage = outgoing.quotedMessage;
             if (outgoing.call) metadata.call = outgoing.call;
+            const chatName = outgoing.chatName ?? outgoing.contact?.pushName ?? outgoing.contact?.name ?? undefined;
 
             const dbMessage = this.messageRepository.create({
               sessionId: id,
               waMessageId: outgoing.id,
               chatId: outgoing.chatId,
+              chatName,
               from: outgoing.from,
               to: outgoing.to,
               body: outgoing.body,
@@ -881,10 +921,27 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
               try {
                 await this.messageRepository.insert(dbMessage as unknown as QueryDeepPartialEntity<Message>);
               } catch (err) {
-                if (!isUniqueConstraintError(err)) {
+                if (isUniqueConstraintError(err)) {
+                  if (dbMessage.chatName) {
+                    void this.messageRepository
+                      .update({ sessionId: id, waMessageId: outgoing.id }, { chatName: dbMessage.chatName })
+                      .catch(updateErr => {
+                        this.logger.debug('Failed to update chatName on unique constraint', String(updateErr));
+                      });
+                  }
+                } else {
                   this.logger.error(`Failed to save outgoing message ${outgoing.id} to database`, String(err));
                 }
               }
+            }
+
+            // Backfill chatName for existing messages of this chat that have null chatName.
+            if (chatName) {
+              void this.messageRepository
+                .update({ sessionId: id, chatId: outgoing.chatId, chatName: IsNull() }, { chatName })
+                .catch(backfillErr =>
+                  this.logger.debug('Failed to backfill chatName for existing messages', String(backfillErr)),
+                );
             }
 
             void this.webhookService.dispatch(id, 'message.sent', finalMessage);

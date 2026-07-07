@@ -491,6 +491,18 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
           this.logger.error('Error getting message contact', String(error));
         }
 
+        // Attach the chat name — for individual chats only when the contact has a saved name
+        // (contact.name), otherwise chat.name is the phone number and pushName is more user-friendly.
+        // For groups, chat.name is the subject — always use it.
+        try {
+          const chat = await msg.getChat();
+          if (chat?.name && (chat.isGroup || incomingMessage.contact?.name)) {
+            incomingMessage.chatName = chat.name;
+          }
+        } catch (error) {
+          this.logger.debug('Error getting message chat for chatName', String(error));
+        }
+
         // Handle location
         if (msg.type === MessageTypes.LOCATION && msg.location) {
           incomingMessage.location = {
@@ -548,6 +560,18 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
 
       try {
         const outgoingMessage: IncomingMessage = buildIncomingMessageBase(msg);
+
+        // Attach the chat name — for individual chats only when the contact has a saved name
+        // (contact.name), otherwise chat.name is the phone number and pushName is more user-friendly.
+        // For groups, chat.name is the subject — always use it.
+        try {
+          const chat = await msg.getChat();
+          if (chat?.name && (chat.isGroup || outgoingMessage.contact?.name)) {
+            outgoingMessage.chatName = chat.name;
+          }
+        } catch (error) {
+          this.logger.debug('Error getting outgoing message chat for chatName', String(error));
+        }
 
         // Phone-composed sends carry their media here too — an API send already has its bytes
         // persisted by the REST send path, but this is the ONLY place a phone-composed attachment's
@@ -1609,6 +1633,11 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
       // chatId-derived flags (isGroup, isStatusBroadcast) from the real chat.
       const out = buildIncomingMessageBase(msg);
       out.chatId = chatId;
+      // chat.name for groups is the subject; for private chats it's the contact name or phone number.
+      // Use it only for groups here — the session service falls through to pushName for unsaved contacts.
+      if (chat.isGroup) {
+        out.chatName = chat.name;
+      }
       out.isGroup = chatId.endsWith('@g.us');
       out.isStatusBroadcast = chatId === 'status@broadcast';
       const call = extractWwebjsCall(msg);

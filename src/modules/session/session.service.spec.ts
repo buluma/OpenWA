@@ -1043,11 +1043,22 @@ describe('SessionService', () => {
       (messageRepository.insert as jest.Mock).mockRejectedValueOnce({
         driverError: { code: 'SQLITE_CONSTRAINT_UNIQUE', message: 'UNIQUE constraint failed' },
       });
+      (messageRepository.update as jest.Mock).mockClear();
+      (messageRepository.create as jest.Mock).mockImplementation((data: Record<string, unknown>) => ({ ...data }));
+      (hookManager.execute as jest.Mock).mockImplementation((_event: string, data: unknown) =>
+        Promise.resolve({ continue: true, data }),
+      );
 
-      callbacks.onMessageCreate!(makeMessage({ id: 'wa-out-3', from: 'me@c.us', to: 'peer@c.us', fromMe: true }));
+      callbacks.onMessageCreate!(
+        makeMessage({ id: 'wa-out-3', from: 'me@c.us', to: 'peer@c.us', fromMe: true, chatName: 'Resolved Chat Name' }),
+      );
       await flush();
 
       expect(dispatchedEvents('message.sent')).toHaveLength(1); // still webhooked/emitted despite the conflict
+      expect(messageRepository.update).toHaveBeenCalledWith(
+        { sessionId: 'sess-uuid-1', waMessageId: 'wa-out-3' },
+        { chatName: 'Resolved Chat Name' },
+      );
     });
 
     it('scopes the ack status UPDATE by sessionId, not just waMessageId', async () => {
