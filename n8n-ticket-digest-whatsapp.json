@@ -1,0 +1,97 @@
+{
+  "name": "Converge Ticket Digest -> WhatsApp",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * *"
+            }
+          ]
+        }
+      },
+      "name": "Daily 08:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-600, 0],
+      "id": "trigger-daily-8am"
+    },
+    {
+      "parameters": {
+        "url": "http://100.110.136.4:3001/api/external/tickets?limit=20&status=open",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-API-Key", "value": "={{$credentials.convergeApiKey}}" }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Fetch Open Tickets",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-380, 0],
+      "id": "fetch-tickets"
+    },
+    {
+      "parameters": {
+        "jsCode": "const tickets = $input.first().json.tickets || [];\nif (tickets.length === 0) {\n  return [{ json: { skip: true } }];\n}\nconst lines = tickets.slice(0, 15).map(t => `- [${t.tracker || 'ticket'}] ${t.subject}`);\nreturn [{ json: { skip: false, count: tickets.length, ticketList: lines.join('\\n') } }];"
+      },
+      "name": "Format Digest",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-160, 0],
+      "id": "format-digest"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "leftValue": "={{$json.skip}}",
+              "rightValue": false,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "name": "Has Tickets?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [60, 0],
+      "id": "has-tickets"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:2785/api/sessions/49708ca3-3a16-4be3-bc61-9b495245bea7/messages/send-template",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-API-Key", "value": "={{$credentials.openwaApiKey}}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"chatId\": \"254748443000@c.us\", \"templateName\": \"ticket-digest\", \"vars\": { \"count\": $json.count, \"ticketList\": $json.ticketList } } }}",
+        "options": {}
+      },
+      "name": "Send WhatsApp Digest",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [280, 0],
+      "id": "send-whatsapp"
+    }
+  ],
+  "connections": {
+    "Daily 08:00": { "main": [[{ "node": "Fetch Open Tickets", "type": "main", "index": 0 }]] },
+    "Fetch Open Tickets": { "main": [[{ "node": "Format Digest", "type": "main", "index": 0 }]] },
+    "Format Digest": { "main": [[{ "node": "Has Tickets?", "type": "main", "index": 0 }]] },
+    "Has Tickets?": { "main": [[{ "node": "Send WhatsApp Digest", "type": "main", "index": 0 }], []] }
+  }
+}
