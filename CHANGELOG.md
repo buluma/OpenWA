@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Top-chats `chatName` now actually populates.** The field shipped in a prior release (#558) but
+  the engine adapters never attached it to a live message, so it stayed `NULL` for any chat that
+  hadn't been resolved through the one narrow path that happened to set it — the stat query showed
+  raw JIDs for most conversations. Both engines now resolve a chat's display name (group subject,
+  or the contact's saved/pushName for a direct chat) on every message, whatsapp-web.js's
+  phone-composed (`message_create`) path included, and on session start each engine backfills
+  `chatName` onto existing `NULL` rows from its chat list / history sync — so the fix applies to
+  already-stored messages too, not just new ones.
 - **Media sent from the linked phone now shows up in the dashboard chat view (whatsapp-web.js).**
   Messages composed on the phone (not through OpenWA's own API) arrive via a separate
   `message_create` event, which previously neither downloaded their media nor persisted them to
