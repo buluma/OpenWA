@@ -2,7 +2,7 @@ import { Suspense } from 'react';
 import { lazyWithRetry as lazy } from '../utils/lazyWithRetry';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { MessageSquare, Send, Webhook, Activity, ArrowUpRight, ArrowDownRight, Loader2 } from 'lucide-react';
+import { MessageSquare, Send, Webhook, Activity, ArrowUpRight, ArrowDownRight, Loader2, AlertCircle } from 'lucide-react';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import {
   useSessionsQuery,
@@ -84,13 +84,16 @@ export function Dashboard() {
 
   if (error) {
     return (
-      <div className="dashboard" style={{ padding: '2rem' }}>
-        <div style={{ background: 'rgba(239, 68, 68, 0.12)', padding: '1rem', borderRadius: '8px', color: 'var(--error)' }}>
-          {t('dashboard.errorPrefix', { message: error })}
+      <div className="dashboard">
+        <div className="error-banner" role="alert">
+          <AlertCircle size={20} />
+          <span className="error-banner-text">{t('dashboard.errorPrefix', { message: error })}</span>
         </div>
       </div>
     );
   }
+
+  const isLive = !!(stats && stats.ready > 0);
 
   return (
     <div className="dashboard">
@@ -98,8 +101,15 @@ export function Dashboard() {
         title={t('dashboard.title')}
         subtitle={t('dashboard.subtitle')}
         badge={
-          <span className={`status-badge ${stats && stats.ready > 0 ? 'connected' : 'disconnected'}`}>
-            {stats && stats.ready > 0 ? t('common.connected') : t('common.disconnected')}
+          <span className={`status-badge ${isLive ? 'connected' : 'disconnected'}`}>
+            <span className={`pulse-bars ${isLive ? 'live' : ''}`} aria-hidden="true">
+              <span />
+              <span />
+              <span />
+              <span />
+              <span />
+            </span>
+            {isLive ? t('common.connected') : t('common.disconnected')}
           </span>
         }
       />

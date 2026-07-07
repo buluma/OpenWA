@@ -76,6 +76,8 @@
   font-weight: 600;
   color: var(--text-primary);
   margin: 0 0 1rem;
+  border-left: 3px solid var(--primary);
+  padding-left: 0.6rem;
 }
 
 .dashboard-charts .charts-empty {

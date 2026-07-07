@@ -22,6 +22,21 @@ import './DashboardCharts.css';
 
 const PERIODS: StatsPeriod[] = ['24h', '7d', '30d'];
 
+// Numbers read as instrument readouts, not prose — same monospace rule as stat values and table
+// data cells (Dashboard.css), applied to every axis tick and tooltip figure recharts renders.
+const AXIS_TICK_STYLE = { fontSize: 12, fontFamily: "'JetBrains Mono', monospace", fill: 'var(--text-secondary)' };
+const TOOLTIP_STYLE = {
+  contentStyle: {
+    background: 'var(--bg-white)',
+    border: '1px solid var(--border)',
+    borderRadius: 8,
+    fontSize: 12,
+    fontFamily: "'JetBrains Mono', monospace",
+  },
+  labelStyle: { color: 'var(--text-secondary)' },
+  itemStyle: { color: 'var(--text-primary)' },
+};
+
 // Stable, distinct color per message type (recharts needs literal colors). Keyed by type name —
 // not array index — so two types can never share a color, and a slice keeps its color even when the
 // set of present types changes between requests. Covers every type mapMessageType() can emit.
@@ -123,9 +138,9 @@ export function DashboardCharts() {
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                <XAxis dataKey="label" tick={{ fontSize: 12, fill: 'var(--text-secondary)' }} />
-                <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: 'var(--text-secondary)' }} />
-                <Tooltip />
+                <XAxis dataKey="label" tick={AXIS_TICK_STYLE} />
+                <YAxis allowDecimals={false} tick={AXIS_TICK_STYLE} />
+                <Tooltip {...TOOLTIP_STYLE} />
                 <Legend />
                 <Area
                   type="monotone"
@@ -159,7 +174,7 @@ export function DashboardCharts() {
                       <Cell key={entry.name} fill={colorForType(entry.name)} />
                     ))}
                   </Pie>
-                  <Tooltip />
+                  <Tooltip {...TOOLTIP_STYLE} />
                   <Legend />
                 </PieChart>
               </ResponsiveContainer>
@@ -174,14 +189,9 @@ export function DashboardCharts() {
               <ResponsiveContainer width="100%" height={260}>
                 <BarChart data={topChats} layout="vertical" margin={{ top: 4, right: 16, left: 8, bottom: 4 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
-                  <XAxis type="number" allowDecimals={false} tick={{ fontSize: 12, fill: 'var(--text-secondary)' }} />
-                  <YAxis
-                    type="category"
-                    dataKey="name"
-                    width={120}
-                    tick={{ fontSize: 12, fill: 'var(--text-secondary)' }}
-                  />
-                  <Tooltip />
+                  <XAxis type="number" allowDecimals={false} tick={AXIS_TICK_STYLE} />
+                  <YAxis type="category" dataKey="name" width={120} tick={AXIS_TICK_STYLE} />
+                  <Tooltip {...TOOLTIP_STYLE} />
                   <Bar dataKey="count" name={t('dashboard.charts.messages')} fill="#25d366" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
