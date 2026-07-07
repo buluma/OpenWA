@@ -781,6 +781,13 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
       this.logger.warn('Destroy client failed:', { error: String(error) });
       // Already destroyed or not initialized - ignore
     } finally {
+      // whatsapp-web.js's own destroy() only calls browser.close() when pupBrowser.isConnected()
+      // is true — if the CDP session is already broken (e.g. by a detached-frame page reload after
+      // long idle), destroy() resolves successfully without ever closing the browser, leaving a
+      // zombie Chromium that holds the userDataDir lock and makes a later start() fail with
+      // "browser is already running". Kill it directly as a belt-and-suspenders step, same as
+      // forceDestroy().
+      this.killBrowserProcess(client, 'disconnect');
       this.finishClientTeardown(client);
     }
   }
@@ -817,24 +824,32 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
   }
 
   /**
-   * Force-recover a wedged session: SIGKILL THIS client's own Chromium process directly (not a
-   * process-wide `pkill`, which would also kill other sessions), then best-effort `client.destroy()`
-   * for the rest of the cleanup. Both steps are wrapped so a missing process handle or a hung destroy
-   * can't prevent the engine from being torn down and the status reset.
+   * SIGKILL THIS client's own Chromium process directly (not a process-wide `pkill`, which would
+   * also kill other sessions). pupBrowser is the Puppeteer Browser; .process() is the Chromium
+   * ChildProcess (null if already gone). Safe to call even when the process already exited.
    */
-  async forceDestroy(): Promise<void> {
-    const client = this.beginClientTeardown();
-    if (!client) return;
-
+  private killBrowserProcess(client: Client, caller: string): void {
     try {
-      // pupBrowser is the Puppeteer Browser; .process() is the Chromium ChildProcess (null if already gone).
       const proc = (
         client as unknown as { pupBrowser?: { process?: () => { kill?: (sig: string) => void } | null } }
       ).pupBrowser?.process?.();
       proc?.kill?.('SIGKILL');
     } catch (err) {
-      this.logger.warn('forceDestroy: failed to kill the browser process', { error: String(err) });
+      this.logger.warn(`${caller}: failed to kill the browser process`, { error: String(err) });
     }
+  }
+
+  /**
+   * Force-recover a wedged session: SIGKILL THIS client's own Chromium process directly, then
+   * best-effort `client.destroy()` for the rest of the cleanup. Both steps are wrapped so a missing
+   * process handle or a hung destroy can't prevent the engine from being torn down and the status
+   * reset.
+   */
+  async forceDestroy(): Promise<void> {
+    const client = this.beginClientTeardown();
+    if (!client) return;
+
+    this.killBrowserProcess(client, 'forceDestroy');
 
     try {
       await client.destroy();
@@ -1824,6 +1839,22 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
           if (recovered) continue;
           // Page didn't recover in time — fall through to the next attempt (last attempt throws).
           continue;
+        }
+
+        if (isDetached) {
+          // Retries exhausted and the page never recovered: this is not a transient reload, the
+          // Chromium/CDP session is permanently wedged. isClientRuntimeReady()'s own page.evaluate
+          // can still report "ready" here since it never touches the stale internal handles
+          // whatsapp-web.js's own getChats() uses, so waiting alone can't self-heal this state.
+          // Force-kill the wedged browser and surface a real disconnect so the session lifecycle
+          // reconnects on its own, instead of leaving a broken engine (and, previously, a zombie
+          // Chromium process) that a caller has to notice and restart by hand.
+          this.logger.error(
+            `getChats: page never recovered after ${MAX_RETRIES} retries, forcing session restart`,
+            msg,
+          );
+          await this.forceDestroy();
+          this.callbacks.onDisconnected?.('WhatsApp Web page became unresponsive and could not self-heal');
         }
 
         // Non-transient or out of retries: throw the original error.

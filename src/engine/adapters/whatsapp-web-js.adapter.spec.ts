@@ -645,6 +645,115 @@ describe('WhatsAppWebJsAdapter.forceDestroy (recover a wedged session, #351)', (
   });
 });
 
+describe('WhatsAppWebJsAdapter.disconnect (avoid a zombie Chromium after a broken CDP session)', () => {
+  const newAdapter = (): WhatsAppWebJsAdapter =>
+    new WhatsAppWebJsAdapter({ sessionId: 'sess-1', sessionDataPath: './data/sessions', puppeteer: {} });
+  const setClient = (adapter: WhatsAppWebJsAdapter, client: unknown): void => {
+    (adapter as unknown as { client: unknown }).client = client;
+  };
+
+  // Mirrors whatsapp-web.js's real destroy(): it only calls browser.close() when
+  // pupBrowser.isConnected() is true, so a broken CDP session (e.g. after a detached-frame page
+  // reload) lets destroy() resolve successfully while the Chromium process keeps running — a
+  // zombie that holds the userDataDir lock and makes the next start() fail.
+  it('kills the browser process even when destroy() resolves without actually closing it', async () => {
+    const kill = jest.fn();
+    const destroy = jest.fn().mockResolvedValue(undefined);
+    const adapter = newAdapter();
+    setClient(adapter, { pupBrowser: { process: () => ({ kill }) }, destroy });
+
+    await adapter.disconnect();
+
+    expect(destroy).toHaveBeenCalledTimes(1);
+    expect(kill).toHaveBeenCalledWith('SIGKILL');
+  });
+
+  it('still kills the process when destroy() itself throws', async () => {
+    const kill = jest.fn();
+    const adapter = newAdapter();
+    setClient(adapter, {
+      pupBrowser: { process: () => ({ kill }) },
+      destroy: jest.fn().mockRejectedValue(new Error('wedged')),
+    });
+
+    await expect(adapter.disconnect()).resolves.toBeUndefined();
+    expect(kill).toHaveBeenCalledWith('SIGKILL');
+  });
+
+  it('does not throw when the process already exited (no process handle)', async () => {
+    const adapter = newAdapter();
+    setClient(adapter, { pupBrowser: { process: () => null }, destroy: jest.fn().mockResolvedValue(undefined) });
+
+    await expect(adapter.disconnect()).resolves.toBeUndefined();
+  });
+});
+
+describe('WhatsAppWebJsAdapter.getChats (self-heal after a long-idle detached-frame page reload)', () => {
+  const newReadyAdapter = (client: unknown): WhatsAppWebJsAdapter => {
+    const adapter = new WhatsAppWebJsAdapter({ sessionId: 's', sessionDataPath: './data/sessions', puppeteer: {} });
+    (adapter as unknown as { status: EngineStatus }).status = EngineStatus.READY;
+    (adapter as unknown as { client: unknown }).client = client;
+    return adapter;
+  };
+  const setCallbacks = (adapter: WhatsAppWebJsAdapter, callbacks: unknown): void => {
+    (adapter as unknown as { callbacks: unknown }).callbacks = callbacks;
+  };
+
+  // isClientRuntimeReady() (used by the self-heal wait) only checks getState()/info/a trivial
+  // window.WWebJS flag — all of which stay true even while whatsapp-web.js's own getChats() is
+  // hitting a stale internal frame handle. So a client wired to look "runtime ready" throughout is
+  // exactly the real failure mode: the self-heal wait always reports recovered, but the underlying
+  // call keeps failing.
+  const runtimeReadyClient = (getChats: jest.Mock) => ({
+    getChats,
+    getState: jest.fn().mockResolvedValue(WAState.CONNECTED),
+    info: { wid: { user: '628123' } },
+    pupPage: { evaluate: jest.fn().mockResolvedValue(true) },
+    pupBrowser: { process: () => ({ kill: jest.fn() }) },
+    destroy: jest.fn().mockResolvedValue(undefined),
+  });
+
+  it('recovers within retries once the page becomes usable again', async () => {
+    const getChats = jest
+      .fn()
+      .mockRejectedValueOnce(new Error("Attempted to use detached Frame 'X'."))
+      .mockResolvedValueOnce([]);
+    const adapter = newReadyAdapter(runtimeReadyClient(getChats));
+    setCallbacks(adapter, { onDisconnected: jest.fn() });
+
+    await expect(adapter.getChats()).resolves.toEqual([]);
+    expect(getChats).toHaveBeenCalledTimes(2);
+  });
+
+  it('force-kills the wedged browser and surfaces a disconnect once retries are exhausted', async () => {
+    const getChats = jest.fn().mockRejectedValue(new Error("Attempted to use detached Frame 'X'."));
+    const client = runtimeReadyClient(getChats);
+    const adapter = newReadyAdapter(client);
+    const onDisconnected = jest.fn();
+    setCallbacks(adapter, { onDisconnected });
+
+    await expect(adapter.getChats()).rejects.toThrow('detached Frame');
+
+    expect(client.destroy).toHaveBeenCalledTimes(1);
+    expect(onDisconnected).toHaveBeenCalledTimes(1);
+    expect(adapter.getStatus()).toBe(EngineStatus.DISCONNECTED);
+  });
+
+  it('does not force-kill or disconnect for a non-transient error', async () => {
+    const getChats = jest.fn().mockRejectedValue(new Error('some validation error'));
+    const client = runtimeReadyClient(getChats);
+    const adapter = newReadyAdapter(client);
+    const onDisconnected = jest.fn();
+    setCallbacks(adapter, { onDisconnected });
+
+    await expect(adapter.getChats()).rejects.toThrow('some validation error');
+
+    expect(getChats).toHaveBeenCalledTimes(1);
+    expect(client.destroy).not.toHaveBeenCalled();
+    expect(onDisconnected).not.toHaveBeenCalled();
+  });
+});
+
 describe('WhatsAppWebJsAdapter ready reconciliation (#251/#273)', () => {
   const newAdapter = (): WhatsAppWebJsAdapter =>
     new WhatsAppWebJsAdapter({ sessionId: 'sess-1', sessionDataPath: './data/sessions', puppeteer: {} });
