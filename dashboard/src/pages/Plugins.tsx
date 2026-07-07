@@ -727,7 +727,37 @@ export default function Plugins() {
 
   // Engines are configured under Infrastructure (Engine Configuration tile), not here — keep them
   // out of the plugin grid, the counts and the rail so the Plugins page is extensions-only.
-  const visiblePlugins = plugins.filter(p => p.type !== 'engine');
+  const visiblePlugins = plugins
+  .filter(p => p.type !== 'engine')
+  .sort((a, b) => {
+    const getEffectivePriority = (plugin: Plugin) => {
+      const config = plugin.config ?? {};
+      const schema = plugin.configSchema;
+      const properties = schema?.properties ?? {};
+      const hookPrioritySchema = properties.hookPriority ?? {};
+
+      const explicitPriority = config.hookPriority;
+      if (explicitPriority !== undefined && explicitPriority !== null) {
+        try { return parseInt(String(explicitPriority), 10); } catch { /* ignore */ }
+      }
+
+      const defaultPriority = hookPrioritySchema.default;
+      if (defaultPriority !== undefined && defaultPriority !== null) {
+        try { return parseInt(String(defaultPriority), 10); } catch { /* ignore */ }
+      }
+      return -1; // Should not happen with current setup
+    };
+
+    const priorityA = getEffectivePriority(a);
+    const priorityB = getEffectivePriority(b);
+
+    // Sort by priority ascending, then alphabetically by ID ascending
+    if (priorityA !== priorityB) {
+      return priorityA - priorityB;
+    } else {
+      return a.id.localeCompare(b.id);
+    }
+  });
   const enabledCount = visiblePlugins.filter(p => p.status === 'enabled').length;
   const activePlugins = visiblePlugins.filter(p => p.status === 'enabled');
 
@@ -836,6 +866,13 @@ export default function Plugins() {
                         ))}
                       </div>
                     )}
+
+                    <div className="plugin-priority">
+                      <span className="priority-label">Priority:</span>
+                      <span className="priority-tag">
+                        {String(plugin.config?.hookPriority ?? plugin.configSchema?.properties?.hookPriority?.default ?? '—')}
+                      </span>
+                    </div>
 
                     <div className="plugin-actions">
                       <button

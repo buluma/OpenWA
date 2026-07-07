@@ -809,7 +809,9 @@
         "confirm": "要重新產生 {{id}} 的簽署密鑰嗎？目前的密鑰會立即失效。",
         "action": "重新產生"
       },
-      "edit": { "title": "編輯 {{id}}" },
+      "edit": {
+        "title": "編輯 {{id}}"
+      },
       "delete": {
         "title": "刪除執行個體",
         "confirm": "要刪除執行個體 {{id}} 嗎？其連入 URL 和密鑰會立即失效。",
@@ -836,6 +838,7 @@
         "secretRegenerated": "密鑰已重新產生",
         "actionFailed": "操作失敗"
       }
-    }
+    },
+    "hookPriority": "Priority"
   }
 }

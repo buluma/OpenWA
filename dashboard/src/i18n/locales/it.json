@@ -809,7 +809,9 @@
         "confirm": "Rigenerare il segreto di firma per {{id}}? Il segreto attuale smetterà di funzionare immediatamente.",
         "action": "Rigenera"
       },
-      "edit": { "title": "Modifica {{id}}" },
+      "edit": {
+        "title": "Modifica {{id}}"
+      },
       "delete": {
         "title": "Elimina istanza",
         "confirm": "Eliminare l'istanza {{id}}? Il relativo URL di ingresso e segreto smetteranno di funzionare immediatamente.",
@@ -836,6 +838,7 @@
         "secretRegenerated": "Segreto rigenerato",
         "actionFailed": "Azione non riuscita"
       }
-    }
+    },
+    "hookPriority": "Priority"
   }
 }

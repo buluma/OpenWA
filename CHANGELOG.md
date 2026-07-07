@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`GET /api/sessions/:id/chats` no longer returns 500 when WhatsApp Web reloads its page.**
+  The whatsapp-web.js engine's `getChats()` threw `Attempted to use detached Frame` every few hours
+  when WhatsApp Web internally reloaded its UI, detaching the Puppeteer execution context. The
+  error propagated as an unhandled 500 Internal Server Error to the dashboard ("Failed to load
+  chats"). Now `getChats()` detects the transient page-reload condition, waits for the runtime to
+  become ready again, and retries — making the call self-healing. If the page doesn't recover
+  within the retry budget it throws `EngineNotReadyError` (409) instead of a raw 500. (#657)
+
 ## [0.8.10] - 2026-07-07
 
 ### Added

@@ -809,7 +809,9 @@
         "confirm": "要重新生成 {{id}} 的签名密钥吗？当前密钥将立即失效。",
         "action": "重新生成"
       },
-      "edit": { "title": "编辑 {{id}}" },
+      "edit": {
+        "title": "编辑 {{id}}"
+      },
       "delete": {
         "title": "删除实例",
         "confirm": "要删除实例 {{id}} 吗？其接入 URL 和密钥将立即失效。",
@@ -836,6 +838,7 @@
         "secretRegenerated": "密钥已重新生成",
         "actionFailed": "操作失败"
       }
-    }
+    },
+    "hookPriority": "Priority"
   }
 }

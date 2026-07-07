@@ -809,7 +809,9 @@
         "confirm": "Regenerar o segredo de assinatura de {{id}}? O segredo atual deixará de funcionar imediatamente.",
         "action": "Regenerar"
       },
-      "edit": { "title": "Editar {{id}}" },
+      "edit": {
+        "title": "Editar {{id}}"
+      },
       "delete": {
         "title": "Excluir instância",
         "confirm": "Excluir a instância {{id}}? A URL de entrada e o segredo dela deixarão de funcionar imediatamente.",
@@ -836,6 +838,7 @@
         "secretRegenerated": "Segredo regenerado",
         "actionFailed": "Falha na ação"
       }
-    }
+    },
+    "hookPriority": "Priority"
   }
 }

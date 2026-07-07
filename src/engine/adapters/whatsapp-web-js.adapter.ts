@@ -247,6 +247,8 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
   // Set once teardown begins so a late 'authenticated' can't resurrect a disconnecting adapter. Not
   // reset — an adapter is single-use after teardown (the session creates a fresh one to reconnect).
   private tearingDown = false;
+  /** Tracks the latest whatsapp-web.js WAState so adapter methods can detect page reloads. */
+  private currentWaState: string | null = null;
 
   constructor(private readonly config: WhatsAppWebJsConfig) {
     super();
@@ -596,8 +598,13 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
       }
     });
 
+    this.client.on('change_state', (state: string) => {
+      this.currentWaState = state;
+    });
+
     this.client.on('disconnected', reason => {
       this.clearReadyReconcile();
+      this.currentWaState = null;
       this.setStatus(EngineStatus.DISCONNECTED);
       this.callbacks.onDisconnected?.(reason);
     });
@@ -1752,16 +1759,89 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
 
   /* eslint-enable @typescript-eslint/require-await, @typescript-eslint/no-unused-vars */
 
+  /**
+   * Wait for the Puppeteer page / WhatsApp Web runtime to become ready again after a reload or
+   * transient disconnect. Polls `isClientRuntimeReady()` up to `timeoutMs` and returns true once
+   * the page is operational. Returns false if the timeout expires first.
+   */
+  private async waitForPageReady(timeoutMs: number): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      if (!this.client || this.tearingDown) return false;
+      try {
+        if (await this.isClientRuntimeReady()) return true;
+      } catch {
+        // isClientRuntimeReady itself can fail during a reload; keep polling.
+      }
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    return false;
+  }
+
   async getChats(): Promise<ChatSummary[]> {
     this.ensureReady();
-    const chats = await this.client!.getChats();
+
+    // Self-heal: if the WA state is not CONNECTED the page may be reloading. Wait briefly for
+    // recovery before falling back to the retry loop below.
+    if (this.currentWaState && this.currentWaState !== WAState.CONNECTED) {
+      this.logger.warn(`WA state is ${this.currentWaState} — waiting for page to reconnect`);
+      await this.waitForPageReady(5000);
+      this.ensureReady();
+    }
+
+    // Retry loop: the Puppeteer frame can detach mid-flight when WhatsApp Web reloads its page
+    // internally (a normal event every few hours). Instead of failing immediately, we detect the
+    // transient condition, wait for the page to recover, and retry — making the call self-healing.
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY_MS = 2000;
+
+    let lastError: Error | null = null;
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        const chats = await this.client!.getChats();
+        // Success — proceed to build summaries below
+        const summaries = this.buildChatSummaries(chats);
+        if (lastError) {
+          this.logger.log(`getChats recovered after ${attempt} retry attempt(s)`);
+        }
+        return summaries;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        const msg = lastError.message;
+
+        // Puppeteer detached-frame / destroyed-context errors are transient — the page is reloading.
+        // Wait for recovery and retry instead of propagating a 500.
+        const isDetached =
+          msg.includes('detached Frame') ||
+          msg.includes('detached frame') ||
+          msg.includes('Execution context was destroyed') ||
+          msg.includes('Target closed') ||
+          msg.includes('Protocol error');
+
+        if (isDetached && attempt < MAX_RETRIES) {
+          this.logger.warn(
+            `getChats attempt ${attempt + 1}/${MAX_RETRIES} failed (page reloading): ${msg}`,
+          );
+          const recovered = await this.waitForPageReady(RETRY_DELAY_MS);
+          if (recovered) continue;
+          // Page didn't recover in time — fall through to the next attempt (last attempt throws).
+          continue;
+        }
+
+        // Non-transient or out of retries: throw the original error.
+        throw lastError;
+      }
+    }
+
+    // All retries exhausted.
+    throw lastError ?? new EngineNotReadyError('WhatsApp Web is reconnecting, please try again');
+  }
+
+  /** Map raw whatsapp-web.js chat objects to library-agnostic ChatSummary, skipping entries with no id. */
+  private buildChatSummaries(chats: { id?: { _serialized?: string }; name?: string; isGroup?: boolean; unreadCount?: number; timestamp?: number; lastMessage?: { type?: string; body?: string } }[]): ChatSummary[] {
     const summaries: ChatSummary[] = [];
     let skipped = 0;
 
-    // Map the raw whatsapp-web.js chat objects to the library-agnostic ChatSummary
-    // shape so that no library types leak past the engine boundary. Some WA system
-    // or channel-like entries can lack the normal serialized id; skip those instead
-    // of failing the whole dashboard chats request.
     for (const chat of chats) {
       const id = chat.id?._serialized;
       if (!id) {
