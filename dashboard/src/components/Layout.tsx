@@ -21,12 +21,34 @@ import {
   ChevronLeft,
   ChevronRight,
   Languages,
+  Ban,
+  Grid3x3,
+  Zap,
+  CloudRain,
+  Star,
+  Waves,
+  Flower2,
+  Sparkles,
+  Flame,
 } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { type UserRole } from '../hooks';
 import { languageOptions, resolveSupportedLanguage, rtlLanguages, type SupportedLanguage } from '../i18n';
 import { healthApi } from '../services/api';
+import { AmbientBackground, BG_PATTERNS, type BgPattern } from './AmbientBackground';
 import './Layout.css';
+
+const BG_PATTERN_ICONS: Record<BgPattern, typeof Ban> = {
+  none: Ban,
+  dots: Grid3x3,
+  synapse: Zap,
+  rain: CloudRain,
+  constellations: Star,
+  'perlin-flow': Waves,
+  petals: Flower2,
+  sparkles: Sparkles,
+  embers: Flame,
+};
 
 interface LayoutProps {
   onLogout: () => void;
@@ -51,7 +73,8 @@ const themeIcons = { light: Sun, dark: Moon, system: Monitor };
 
 export function Layout({ onLogout, userRole }: LayoutProps) {
   const { t, i18n } = useTranslation();
-  const { theme, setTheme, palette, setPalette, paletteOptions } = useTheme();
+  const { theme, setTheme, palette, setPalette, paletteOptions, bgPattern, setBgPattern, bgIntensity, setBgIntensity } =
+    useTheme();
   const ThemeIcon = themeIcons[theme];
   const themeLabel = t(`theme.${theme}`);
   const activePalette = paletteOptions.find(option => option.value === palette) ?? paletteOptions[0];
@@ -157,7 +180,8 @@ export function Layout({ onLogout, userRole }: LayoutProps) {
   const isRtl = rtlLanguages.includes(currentLang);
 
   return (
-    <div className="layout">
+    <div className={`layout ${bgPattern !== 'none' ? 'has-ambient-bg' : ''}`}>
+      <AmbientBackground pattern={bgPattern} intensity={bgIntensity} />
       {isMobile && (
         <header className="mobile-header">
           <button className="mobile-menu-btn" onClick={toggleMobile} aria-label={t('common.expand')}>
@@ -325,6 +349,40 @@ export function Layout({ onLogout, userRole }: LayoutProps) {
                       </button>
                     ))}
                   </div>
+                </div>
+                <div className="appearance-section">
+                  <span className="appearance-section-label">{t('theme.background')}</span>
+                  <div className="bg-pattern-grid">
+                    {BG_PATTERNS.map(p => {
+                      const PatternIcon = BG_PATTERN_ICONS[p];
+                      return (
+                        <button
+                          key={p}
+                          className={`bg-pattern-swatch ${bgPattern === p ? 'active' : ''}`}
+                          onClick={() => setBgPattern(p)}
+                          type="button"
+                          title={t(`theme.backgroundPatterns.${p}`)}
+                          role="menuitemradio"
+                          aria-checked={bgPattern === p}
+                        >
+                          <PatternIcon size={16} />
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {bgPattern !== 'none' && (
+                    <label className="bg-intensity-control">
+                      <span>{t('theme.intensity')}</span>
+                      <input
+                        type="range"
+                        min={0.05}
+                        max={1}
+                        step={0.05}
+                        value={bgIntensity}
+                        onChange={e => setBgIntensity(Number(e.target.value))}
+                      />
+                    </label>
+                  )}
                 </div>
               </div>
             )}

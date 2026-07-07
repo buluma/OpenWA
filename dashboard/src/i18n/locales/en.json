@@ -63,7 +63,20 @@
     "label": "Theme: {{value}}",
     "appearance": "Appearance",
     "mode": "Mode",
-    "palette": "Palette"
+    "palette": "Palette",
+    "background": "Background",
+    "intensity": "Intensity",
+    "backgroundPatterns": {
+      "none": "Off",
+      "dots": "Dots",
+      "synapse": "Synapse",
+      "rain": "Rain",
+      "constellations": "Constellations",
+      "perlin-flow": "Flow",
+      "petals": "Petals",
+      "sparkles": "Sparkles",
+      "embers": "Embers"
+    }
   },
   "nav": {
     "dashboard": "Dashboard",

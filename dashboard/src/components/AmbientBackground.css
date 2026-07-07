@@ -1,0 +1,18 @@
+.ambient-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.ambient-bg canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.ambient-bg-dots {
+  background-image: radial-gradient(var(--primary) 1px, transparent 0);
+  background-size: 22px 22px;
+}

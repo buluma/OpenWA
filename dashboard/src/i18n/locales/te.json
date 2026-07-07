@@ -63,7 +63,20 @@
     "label": "థీమ్: {{value}}",
     "appearance": "రూపం",
     "mode": "మోడ్",
-    "palette": "రంగుల పలక"
+    "palette": "రంగుల పలక",
+    "background": "నేపథ్యం",
+    "intensity": "తీవ్రత",
+    "backgroundPatterns": {
+      "none": "ఆఫ్",
+      "dots": "చుక్కలు",
+      "synapse": "సినాప్స్",
+      "rain": "వర్షం",
+      "constellations": "నక్షత్రరాశులు",
+      "perlin-flow": "ప్రవాహం",
+      "petals": "రేకులు",
+      "sparkles": "మెరుపులు",
+      "embers": "నిప్పు రవ్వలు"
+    }
   },
   "nav": {
     "dashboard": "డ్యాష్‌బోర్డ్",

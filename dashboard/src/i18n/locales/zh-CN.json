@@ -63,7 +63,20 @@
     "label": "主题：{{value}}",
     "appearance": "外观",
     "mode": "模式",
-    "palette": "调色板"
+    "palette": "调色板",
+    "background": "背景",
+    "intensity": "强度",
+    "backgroundPatterns": {
+      "none": "关闭",
+      "dots": "点状",
+      "synapse": "突触",
+      "rain": "雨",
+      "constellations": "星座",
+      "perlin-flow": "流动",
+      "petals": "花瓣",
+      "sparkles": "闪光",
+      "embers": "余烬"
+    }
   },
   "nav": {
     "dashboard": "仪表盘",

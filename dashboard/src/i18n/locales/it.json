@@ -63,7 +63,20 @@
     "label": "Tema: {{value}}",
     "appearance": "Aspetto",
     "mode": "Modalità",
-    "palette": "Tavolozza"
+    "palette": "Tavolozza",
+    "background": "Sfondo",
+    "intensity": "Intensità",
+    "backgroundPatterns": {
+      "none": "Disattivato",
+      "dots": "Puntini",
+      "synapse": "Sinapsi",
+      "rain": "Pioggia",
+      "constellations": "Costellazioni",
+      "perlin-flow": "Flusso",
+      "petals": "Petali",
+      "sparkles": "Scintille",
+      "embers": "Braci"
+    }
   },
   "nav": {
     "dashboard": "Dashboard",

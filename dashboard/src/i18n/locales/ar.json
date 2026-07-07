@@ -63,7 +63,20 @@
     "label": "المظهر: {{value}}",
     "appearance": "المظهر",
     "mode": "الوضع",
-    "palette": "لوحة الألوان"
+    "palette": "لوحة الألوان",
+    "background": "الخلفية",
+    "intensity": "الشدة",
+    "backgroundPatterns": {
+      "none": "إيقاف",
+      "dots": "نقاط",
+      "synapse": "تشابك",
+      "rain": "مطر",
+      "constellations": "كوكبات",
+      "perlin-flow": "تدفق",
+      "petals": "بتلات",
+      "sparkles": "بريق",
+      "embers": "جمر"
+    }
   },
   "nav": {
     "dashboard": "لوحة التحكم",

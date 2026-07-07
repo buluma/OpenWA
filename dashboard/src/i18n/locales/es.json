@@ -63,7 +63,20 @@
     "label": "Tema: {{value}}",
     "appearance": "Apariencia",
     "mode": "Modo",
-    "palette": "Paleta"
+    "palette": "Paleta",
+    "background": "Fondo",
+    "intensity": "Intensidad",
+    "backgroundPatterns": {
+      "none": "Apagado",
+      "dots": "Puntos",
+      "synapse": "Sinapsis",
+      "rain": "Lluvia",
+      "constellations": "Constelaciones",
+      "perlin-flow": "Flujo",
+      "petals": "Pétalos",
+      "sparkles": "Destellos",
+      "embers": "Brasas"
+    }
   },
   "nav": {
     "dashboard": "Panel",

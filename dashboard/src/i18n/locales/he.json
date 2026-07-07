@@ -63,7 +63,20 @@
     "label": "ערכת נושא: {{value}}",
     "appearance": "מראה",
     "mode": "מצב",
-    "palette": "לוח צבעים"
+    "palette": "לוח צבעים",
+    "background": "רקע",
+    "intensity": "עוצמה",
+    "backgroundPatterns": {
+      "none": "כבוי",
+      "dots": "נקודות",
+      "synapse": "סינפסה",
+      "rain": "גשם",
+      "constellations": "קבוצות כוכבים",
+      "perlin-flow": "זרימה",
+      "petals": "עלי כותרת",
+      "sparkles": "נצנוצים",
+      "embers": "גחלים"
+    }
   },
   "nav": {
     "dashboard": "דאשבורד",

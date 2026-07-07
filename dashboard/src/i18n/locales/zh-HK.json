@@ -63,7 +63,20 @@
     "label": "主題：{{value}}",
     "appearance": "外觀",
     "mode": "模式",
-    "palette": "調色板"
+    "palette": "調色板",
+    "background": "背景",
+    "intensity": "強度",
+    "backgroundPatterns": {
+      "none": "關閉",
+      "dots": "點狀",
+      "synapse": "突觸",
+      "rain": "雨",
+      "constellations": "星座",
+      "perlin-flow": "流動",
+      "petals": "花瓣",
+      "sparkles": "閃光",
+      "embers": "餘燼"
+    }
   },
   "nav": {
     "dashboard": "控制面板",

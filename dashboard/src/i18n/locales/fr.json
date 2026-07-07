@@ -63,7 +63,20 @@
     "label": "Thème : {{value}}",
     "appearance": "Apparence",
     "mode": "Mode",
-    "palette": "Palette"
+    "palette": "Palette",
+    "background": "Arrière-plan",
+    "intensity": "Intensité",
+    "backgroundPatterns": {
+      "none": "Désactivé",
+      "dots": "Points",
+      "synapse": "Synapse",
+      "rain": "Pluie",
+      "constellations": "Constellations",
+      "perlin-flow": "Flux",
+      "petals": "Pétales",
+      "sparkles": "Étincelles",
+      "embers": "Braises"
+    }
   },
   "nav": {
     "dashboard": "Tableau de bord",

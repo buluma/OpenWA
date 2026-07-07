@@ -435,6 +435,53 @@
   bottom: 0;
 }
 
+.bg-pattern-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.35rem;
+}
+
+.bg-pattern-swatch {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 34px;
+  padding: 0;
+  background: var(--bg-light);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.bg-pattern-swatch:hover {
+  color: var(--text-primary);
+  border-color: var(--primary);
+  background: var(--bg-white);
+}
+
+.bg-pattern-swatch.active {
+  background: var(--primary-soft);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.bg-intensity-control {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 0.6rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.bg-intensity-control input[type='range'] {
+  flex: 1;
+  accent-color: var(--primary);
+}
+
 .logout-btn {
   display: flex;
   align-items: center;
@@ -460,6 +507,8 @@
 
 /* ==================== Main Content ==================== */
 .main-content {
+  position: relative;
+  z-index: 1; /* paint above the fixed AmbientBackground canvas (z-index: 0) */
   flex: 1;
   margin-left: 260px;
   width: calc(100% - 260px);
@@ -468,7 +517,21 @@
   overflow-x: hidden;
   transition:
     margin-left 0.3s ease,
-    width 0.3s ease;
+    width 0.3s ease,
+    background 0.3s ease;
+}
+
+/* An ambient background pattern is only visible where it isn't fully covered by an opaque panel —
+   the sidebar and the page gutter around each page's own cards. Frosting those two surfaces (rather
+   than touching every card on every page) keeps this a shell-level effect instead of a page-by-page
+   rewrite. */
+.layout.has-ambient-bg .sidebar {
+  background: color-mix(in srgb, var(--bg-white) 70%, transparent);
+  backdrop-filter: blur(6px);
+}
+
+.layout.has-ambient-bg .main-content {
+  background: transparent;
 }
 
 .main-content.expanded {
