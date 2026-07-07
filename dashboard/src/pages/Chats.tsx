@@ -662,7 +662,13 @@ export function Chats() {
           silently showing stale chats. */}
       {connectionFailed && (
         <div className="chats-reconnect-banner" role="alert">
-          <AlertCircle size={16} />
+          <span className="pulse-bars" aria-hidden="true">
+            <span />
+            <span />
+            <span />
+            <span />
+            <span />
+          </span>
           <span>{t('common.disconnected')}</span>
           <button className="btn-secondary" onClick={reconnect}>
             {t('common.refresh')}

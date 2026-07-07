@@ -19,6 +19,25 @@
   margin-top: 1rem;
 }
 
+/* Let an active ambient background show through the chat panel instead of being fully blocked by
+   it — same frosted treatment as the app sidebar in Layout.css. Sidebar/header/footer stay
+   translucent+blurred (real text sits on them); the layout shell and room body go fully
+   transparent since they're just framing, not content. */
+.layout.has-ambient-bg .chats-page .chats-layout{
+  background: transparent;
+}
+
+.layout.has-ambient-bg .chats-page .chats-sidebar,
+.layout.has-ambient-bg .chats-page .room-header,
+.layout.has-ambient-bg .chats-page .room-input-footer{
+  background: color-mix(in srgb, var(--bg-white) 70%, transparent);
+  backdrop-filter: blur(6px);
+}
+
+.layout.has-ambient-bg .chats-page .chats-room{
+  background: transparent;
+}
+
 /* =============================================================================
    SIDEBAR: Left Column
    ============================================================================= */
@@ -62,7 +81,7 @@
 .chats-page .session-selector:focus{
   border-color: var(--primary);
   background: var(--bg-white);
-  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.1);
+  box-shadow: 0 0 0 3px var(--primary-soft);
 }
 
 .chats-page .chat-search-input{
@@ -137,7 +156,7 @@
 }
 
 .chats-page .chat-item-card.active{
-  background: rgba(34, 197, 94, 0.08);
+  background: var(--primary-soft);
 }
 
 .chats-page .chat-avatar{
@@ -156,7 +175,7 @@
 .chats-page .chat-item-card.active .chat-avatar{
   background: var(--bg-white);
   color: var(--primary);
-  border-color: rgba(34, 197, 94, 0.3);
+  border-color: color-mix(in srgb, var(--primary) 30%, transparent);
 }
 
 .chats-page .chat-item-info{
@@ -183,6 +202,7 @@
 }
 
 .chats-page .chat-item-time{
+  font-family: 'JetBrains Mono', monospace;
   font-size: 0.75rem;
   color: var(--text-muted);
   white-shrink: 0;
@@ -217,7 +237,7 @@
   border-radius: 10px;
   min-width: 14px;
   text-align: center;
-  box-shadow: 0 2px 4px rgba(34, 197, 94, 0.3);
+  box-shadow: 0 2px 4px color-mix(in srgb, var(--primary) 30%, transparent);
 }
 
 /* =============================================================================
@@ -327,7 +347,7 @@
 .chats-page .room-contact-info span{
   font-size: 0.75rem;
   color: var(--text-muted);
-  font-family: monospace;
+  font-family: 'JetBrains Mono', monospace;
 }
 
 .chats-page .room-messages{
@@ -421,6 +441,7 @@
 }
 
 .chats-page .message-time{
+  font-family: 'JetBrains Mono', monospace;
   font-size: 0.6875rem;
   color: var(--text-muted);
 }
@@ -465,7 +486,7 @@
 .chats-page .message-text-input:focus{
   border-color: var(--primary);
   background: var(--bg-white);
-  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.1);
+  box-shadow: 0 0 0 3px var(--primary-soft);
 }
 
 .chats-page .btn-send-message{
@@ -481,7 +502,7 @@
   cursor: pointer;
   transition: background 0.2s, transform 0.1s;
   flex-shrink: 0;
-  box-shadow: 0 2px 8px rgba(34, 197, 94, 0.3);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--primary) 30%, transparent);
 }
 
 .chats-page .btn-send-message:hover:not(:disabled){
@@ -529,10 +550,12 @@
 }
 
 .chats-page .text-warn{
-  color: #ea580c;
+  color: var(--warning);
 }
 
-/* Real-time connection-lost banner */
+/* Real-time connection-lost banner. Mirrors the app's shared .error-banner convention (tinted
+   background + matching text in one semantic color) but in the warning tone, since a dropped
+   socket is recoverable (reconnect button) rather than a hard failure. */
 .chats-page .chats-reconnect-banner{
   display: flex;
   align-items: center;
@@ -540,13 +563,31 @@
   padding: 0.5rem 0.75rem;
   margin-bottom: 0.75rem;
   border-radius: 6px;
-  background: rgba(234, 88, 12, 0.1);
-  color: #ea580c;
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
+  color: var(--warning);
   font-size: 0.875rem;
 }
 
 .chats-page .chats-reconnect-banner button{
   margin-left: auto;
+}
+
+/* Same connection-state language as the Dashboard header badge: a flat, dim waveform when the
+   signal is down. Scoped locally since each page owns its own CSS in this codebase. */
+.chats-page .pulse-bars{
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+.chats-page .pulse-bars span{
+  width: 2.5px;
+  height: 22%;
+  border-radius: 1px;
+  background: currentColor;
+  opacity: 0.6;
 }
 
 /* =============================================================================
@@ -572,7 +613,7 @@
 }
 
 .chats-page .btn-input-accessory.active{
-  background: rgba(34, 197, 94, 0.1);
+  background: var(--primary-soft);
   color: var(--primary);
 }
 
@@ -741,7 +782,7 @@
 }
 
 .chats-page .message-media-omitted {
-  color: var(--color-text-muted, #888);
+  color: var(--text-muted);
   font-style: italic;
   font-size: 0.9em;
   margin-bottom: 0.25rem;
@@ -1026,10 +1067,13 @@
   border-color: #2f3b43;
 }
 
-/* Inline code inside a message body. */
+/* Inline code inside a message body. `--surface-2` isn't a token this app defines, so this always
+   fell through to the fallback — which read as an almost-invisible white-on-white tint against a
+   light bubble. Use the same light/dark-override pattern as .message-quote-box just above: a dark
+   tint that reads on the pale incoming/outgoing bubbles, flipped to a light tint in dark theme. */
 .chats-page .message-text code,
 .chats-page .quote-body code {
-  background: var(--surface-2, rgba(255, 255, 255, 0.08));
+  background: rgba(0, 0, 0, 0.06);
   padding: 0.1em 0.35em;
   border-radius: 4px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
@@ -1038,7 +1082,7 @@
 
 /* Code block. */
 .chats-page .message-text pre {
-  background: var(--surface-2, rgba(255, 255, 255, 0.08));
+  background: rgba(0, 0, 0, 0.06);
   padding: 0.5em 0.75em;
   border-radius: 6px;
   margin: 0.25em 0;
@@ -1048,6 +1092,12 @@
 .chats-page .message-text pre code {
   background: transparent;
   padding: 0;
+}
+
+.chats-page [data-theme='dark'] .message-text code,
+.chats-page [data-theme='dark'] .quote-body code,
+.chats-page [data-theme='dark'] .message-text pre {
+  background: rgba(255, 255, 255, 0.08);
 }
 
 /* Clickable photo cue. */
