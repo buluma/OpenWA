@@ -30,7 +30,7 @@ import type { Plugin, CatalogPlugin, PluginConfigField } from '../services/api';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { usePluginsQuery, useSessionsQuery, queryKeys } from '../hooks/queries';
 import { PageHeader } from '../components/PageHeader';
-import { useToast } from '../components/Toast';
+import { useToast } from '../components/useToast';
 import { PluginInstances } from '../components/PluginInstances';
 import './Plugins.css';
 

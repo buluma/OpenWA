@@ -23,7 +23,7 @@ import {
   Languages,
 } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
-import { type UserRole } from '../hooks/useRole';
+import { type UserRole } from '../hooks';
 import { languageOptions, resolveSupportedLanguage, rtlLanguages, type SupportedLanguage } from '../i18n';
 import { healthApi } from '../services/api';
 import './Layout.css';

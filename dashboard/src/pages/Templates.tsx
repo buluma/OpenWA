@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { AlertTriangle, Check, Copy, FileText, Loader2, Plus, Search, Trash2, X } from 'lucide-react';
 import { type MessageTemplate, type TemplatePayload } from '../services/api';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
-import { useRole } from '../hooks/useRole';
+import { useRole } from '../hooks';
 import {
   useCreateTemplateMutation,
   useDeleteTemplateMutation,

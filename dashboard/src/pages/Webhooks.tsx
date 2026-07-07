@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { webhookApi, type Webhook, type WebhookFilters, type WebhookFilterCondition } from '../services/api';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
-import { useRole } from '../hooks/useRole';
+import { useRole } from '../hooks';
 import {
   useWebhooksQuery,
   useSessionsQuery,

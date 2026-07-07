@@ -27,8 +27,8 @@ import {
 import { mergeDeliveryStatus, type ChatMessageView } from '../utils/chatMessages';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
-import { useRole } from '../hooks/useRole';
-import { useToast } from '../components/Toast';
+import { useRole } from '../hooks';
+import { useToast } from '../components/useToast';
 import { PageHeader } from '../components/PageHeader';
 import {
   useChatMessages,

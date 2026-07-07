@@ -11,7 +11,7 @@ import {
 } from '../hooks/queries';
 import { isValidInstanceId, parseInstanceConfig } from '../utils/instanceForm';
 import { copyToClipboard } from '../utils/clipboard';
-import { useToast } from './Toast';
+import { useToast } from './useToast';
 import './PluginInstances.css';
 
 const emptyForm = { instanceId: '', sessionScope: '', verifyToken: '', config: '' };

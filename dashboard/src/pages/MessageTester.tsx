@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Send, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { messageApi, contactApi } from '../services/api';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
-import { useRole } from '../hooks/useRole';
+import { useRole } from '../hooks';
 import { useSessionsQuery, useSessionGroupsQuery } from '../hooks/queries';
 import { PageHeader } from '../components/PageHeader';
 import './MessageTester.css';

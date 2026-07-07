@@ -5,9 +5,9 @@ import { Plus, QrCode, RefreshCw, Trash2, Eye, Loader2, Play, Square, X, Search,
 import { sessionApi, type Session } from '../services/api';
 import { queryKeys } from '../hooks/queries';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
-import { useToast } from '../components/Toast';
+import { useToast } from '../components/useToast';
 import { useWebSocket } from '../hooks/useWebSocket';
-import { useRole } from '../hooks/useRole';
+import { useRole } from '../hooks';
 import { PageHeader } from '../components/PageHeader';
 import { CustomSelect } from '../components/CustomSelect';
 import './Sessions.css';
