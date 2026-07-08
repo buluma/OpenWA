@@ -8,14 +8,24 @@ import { contactApi } from '../services/api';
  * the contact record), so a plain `<img src="/api/...">` can't be pointed at it directly: a browser
  * `<img>` tag has no way to attach a custom header, so that request 401s every time.
  *
- * Returns `null` while loading, once there's no picture (204), or if the fetch fails — callers should
- * render their normal placeholder/icon in all three cases rather than distinguishing them.
+ * `enabled` (default true) gates the fetch — pass `false` to defer it (e.g. until the row scrolls
+ * into view; see ContactAvatarImg). The chat list isn't virtualized, so every row mounts at once;
+ * without this every row fired its avatar fetch immediately regardless of visibility, storming the
+ * API with far more concurrent requests than there were on-screen avatars to show and tripping the
+ * rate limiter on any list with more than a handful of chats.
+ *
+ * Returns `null` while loading/disabled, once there's no picture (204), or if the fetch fails —
+ * callers should render their normal placeholder/icon in all cases rather than distinguishing them.
  */
-export function useContactAvatar(sessionId: string | null | undefined, contactId: string | null | undefined): string | null {
+export function useContactAvatar(
+  sessionId: string | null | undefined,
+  contactId: string | null | undefined,
+  enabled = true,
+): string | null {
   const [src, setSrc] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!sessionId || !contactId) {
+    if (!enabled || !sessionId || !contactId) {
       setSrc(null);
       return;
     }
@@ -37,7 +47,7 @@ export function useContactAvatar(sessionId: string | null | undefined, contactId
       cancelled = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [sessionId, contactId]);
+  }, [sessionId, contactId, enabled]);
 
   return src;
 }
