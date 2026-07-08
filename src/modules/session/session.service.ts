@@ -718,6 +718,20 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
             }
           })
           .catch(err => this.logger.debug('Failed to get chats for chatName backfill', String(err)));
+
+        // Backfill chatName for self-chat ("Message Yourself") rows stuck under a `@c.us`/
+        // `@s.whatsapp.net` chatId. WhatsApp's lid migration can move a self-chat's own JID from a
+        // phone-form to a lid-form mid-history — the lid-form chatId gets a name normally (it keeps
+        // receiving traffic, so the per-message contact-resolution backfills above eventually catch
+        // it), but a dormant phone-form chatId never receives another message and so never gets
+        // backfilled that way, leaving it stuck showing raw digits (#see chatName top-chats gap).
+        // `chat.name` (Contact.name) is never populated for one's own contact, so the chat-list
+        // backfill above can't fix this either — the session's own pushName is the only source.
+        if (phone && pushName) {
+          void this.messageRepository
+            .update({ sessionId: id, chatId: `${phone}@c.us`, chatName: IsNull() }, { chatName: pushName })
+            .catch(backfillErr => this.logger.debug('Failed to backfill self-chat chatName', String(backfillErr)));
+        }
       },
       onMessage: (message): void => {
         if (!this.isLiveEngine(id, engine)) return;

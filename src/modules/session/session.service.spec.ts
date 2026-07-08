@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken, getDataSourceToken } from '@nestjs/typeorm';
-import { Repository, DataSource, In } from 'typeorm';
+import { Repository, DataSource, In, IsNull } from 'typeorm';
 import { NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SessionService, ACK_RECONCILE_DELAY_MS } from './session.service';
@@ -1662,6 +1662,31 @@ describe('SessionService', () => {
       expect(auth).toHaveLength(1);
       expect(auth[0][0]).toBe('sess-uuid-1');
       expect(auth[0][2]).toMatchObject({ sessionId: 'sess-uuid-1', phone: '628123', pushName: 'Alice' });
+    });
+
+    it('backfills chatName for self-chat rows stuck under the phone-form chatId (dormant post-lid-migration)', async () => {
+      const callbacks = await startAndCaptureCallbacks();
+
+      callbacks.onReady!('628123', 'Alice');
+      await flush();
+
+      expect(messageRepository.update as jest.Mock).toHaveBeenCalledWith(
+        { sessionId: 'sess-uuid-1', chatId: '628123@c.us', chatName: IsNull() },
+        { chatName: 'Alice' },
+      );
+    });
+
+    it('does not attempt a self-chat chatName backfill when pushName is empty', async () => {
+      const callbacks = await startAndCaptureCallbacks();
+      (messageRepository.update as jest.Mock).mockClear();
+
+      callbacks.onReady!('628123', '');
+      await flush();
+
+      expect(messageRepository.update as jest.Mock).not.toHaveBeenCalledWith(
+        expect.objectContaining({ chatId: '628123@c.us' }),
+        expect.anything(),
+      );
     });
 
     it('dispatches session.disconnected with the reason when the engine disconnects', async () => {
