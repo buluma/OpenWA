@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef, type CSSProperties } from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
+import { useState, useEffect, useRef, useCallback, type CSSProperties } from 'react';
+import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   LayoutDashboard,
@@ -36,6 +36,9 @@ import { type UserRole } from '../hooks';
 import { languageOptions, resolveSupportedLanguage, rtlLanguages, type SupportedLanguage } from '../i18n';
 import { healthApi } from '../services/api';
 import { AmbientBackground, BG_PATTERNS, type BgPattern } from './AmbientBackground';
+import { CommandPalette } from './CommandPalette';
+import { useGlobalShortcuts } from '../hooks/useGlobalShortcuts';
+import { useWebSocket } from '../hooks/useWebSocket';
 import './Layout.css';
 
 const BG_PATTERN_ICONS: Record<BgPattern, typeof Ban> = {
@@ -73,11 +76,32 @@ const themeIcons = { light: Sun, dark: Moon, system: Monitor };
 
 export function Layout({ onLogout, userRole }: LayoutProps) {
   const { t, i18n } = useTranslation();
+  const navigate = useNavigate();
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
   const { theme, setTheme, palette, setPalette, paletteOptions, bgPattern, setBgPattern, bgIntensity, setBgIntensity } =
     useTheme();
   const ThemeIcon = themeIcons[theme];
   const themeLabel = t(`theme.${theme}`);
   const activePalette = paletteOptions.find(option => option.value === palette) ?? paletteOptions[0];
+
+  // WebSocket connection status (no event handlers needed — just the indicator)
+  // Use a stable ref so the useWebSocket hook's internal useEffect doesn't re-fire every render.
+  const wsEventsRef = useRef<Record<string, never>>({});
+  const { isConnected: isWsConnected, connectionFailed: isWsFailed } = useWebSocket(wsEventsRef.current);
+
+  // Global keyboard shortcuts
+  const handleEscape = useCallback(() => {
+    // Close any open menus first
+    setIsLanguageMenuOpen(false);
+    setIsAppearanceMenuOpen(false);
+    setShowCommandPalette(false);
+  }, []);
+
+  useGlobalShortcuts({
+    onEscape: handleEscape,
+    onCommandPalette: () => setShowCommandPalette(prev => !prev),
+    onNewItem: () => navigate('/sessions'),
+  });
 
   const navItems = allNavItems.filter(item => !item.adminOnly || userRole === 'admin');
 
@@ -387,6 +411,17 @@ export function Layout({ onLogout, userRole }: LayoutProps) {
               </div>
             )}
           </div>
+          {/* WebSocket connection indicator */}
+          <button
+            className={`ws-status-btn ${isWsConnected ? 'connected' : isWsFailed ? 'failed' : 'connecting'}`}
+            title={isWsConnected ? t('common.connected') : isWsFailed ? t('common.disconnected') : t('common.connecting')}
+            aria-label={isWsConnected ? t('common.connected') : isWsFailed ? t('common.disconnected') : t('common.connecting')}
+          >
+            <span className="ws-dot" />
+            {!isCollapsed && (
+              <span>{isWsConnected ? t('common.connected') : isWsFailed ? t('common.disconnected') : t('common.connecting')}</span>
+            )}
+          </button>
           <button className="logout-btn" onClick={onLogout} title={isCollapsed ? t('common.logout') : undefined}>
             <LogOut size={20} />
             {!isCollapsed && <span>{t('common.logout')}</span>}
@@ -397,6 +432,8 @@ export function Layout({ onLogout, userRole }: LayoutProps) {
       <main className={`main-content ${isCollapsed ? 'expanded' : ''} ${isMobile ? 'mobile' : ''}`}>
         <Outlet />
       </main>
+
+      <CommandPalette isOpen={showCommandPalette} onClose={() => setShowCommandPalette(false)} />
     </div>
   );
 }

@@ -84,7 +84,7 @@
    separate boxed cards competing for the eye. */
 .dashboard .stats-grid{
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 0;
   margin-bottom: 2rem;
   width: 100%;
@@ -105,6 +105,10 @@
 }
 
 .dashboard .stat-card:first-child{
+  border-left: none;
+}
+
+.dashboard .stat-card:nth-child(5n+1){
   border-left: none;
 }
 
@@ -318,12 +322,25 @@
   background: rgba(239, 68, 68, 0.18);
 }
 
-@media (max-width: 1200px) {
+@media (max-width: 1400px) {
+  .dashboard .stats-grid{
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .dashboard .stat-card:nth-child(3n+1){
+    border-left: none;
+  }
+
+  .dashboard .stat-card:nth-child(n+4){
+    border-top: 1px solid var(--border);
+  }
+}
+
+@media (max-width: 1000px) {
   .dashboard .stats-grid{
     grid-template-columns: repeat(2, 1fr);
   }
 
-  /* Two columns: only the left column keeps no border-left, and row 2 gets a border-top instead. */
   .dashboard .stat-card:nth-child(2n+1){
     border-left: none;
   }

@@ -96,8 +96,11 @@ export function useWebSocket(events: WebSocketEvents = {}) {
     socketRef.current = io(`${SOCKET_URL}/events`, {
       autoConnect: true,
       reconnection: true,
-      reconnectionAttempts: 5,
+      reconnectionAttempts: 10,
       reconnectionDelay: 1000,
+      reconnectionDelayMax: 10000,
+      randomizationFactor: 0.3,
+      timeout: 10000,
       // Send the key via `auth` (and a header for proxies). NOT via `query` — a key in the
       // handshake URL leaks into access logs / Referer. The gateway reads auth first.
       auth: {
@@ -119,6 +122,8 @@ export function useWebSocket(events: WebSocketEvents = {}) {
 
     socketRef.current.on('connect_error', error => {
       console.warn('[WebSocket] Connection error:', error.message);
+      // Don't set connectionFailed here — socket.io's built-in reconnector handles retries.
+      // Only the final `reconnect_failed` event (below) signals a permanent loss.
     });
 
     // `reconnect_failed` is emitted on the Manager once all reconnectionAttempts are exhausted.

@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Send, CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { Send, CheckCircle, XCircle, Loader2, Clock, Trash2 } from 'lucide-react';
 import { messageApi, contactApi } from '../services/api';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useRole } from '../hooks';
@@ -15,7 +15,20 @@ interface ApiResponse {
   error?: string;
 }
 
+interface HistoryEntry {
+  id: string;
+  sessionName: string;
+  recipient: string;
+  type: string;
+  content: string;
+  response: ApiResponse;
+  time: number;
+}
+
 const messageTypes = ['text', 'image', 'video', 'audio', 'document'] as const;
+
+// Keep last 20 sends in memory (session-scoped, resets on page reload as intended).
+const MAX_HISTORY = 20;
 
 export function MessageTester() {
   const { t } = useTranslation();
@@ -32,6 +45,7 @@ export function MessageTester() {
   const [mediaUrl, setMediaUrl] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [response, setResponse] = useState<ApiResponse | null>(null);
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
 
   const { data: groups = [], isLoading: loadingGroups } = useSessionGroupsQuery(
     session,
@@ -65,6 +79,9 @@ export function MessageTester() {
     setIsLoading(true);
     setResponse(null);
 
+    const sessionObj = sessions.find(s => s.id === session);
+    const sessionName = sessionObj?.name || targetId.substring(0, 12);
+
     try {
       // For a personal recipient, let the engine resolve the number to its canonical chat id rather
       // than hand-building an engine-specific JID here (#265) — also surfaces unregistered numbers.
@@ -72,11 +89,13 @@ export function MessageTester() {
       if (recipientType !== 'group') {
         const resolved = await contactApi.checkNumber(session, targetId.replace(/[^0-9]/g, ''));
         if (!resolved.exists || !resolved.whatsappId) {
-          setResponse({
+          const errResp: ApiResponse = {
             success: false,
             timestamp: new Date().toISOString(),
             error: t('messageTester.notOnWhatsApp'),
-          });
+          };
+          setResponse(errResp);
+          addToHistory(sessionName, targetId, errResp);
           return;
         }
         chatId = resolved.whatsappId;
@@ -95,21 +114,45 @@ export function MessageTester() {
         result = await messageApi.sendDocument(session, chatId, mediaUrl, content);
       }
 
-      setResponse({
+      const resp: ApiResponse = {
         success: !!result.messageId,
         messageId: result.messageId,
         timestamp: result.timestamp ? new Date(result.timestamp * 1000).toISOString() : new Date().toISOString(),
-      });
+      };
+      setResponse(resp);
+      addToHistory(sessionName, chatId, resp);
     } catch (err) {
-      setResponse({
+      const errResp: ApiResponse = {
         success: false,
         timestamp: new Date().toISOString(),
         error: err instanceof Error ? err.message : t('messageTester.sendFailed'),
-      });
+      };
+      setResponse(errResp);
+      addToHistory(sessionName, targetId, errResp);
     } finally {
       setIsLoading(false);
     }
   };
+
+  const addToHistory = useCallback(
+    (sessionName: string, target: string, resp: ApiResponse) => {
+      setHistory(prev => {
+        const entry: HistoryEntry = {
+          id: `${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          sessionName,
+          recipient: recipientType === 'group' ? target : recipient,
+          type: messageType,
+          content: messageType === 'text' ? content : mediaUrl || content,
+          response: resp,
+          time: Date.now(),
+        };
+        return [entry, ...prev].slice(0, MAX_HISTORY);
+      });
+    },
+    [recipientType, recipient, messageType, content, mediaUrl],
+  );
+
+  const clearHistory = () => setHistory([]);
 
   if (loadingSessions) {
     return (
@@ -298,6 +341,46 @@ export function MessageTester() {
           ) : (
             <div className="response-empty">
               <p>{t('messageTester.responseEmpty')}</p>
+            </div>
+          )}
+
+          {/* Recent send history */}
+          {history.length > 0 && (
+            <div className="history-section">
+              <div className="history-header">
+                <h3>
+                  <Clock size={16} />
+                  {t('messageTester.history', { count: history.length })}
+                </h3>
+                <button className="btn-text danger" onClick={clearHistory} type="button" title={t('common.clear')}>
+                  <Trash2 size={14} />
+                </button>
+              </div>
+              <div className="history-list">
+                {history.map(entry => (
+                  <div key={entry.id} className={`history-item ${entry.response.success ? 'success' : 'error'}`}>
+                    <div className="history-item-top">
+                      <span className={`history-status-dot ${entry.response.success ? 'ok' : 'fail'}`} />
+                      <span className="history-type-badge">{entry.type}</span>
+                      <span className="history-recipient">{entry.recipient}</span>
+                      <span className="history-time">
+                        {new Date(entry.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                    <div className="history-item-body">
+                      {entry.content && (
+                        <span className="history-content">{entry.content.substring(0, 80)}{entry.content.length > 80 ? '…' : ''}</span>
+                      )}
+                      {entry.response.messageId && (
+                        <code className="history-message-id">{entry.response.messageId.substring(0, 24)}</code>
+                      )}
+                    </div>
+                    {entry.response.error && (
+                      <div className="history-error">{entry.response.error}</div>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>

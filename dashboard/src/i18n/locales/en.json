@@ -52,6 +52,15 @@
     "collapse": "Collapse",
     "logout": "Logout",
     "refresh": "Refresh",
+    "select": "Select",
+    "deselect": "Deselect",
+    "selectAll": "Select All",
+    "deselectAll": "Deselect All",
+    "connecting": "Connecting...",
+    "clear": "Clear",
+    "navigate": "Navigate",
+    "open": "Open",
+    "noResults": "No results",
     "errorGeneric": "An error occurred",
     "unknownError": "Unknown error",
     "retry": "Retry"
@@ -167,6 +176,7 @@
     "stats": {
       "activeSessions": "Active Sessions",
       "messagesToday": "Messages Today",
+      "failedMessages": "Failed Messages",
       "webhooksConfigured": "Webhooks Configured",
       "apiCalls": "API Calls (24h)",
       "totalMessages": "Total Messages"
@@ -321,6 +331,16 @@
       "step3": "<strong>3.</strong> Tap <strong>Link a Device</strong>, then tap <strong>Link with phone number instead</strong>",
       "step4": "<strong>4.</strong> Enter the 8-character code shown above on your phone",
       "waitingConnection": "Waiting for your phone to link…"
+    },
+    "bulk": {
+      "selected": "{{count}} selected",
+      "stoppedTitle": "Sessions Stopped",
+      "stoppedDesc": "Stopped {{count}} session(s)",
+      "startedTitle": "Sessions Started",
+      "startedDesc": "Started {{count}} session(s)",
+      "deletedTitle": "Sessions Deleted",
+      "deletedDesc": "Deleted {{count}} session(s)",
+      "deleteConfirm": "Delete {{count}} sessions? This cannot be undone."
     }
   },
   "webhooks": {
@@ -571,6 +591,7 @@
       "messageId": "Message ID",
       "error": "Error"
     },
+    "history": "Recent Sends ({{count}})",
     "sendFailed": "Failed to send message",
     "notOnWhatsApp": "This number is not registered on WhatsApp"
   },

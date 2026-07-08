@@ -1,0 +1,124 @@
+{
+  "id": "welcome-greeter",
+  "name": "Welcome Greeter",
+  "version": "0.1.0",
+  "type": "extension",
+  "main": "dist/index.js",
+  "description": "Sends a one-time welcome message to new contacts on their first message, with contact name personalization and optional re-greet after a configurable cooldown. Designed to coexist with other plugins: returns continue:true so FAQ Bot, Chat Flow, Typebot, and AI bots still process the message.",
+  "author": "OpenWA Contributors",
+  "license": "MIT",
+  "homepage": "https://github.com/rmyndharis/OpenWA-plugins/tree/main/welcome-greeter",
+  "repository": "https://github.com/rmyndharis/OpenWA-plugins",
+  "keywords": ["welcome", "greeting", "onboarding", "first-contact", "new-chat", "auto-reply", "whatsapp", "openwa"],
+  "status": "stable",
+  "minOpenWAVersion": "0.6.1",
+  "testedOpenWAVersion": "0.8.7",
+  "provides": ["auto-reply"],
+  "permissions": ["messages:send"],
+  "sessionScoped": true,
+  "sessions": ["*"],
+  "hooks": ["message:received"],
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "hookPriority": {
+        "type": "number",
+        "default": 20,
+        "title": "Hook execution priority",
+        "description": "Lower numbers run first. Requires disable/re-enable the plugin to take effect."
+      },
+      "welcomeText": {
+        "type": "textarea",
+        "required": true,
+        "title": "Welcome message",
+        "description": "Sent to a new contact on their first message. Use {{contactName}} for the sender's name and {{chatId}} for their chat id (JID)."
+      },
+      "greetInGroups": {
+        "type": "boolean",
+        "default": false,
+        "title": "Also greet in group chats",
+        "description": "When enabled, group chats also get the welcome message. The sender's name is resolved from the group author (if available)."
+      },
+      "resetAfterDays": {
+        "type": "number",
+        "default": 0,
+        "title": "Re-greet after N days (0 = never)",
+        "description": "Re-send the welcome message if the contact hasn't messaged in N days. 0 = greet only once, ever."
+      }
+    }
+  },
+  "i18n": {
+    "es": {
+      "name": "Saludo de Bienvenida",
+      "description": "Envía un mensaje de bienvenida único a nuevos contactos en su primer mensaje, con personalización del nombre y opción de reenganche tras un período configurable.",
+      "config": {
+        "welcomeText": { "title": "Mensaje de bienvenida", "description": "Enviado a un nuevo contacto en su primer mensaje. Usa {{contactName}} para el nombre y {{chatId}} para su ID." },
+        "greetInGroups": { "title": "Saludar también en grupos" },
+        "resetAfterDays": { "title": "Re-saludar después de N días (0 = nunca)" }
+      }
+    },
+    "fr": {
+      "name": "Message de Bienvenue",
+      "description": "Envoie un message de bienvenue unique aux nouveaux contacts dès leur premier message, avec personnalisation du nom et option de relance après une période configurable.",
+      "config": {
+        "welcomeText": { "title": "Message de bienvenue", "description": "Envoyé à un nouveau contact dès son premier message. Utilisez {{contactName}} pour le nom et {{chatId}} pour son ID." },
+        "greetInGroups": { "title": "Saluer aussi dans les groupes" },
+        "resetAfterDays": { "title": "Re-saluer après N jours (0 = jamais)" }
+      }
+    },
+    "it": {
+      "name": "Messaggio di Benvenuto",
+      "description": "Invia un messaggio di benvenuto una tantum ai nuovi contatti al loro primo messaggio, con personalizzazione del nome e opzione di riattivazione dopo un periodo configurabile.",
+      "config": {
+        "welcomeText": { "title": "Messaggio di benvenuto", "description": "Inviato a un nuovo contatto al primo messaggio. Usa {{contactName}} per il nome e {{chatId}} per il suo ID." },
+        "greetInGroups": { "title": "Salutare anche nei gruppi" },
+        "resetAfterDays": { "title": "Ri-salutare dopo N giorni (0 = mai)" }
+      }
+    },
+    "ar": {
+      "name": "ترحيب",
+      "description": "يرسل رسالة ترحيب لمرة واحدة إلى جهات الاتصال الجديدة عند أول رسالة منهم، مع تخصيص الاسم وخيار إعادة الترحيب بعد فترة قابلة للتهيئة.",
+      "config": {
+        "welcomeText": { "title": "رسالة الترحيب", "description": "تُرسل إلى جهة اتصال جديدة عند أول رسالة. استخدم {{contactName}} للاسم و{{chatId}} لمعرف المحادثة." },
+        "greetInGroups": { "title": "الترحيب في المجموعات أيضًا" },
+        "resetAfterDays": { "title": "إعادة الترحيب بعد N أيام (0 = أبدًا)" }
+      }
+    },
+    "he": {
+      "name": "ברכת Welcome",
+      "description": "שולח הודעת welcome חד-פעמית לאנשי קשר חדשים בהודעה הראשונה שלהם, עם התאמה אישית של השם ואפשרות לברכה חוזרת לאחר תקופה ניתנת להגדרה.",
+      "config": {
+        "welcomeText": { "title": "הודעת welcome", "description": "נשלחת לאיש קשר חדש בהודעתם הראשונה. השתמש ב-{{contactName}} לשם ו-{{chatId}} למזהה הצ'אט." },
+        "greetInGroups": { "title": "לברך גם בקבוצות" },
+        "resetAfterDays": { "title": "לברך שוב אחרי N ימים (0 = לעולם לא)" }
+      }
+    },
+    "te": {
+      "name": "స్వాగత సందేశం",
+      "description": "కొత్త కాంటాక్ట్‌లకు వారి మొదటి సందేశంలో ఒకసారి స్వాగత సందేశాన్ని పంపుతుంది, పేరు వ్యక్తిగతీకరణ మరియు పునఃస్వాగతం కోసం కాన్ఫిగర్ చేయదగిన వ్యవధితో.",
+      "config": {
+        "welcomeText": { "title": "స్వాగత సందేశం", "description": "కొత్త కాంటాక్ట్‌కు వారి మొదటి సందేశంలో పంపబడుతుంది. పేరు కోసం {{contactName}} మరియు చాట్ ID కోసం {{chatId}} ఉపయోగించండి." },
+        "greetInGroups": { "title": "గ్రూపుల్లో కూడా స్వాగతం" },
+        "resetAfterDays": { "title": "N రోజుల తర్వాత పునఃస్వాగతం (0 = ఎప్పుడూ కాదు)" }
+      }
+    },
+    "zh-CN": {
+      "name": "新用户欢迎",
+      "description": "在新联系人第一次发消息时发送一次性欢迎消息，支持姓名个性化以及在可配置时间后重新欢迎。",
+      "config": {
+        "welcomeText": { "title": "欢迎消息", "description": "在新联系人第一次发消息时发送。使用 {{contactName}} 表示姓名，{{chatId}} 表示聊天 ID。" },
+        "greetInGroups": { "title": "也在群组中欢迎" },
+        "resetAfterDays": { "title": "N 天后重新欢迎（0 = 永不）" }
+      }
+    },
+    "zh-HK": {
+      "name": "新用戶歡迎",
+      "description": "在新聯絡人首次發送訊息時發送一次性歡迎訊息，支援姓名個人化及在可配置時間後重新歡迎。",
+      "config": {
+        "welcomeText": { "title": "歡迎訊息", "description": "在新聯絡人首次發送訊息時發送。使用 {{contactName}} 表示姓名，{{chatId}} 表示聊天 ID。" },
+        "greetInGroups": { "title": "亦在群組中歡迎" },
+        "resetAfterDays": { "title": "N 天後重新歡迎（0 = 永不）" }
+      }
+    }
+  }
+}

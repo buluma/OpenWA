@@ -78,6 +78,36 @@
   margin: 0 0 1rem;
   border-left: 3px solid var(--primary);
   padding-left: 0.6rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.dashboard-charts .chart-filter-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-light);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.dashboard-charts .chart-filter-clear:hover {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: var(--error);
+}
+
+.dashboard-charts .chart-type-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .dashboard-charts .charts-empty {
@@ -101,5 +131,14 @@
   }
   .dashboard-charts .chart-wide {
     grid-column: auto;
+  }
+  .dashboard-charts .chart-card .recharts-legend-item-text {
+    font-size: 0.7rem;
+  }
+  .dashboard-charts .chart-card .recharts-default-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.6rem;
+    justify-content: center;
   }
 }

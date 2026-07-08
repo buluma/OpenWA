@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Trans, useTranslation } from 'react-i18next';
-import { Plus, QrCode, RefreshCw, Trash2, Eye, Loader2, Play, Square, X, Search, Filter, Skull } from 'lucide-react';
+import { Plus, QrCode, RefreshCw, Trash2, Eye, Loader2, Play, Square, X, Search, Filter, Skull, CheckSquare, Square as SquareIcon, StopCircle } from 'lucide-react';
 import { sessionApi, type Session } from '../services/api';
 import { queryKeys } from '../hooks/queries';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
@@ -35,6 +35,8 @@ export function Sessions() {
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [killConfirmId, setKillConfirmId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkActionLoading, setBulkActionLoading] = useState(false);
 
   const fetchSessions = useCallback(async (): Promise<Session[]> => {
     try {
@@ -304,6 +306,7 @@ export function Sessions() {
 
   const formatStatus = (status: string) => t(`sessionStatus.${status}`, { defaultValue: status });
 
+  // Moved before callbacks that depend on it to avoid TDZ error
   const filteredSessions = sessions.filter(s => {
     const matchesSearch =
       s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -315,6 +318,90 @@ export function Sessions() {
       (statusFilter === 'connecting' && ['initializing', 'connecting', 'qr_ready'].includes(s.status));
     return matchesSearch && matchesStatus;
   });
+
+  const toggleSelect = useCallback((id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const toggleSelectAll = useCallback(() => {
+    if (selectedIds.size === filteredSessions.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredSessions.map(s => s.id)));
+    }
+  }, [filteredSessions, selectedIds.size]);
+
+  const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
+
+  const handleBulkStop = useCallback(async () => {
+    setBulkActionLoading(true);
+    for (const id of selectedIds) {
+      const session = sessions.find(s => s.id === id);
+      if (session && ['ready', 'initializing', 'connecting', 'qr_ready'].includes(session.status)) {
+        try {
+          await sessionApi.stop(id);
+          setSessions(prev => prev.map(s => (s.id === id ? { ...s, status: 'disconnected' } : s)));
+        } catch { /* skip */ }
+      }
+    }
+    setBulkActionLoading(false);
+    clearSelection();
+    toast.success(t('sessions.bulk.stoppedTitle'), t('sessions.bulk.stoppedDesc', { count: selectedIds.size }));
+  }, [selectedIds, sessions, toast, t]);
+
+  const handleBulkStart = useCallback(async () => {
+    setBulkActionLoading(true);
+    let started = 0;
+    for (const id of selectedIds) {
+      const session = sessions.find(s => s.id === id);
+      if (session && (session.status === 'created' || session.status === 'idle' || session.status === 'disconnected')) {
+        try {
+          await sessionApi.start(id);
+          setSessions(prev => prev.map(s => (s.id === id ? { ...s, status: 'connecting' } : s)));
+          started++;
+        } catch { /* skip */ }
+      }
+    }
+    setBulkActionLoading(false);
+    clearSelection();
+    if (started > 0) {
+      toast.success(t('sessions.bulk.startedTitle'), t('sessions.bulk.startedDesc', { count: started }));
+    }
+  }, [selectedIds, sessions, toast, t]);
+
+  const handleBulkDeleteConfirm = useCallback(() => {
+    // Just set the first selected for confirmation (simplified UX)
+    const firstSelected = Array.from(selectedIds)[0];
+    if (selectedIds.size === 1 && firstSelected) {
+      setDeleteConfirmId(firstSelected);
+    } else if (selectedIds.size > 1) {
+      // Multi-delete: confirm once, then delete all
+      if (window.confirm(t('sessions.bulk.deleteConfirm', { count: selectedIds.size }))) {
+        handleBulkDelete();
+      }
+    }
+  }, [selectedIds]);
+
+  const handleBulkDelete = useCallback(async () => {
+    setBulkActionLoading(true);
+    let deleted = 0;
+    for (const id of selectedIds) {
+      try {
+        await sessionApi.delete(id);
+        setSessions(prev => prev.filter(s => s.id !== id));
+        deleted++;
+      } catch { /* skip */ }
+    }
+    setBulkActionLoading(false);
+    clearSelection();
+    toast.success(t('sessions.bulk.deletedTitle'), t('sessions.bulk.deletedDesc', { count: deleted }));
+    void fetchSessions();
+  }, [selectedIds, fetchSessions, toast, t]);
 
   if (loading) {
     return (
@@ -366,6 +453,17 @@ export function Sessions() {
             ]}
           />
         </div>
+        {filteredSessions.length > 0 && (
+          <button
+            className={`btn-select-all ${selectedIds.size === filteredSessions.length ? 'all-selected' : ''}`}
+            onClick={toggleSelectAll}
+            title={selectedIds.size === filteredSessions.length ? t('common.deselectAll') : t('common.selectAll')}
+            type="button"
+          >
+            {selectedIds.size === filteredSessions.length ? <CheckSquare size={16} /> : <SquareIcon size={16} />}
+            <span>{selectedIds.size > 0 ? `${selectedIds.size}` : t('common.selectAll')}</span>
+          </button>
+        )}
       </div>
 
       {error && (
@@ -712,6 +810,43 @@ export function Sessions() {
       )}
 
       <div className="sessions-grid">
+        {/* Bulk action bar */}
+        {selectedIds.size > 0 && (
+          <div className="bulk-action-bar">
+            <span className="bulk-count">{t('sessions.bulk.selected', { count: selectedIds.size })}</span>
+            <div className="bulk-actions">
+              <button
+                className="btn-sm"
+                onClick={handleBulkStart}
+                disabled={bulkActionLoading}
+              >
+                {bulkActionLoading ? <Loader2 className="animate-spin" size={14} /> : <Play size={14} />}
+                {t('sessions.actions.start')}
+              </button>
+              <button
+                className="btn-sm"
+                onClick={handleBulkStop}
+                disabled={bulkActionLoading}
+              >
+                <StopCircle size={14} />
+                {t('sessions.actions.stop')}
+              </button>
+              <button
+                className="btn-sm danger"
+                onClick={handleBulkDeleteConfirm}
+                disabled={bulkActionLoading}
+              >
+                <Trash2 size={14} />
+                {t('common.delete')}
+              </button>
+              <button className="btn-sm" onClick={clearSelection}>
+                <X size={14} />
+                {t('common.clear')}
+              </button>
+            </div>
+          </div>
+        )}
+
         {filteredSessions.length === 0 ? (
           <div className="empty-state">
             <QrCode size={48} />
@@ -719,10 +854,21 @@ export function Sessions() {
             <p>{t('sessions.empty.description')}</p>
           </div>
         ) : (
-          filteredSessions.map(session => (
-            <div key={session.id} className="session-card">
+          <div className="sessions-grid selectable">
+          {filteredSessions.map(session => (
+            <div key={session.id} className={`session-card ${selectedIds.has(session.id) ? 'selected' : ''}`}>
               <div className="card-header">
-                <h3 title={session.name}>{session.name}</h3>
+                <div className="card-header-left">
+                  <button
+                    className={`card-checkbox ${selectedIds.has(session.id) ? 'checked' : ''}`}
+                    onClick={() => toggleSelect(session.id)}
+                    aria-label={selectedIds.has(session.id) ? t('common.deselect') : t('common.select')}
+                    type="button"
+                  >
+                    {selectedIds.has(session.id) ? <CheckSquare size={16} /> : <SquareIcon size={16} />}
+                  </button>
+                  <h3 title={session.name}>{session.name}</h3>
+                </div>
                 <span className={`status-pill ${session.status}`}>{formatStatus(session.status)}</span>
               </div>
 
@@ -799,8 +945,9 @@ export function Sessions() {
                 )}
               </div>
             </div>
-          ))
-        )}
+          ))}
+        </div>
+      )}
       </div>
     </div>
   );

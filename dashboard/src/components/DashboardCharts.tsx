@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ResponsiveContainer,
@@ -15,7 +15,7 @@ import {
   BarChart,
   Bar,
 } from 'recharts';
-import { BarChart3 } from 'lucide-react';
+import { BarChart3, X } from 'lucide-react';
 import { useStatsMessagesQuery } from '../hooks/queries';
 import type { StatsPeriod } from '../services/api';
 import './DashboardCharts.css';
@@ -78,6 +78,12 @@ function shortChat(chatId: string): string {
 export function DashboardCharts() {
   const { t } = useTranslation();
   const [period, setPeriod] = useState<StatsPeriod>('7d');
+  const [activeType, setActiveType] = useState<string | null>(null);
+
+  const handleSliceClick = useCallback((entry: { name: string }) => {
+    if (!entry.name) return;
+    setActiveType(prev => (prev === entry.name ? null : entry.name));
+  }, []);
   const { data, isLoading, isError, error } = useStatsMessagesQuery(period);
 
   // Non-admin keys 403 on /stats/messages → hide the section entirely. Any OTHER error (e.g. a
@@ -163,15 +169,41 @@ export function DashboardCharts() {
           </div>
 
           <div className="chart-card">
-            <h3>{t('dashboard.charts.byType')}</h3>
+            <h3 className="chart-type-title">
+              {t('dashboard.charts.byType')}
+              {activeType && (
+                <button
+                  className="chart-filter-clear"
+                  onClick={() => setActiveType(null)}
+                  title={t('common.clear')}
+                  type="button"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </h3>
             {byType.length === 0 ? (
               <div className="charts-empty small">{t('dashboard.charts.empty')}</div>
             ) : (
               <ResponsiveContainer width="100%" height={260}>
                 <PieChart>
-                  <Pie data={byType} dataKey="value" nameKey="name" innerRadius={55} outerRadius={90} paddingAngle={2}>
+                  <Pie
+                    data={byType}
+                    dataKey="value"
+                    nameKey="name"
+                    innerRadius={55}
+                    outerRadius={90}
+                    paddingAngle={2}
+                    onClick={(entry: { name?: string }) => handleSliceClick(entry as { name: string })}
+                    style={{ cursor: 'pointer' }}
+                  >
                     {byType.map(entry => (
-                      <Cell key={entry.name} fill={colorForType(entry.name)} />
+                      <Cell
+                        key={entry.name}
+                        fill={colorForType(entry.name)}
+                        onClick={() => handleSliceClick(entry)}
+                        style={{ cursor: 'pointer' }}
+                      />
                     ))}
                   </Pie>
                   <Tooltip {...TOOLTIP_STYLE} />
