@@ -5,9 +5,16 @@ import { DataSource } from 'typeorm';
 import { Public } from '../auth/decorators/auth.decorators';
 import { SkipThrottle } from '@nestjs/throttler';
 import { ShutdownService } from '../../common/services/shutdown.service';
+import { DataConnectionHealthService } from './data-connection-health.service';
 
 interface DependencyStatus {
   status: 'up' | 'down';
+  /** Only present on the data DB: the background self-heal's own view, so a reconnect attempt in
+   * progress (or exhausted) is visible here even between probeDatabase's own SELECT 1 calls. */
+  reconnect?: {
+    attempts: number;
+    lastReconnectAt: string | null;
+  };
 }
 
 interface HealthCheckResult {
@@ -32,6 +39,7 @@ export class HealthController {
     @InjectDataSource('main') private readonly mainDataSource: DataSource,
     @InjectDataSource('data') private readonly dataDataSource: DataSource,
     private readonly shutdownService: ShutdownService,
+    private readonly dataConnectionHealth: DataConnectionHealthService,
   ) {}
 
   @Get()
@@ -70,9 +78,22 @@ export class HealthController {
       this.probeDatabase(this.dataDataSource),
     ]);
 
+    const dataHealth = this.dataConnectionHealth.getStatus();
     const details: Record<string, DependencyStatus> = {
       mainDatabase: { status: main },
-      dataDatabase: { status: data },
+      dataDatabase: {
+        status: data,
+        // Only worth surfacing once a reconnect has actually been attempted — an all-zero object on
+        // every healthy response would just be noise.
+        ...(dataHealth.reconnectAttempts > 0 || dataHealth.lastReconnectAt
+          ? {
+              reconnect: {
+                attempts: dataHealth.reconnectAttempts,
+                lastReconnectAt: dataHealth.lastReconnectAt?.toISOString() ?? null,
+              },
+            }
+          : {}),
+      },
     };
 
     if (main === 'down' || data === 'down') {

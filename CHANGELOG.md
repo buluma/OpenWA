@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **The `data` database connection now self-heals from a transient `SQLITE_CANTOPEN` and reports it
+  in `/health/ready`.** A prior incident left the data connection dead — every webhook dispatch and
+  message persistence silently failed — while `/health/ready` correctly reported it down, nothing
+  was polling that endpoint on this single-instance deployment, so the only fix was noticing and
+  restarting the process by hand. A background probe now checks the data connection every 30s and,
+  on failure, reconnects it (bounded to 5 consecutive attempts before giving up and staying down
+  rather than retrying forever). `dataDatabase` in the readiness response now includes a `reconnect`
+  block (attempt count, last reconnect time) once a reconnect has actually been attempted.
+
 ### Fixed
 
 - **Chat history and message sends now self-heal from a WhatsApp Web page reload (whatsapp-web.js).**

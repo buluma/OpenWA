@@ -3,17 +3,26 @@ import { getDataSourceToken } from '@nestjs/typeorm';
 import { ServiceUnavailableException } from '@nestjs/common';
 import { HealthController } from './health.controller';
 import { ShutdownService } from '../../common/services/shutdown.service';
+import { DataConnectionHealthService } from './data-connection-health.service';
 
 describe('HealthController', () => {
   let controller: HealthController;
   const mainQuery = jest.fn();
   const dataQuery = jest.fn();
   const isShuttingDown = jest.fn();
+  const getDataConnectionStatus = jest.fn();
 
   beforeEach(async () => {
     mainQuery.mockResolvedValue([{ '1': 1 }]);
     dataQuery.mockResolvedValue([{ '1': 1 }]);
     isShuttingDown.mockReturnValue(false);
+    getDataConnectionStatus.mockReturnValue({
+      healthy: true,
+      lastError: null,
+      lastCheckedAt: null,
+      reconnectAttempts: 0,
+      lastReconnectAt: null,
+    });
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [HealthController],
@@ -21,6 +30,7 @@ describe('HealthController', () => {
         { provide: getDataSourceToken('main'), useValue: { query: mainQuery } },
         { provide: getDataSourceToken('data'), useValue: { query: dataQuery } },
         { provide: ShutdownService, useValue: { isShuttingDown } },
+        { provide: DataConnectionHealthService, useValue: { getStatus: getDataConnectionStatus } },
       ],
     }).compile();
 
@@ -31,6 +41,7 @@ describe('HealthController', () => {
     mainQuery.mockReset();
     dataQuery.mockReset();
     isShuttingDown.mockReset();
+    getDataConnectionStatus.mockReset();
   });
 
   describe('check', () => {
@@ -78,6 +89,29 @@ describe('HealthController', () => {
       await expect(controller.readiness()).rejects.toBeInstanceOf(ServiceUnavailableException);
       expect(mainQuery).not.toHaveBeenCalled();
       expect(dataQuery).not.toHaveBeenCalled();
+    });
+
+    it('omits reconnect details when the data connection has never needed to reconnect', async () => {
+      const result = await controller.readiness();
+      expect(result.details.dataDatabase.reconnect).toBeUndefined();
+    });
+
+    it('surfaces reconnect attempts/timing once the self-heal has kicked in', async () => {
+      const lastReconnectAt = new Date('2026-01-01T00:00:00.000Z');
+      getDataConnectionStatus.mockReturnValue({
+        healthy: true,
+        lastError: null,
+        lastCheckedAt: null,
+        reconnectAttempts: 2,
+        lastReconnectAt,
+      });
+
+      const result = await controller.readiness();
+
+      expect(result.details.dataDatabase.reconnect).toEqual({
+        attempts: 2,
+        lastReconnectAt: lastReconnectAt.toISOString(),
+      });
     });
   });
 });

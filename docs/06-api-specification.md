@@ -3427,6 +3427,8 @@ Notes: always `{ "status": "ok" }`. Intentionally static so a transient dependen
 
 Readiness probe — verifies the `main` (auth/audit) and `data` TypeORM datasources respond to `SELECT 1` (each bounded to a 3000 ms timeout) and reports `503` while the app is draining/shutting down.
 
+The `data` datasource is additionally self-healing: a background probe checks it every 30s and, on failure (e.g. a transient `SQLITE_CANTOPEN`), attempts to reconnect it, capped at 5 consecutive attempts. `dataDatabase.reconnect` appears once a reconnect has actually been attempted (omitted otherwise, so a healthy response stays uncluttered).
+
 **Auth:** public
 
 **Response** `200`
@@ -3437,6 +3439,21 @@ Readiness probe — verifies the `main` (auth/audit) and `data` TypeORM datasour
   "details": {
     "mainDatabase": { "status": "up" },
     "dataDatabase": { "status": "up" }
+  }
+}
+```
+
+**Response** `200`, after a self-heal reconnect has run at least once
+
+```json
+{
+  "status": "ok",
+  "details": {
+    "mainDatabase": { "status": "up" },
+    "dataDatabase": {
+      "status": "up",
+      "reconnect": { "attempts": 0, "lastReconnectAt": "2026-07-08T02:19:04.000Z" }
+    }
   }
 }
 ```
