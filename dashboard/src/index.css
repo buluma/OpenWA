@@ -108,9 +108,6 @@ html {
   a:hover {
     color: #747bff;
   }
-  :root:not([data-theme='dark']) button {
-    background-color: #f9f9f9;
-  }
 }
 
 /* Global select/dropdown styling */
