@@ -180,8 +180,10 @@ export class SessionController {
   @ApiResponse({ status: 404, description: 'Session not found' })
   async getQRCode(@Param('id', ParseUUIDPipe) id: string): Promise<QRCodeResponseDto> {
     const qrCode = await this.sessionService.getQRCode(id);
+    const session = await this.sessionService.findOne(id);
     await this.auditService.logInfo(AuditAction.SESSION_QR_GENERATED, {
       sessionId: id,
+      sessionName: session.name,
     });
     return qrCode;
   }
