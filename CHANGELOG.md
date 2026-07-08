@@ -20,6 +20,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Dashboard UI/UX pass**: primary buttons (New Session, Add Webhook, Install plugin, and every
+  other custom-styled button) rendered washed-out on any light-mode OS — a leftover, unmodified
+  Vite-template CSS rule was out-specificing the app's own button styles; removed. The `/api-keys`
+  page rendered blank on a hard-refresh/deep-link in dev — the dev server's proxy matched by string
+  prefix and hijacked that frontend route as if it were an `/api/*` backend call; scoped to a regex.
+  Opening a long chat list fired an avatar fetch for every row at once regardless of visibility,
+  tripping the API rate limiter; fetches are now deferred until a row is near-visible. The webhook
+  Available Events sidebar showed 8 of 13 event names as their own description (missing
+  translations); added real copy across every locale. `session_qr_generated` audit log rows showed
+  a raw session UUID instead of a name, unlike every other session-scoped action; fixed.
 - **Top-chats no longer shows raw digits for a dormant self-chat row.** WhatsApp can migrate a
   self-chat's own JID from a phone-form (`@c.us`) to a lid-form mid-history; the lid-form chatId
   keeps getting named via the existing per-message backfills (it keeps receiving traffic), but a
