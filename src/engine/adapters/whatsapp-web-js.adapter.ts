@@ -162,6 +162,8 @@ export async function loadRemoteMedia(url: string): Promise<MessageMedia> {
 export interface WhatsAppWebJsConfig {
   sessionId: string;
   sessionDataPath: string;
+  /** Directory to cache profile pictures (default: ./data/profiles/<sessionId>). */
+  profilesDir?: string;
   puppeteer?: {
     headless?: boolean;
     args?: string[];
@@ -985,7 +987,7 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
   private async sendResolved<T>(chatId: string, send: (to: string) => Promise<T>): Promise<T> {
     const to = await this.resolveSendId(chatId);
     try {
-      return await send(to);
+      return await this.withDetachedFrameRetry('send', () => send(to));
     } catch (err) {
       if (!chatId.endsWith('@c.us') || !isNoLidForUserError(err)) {
         throw err;
@@ -995,7 +997,7 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
       if (fresh === to) {
         throw err;
       }
-      return send(fresh);
+      return this.withDetachedFrameRetry('send', () => send(fresh));
     }
   }
 
@@ -1622,6 +1624,10 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
 
   async getChatHistory(chatId: string, limit: number = 50, includeMedia: boolean = false): Promise<IncomingMessage[]> {
     this.ensureReady();
+    return this.withDetachedFrameRetry('getChatHistory', () => this.fetchChatHistory(chatId, limit, includeMedia));
+  }
+
+  private async fetchChatHistory(chatId: string, limit: number, includeMedia: boolean): Promise<IncomingMessage[]> {
     const chat = await this.client!.getChatById(chatId);
     const messages = await chat.fetchMessages({ limit });
     const results: IncomingMessage[] = [];
@@ -1691,12 +1697,52 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
     this.logger.log(`Deleted message ${messageId} from chat ${chatId} (forEveryone: ${forEveryone})`);
   }
 
-  // Get Profile Picture
+  /**
+   * Profile picture cache: in-memory Map<contactId, storageKey> so repeated lookups for the same
+   * contact (e.g. getChats → buildChatSummaries) go to disk once and skip a CDN download.
+   */
+  private profilePicCache = new Map<string, string>();
+
+  /** Resolve the on-disk path for a cached profile picture (does not check existence). */
+  private profilePicPath(contactId: string): string {
+    const dir = this.config.profilesDir ?? path.join('data', 'profiles', this.config.sessionId);
+    // Replace `@` with `_` so the JID is safe as a filename (e.g. 62812@c.us → 62812_c.us).
+    const safeName = contactId.replace(/@/g, '_');
+    return path.join(dir, `${safeName}.jpg`);
+  }
+
+  // Get Profile Picture – returns a storage key (relative path) or null
   async getProfilePicture(contactId: string): Promise<string | null> {
+    // Check in-memory cache first
+    const cached = this.profilePicCache.get(contactId);
+    if (cached) return cached;
+
+    // Check on-disk cache
+    const filePath = this.profilePicPath(contactId);
+    if (fs.existsSync(filePath)) {
+      const key = `profiles/${this.config.sessionId}/${contactId.replace(/@/g, '_')}.jpg`;
+      this.profilePicCache.set(contactId, key);
+      return key;
+    }
+
+    // Fetch from WhatsApp
     this.ensureReady();
     try {
       const url = await this.client!.getProfilePicUrl(contactId);
-      return url || null;
+      if (!url) return null;
+
+      // Download the image from WhatsApp CDN
+      const response = await fetch(url);
+      if (!response.ok) return null;
+      const buffer = Buffer.from(await response.arrayBuffer());
+
+      // Write to disk cache
+      await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+      await fs.promises.writeFile(filePath, buffer);
+
+      const key = `profiles/${this.config.sessionId}/${contactId.replace(/@/g, '_')}.jpg`;
+      this.profilePicCache.set(contactId, key);
+      return key;
     } catch (error) {
       this.logger.warn(`Failed to get profile picture for ${contactId}: ${String(error)}`);
       return null;
@@ -1838,33 +1884,34 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
     return false;
   }
 
-  async getChats(): Promise<ChatSummary[]> {
-    this.ensureReady();
-
+  /**
+   * Wraps a Puppeteer-touching call with self-healing retry: the Puppeteer frame can detach
+   * mid-flight when WhatsApp Web reloads its page internally (a normal event every few hours).
+   * Instead of failing immediately, this detects the transient condition, waits for the page to
+   * recover, and retries. Originally inline in {@link getChats} only; extracted so every call that
+   * touches the live page (chat history, all sends via `sendResolved`) gets the same self-heal
+   * instead of surfacing a raw 500 during a reload window.
+   */
+  private async withDetachedFrameRetry<T>(label: string, fn: () => Promise<T>): Promise<T> {
     // Self-heal: if the WA state is not CONNECTED the page may be reloading. Wait briefly for
     // recovery before falling back to the retry loop below.
     if (this.currentWaState && this.currentWaState !== 'CONNECTED') {
-      this.logger.warn(`WA state is ${this.currentWaState} — waiting for page to reconnect`);
+      this.logger.warn(`WA state is ${this.currentWaState} — waiting for page to reconnect (${label})`);
       await this.waitForPageReady(5000);
       this.ensureReady();
     }
 
-    // Retry loop: the Puppeteer frame can detach mid-flight when WhatsApp Web reloads its page
-    // internally (a normal event every few hours). Instead of failing immediately, we detect the
-    // transient condition, wait for the page to recover, and retry — making the call self-healing.
     const MAX_RETRIES = 3;
     const RETRY_DELAY_MS = 2000;
 
     let lastError: Error | null = null;
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       try {
-        const chats = await this.client!.getChats();
-        // Success — proceed to build summaries below
-        const summaries = this.buildChatSummaries(chats);
+        const result = await fn();
         if (lastError) {
-          this.logger.log(`getChats recovered after ${attempt} retry attempt(s)`);
+          this.logger.log(`${label} recovered after ${attempt} retry attempt(s)`);
         }
-        return summaries;
+        return result;
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
         const msg = lastError.message;
@@ -1879,23 +1926,21 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
           msg.includes('Protocol error');
 
         if (isDetached && attempt < MAX_RETRIES) {
-          this.logger.warn(`getChats attempt ${attempt + 1}/${MAX_RETRIES} failed (page reloading): ${msg}`);
-          const recovered = await this.waitForPageReady(RETRY_DELAY_MS);
-          if (recovered) continue;
-          // Page didn't recover in time — fall through to the next attempt (last attempt throws).
+          this.logger.warn(`${label} attempt ${attempt + 1}/${MAX_RETRIES} failed (page reloading): ${msg}`);
+          await this.waitForPageReady(RETRY_DELAY_MS);
           continue;
         }
 
         if (isDetached) {
           // Retries exhausted and the page never recovered: this is not a transient reload, the
           // Chromium/CDP session is permanently wedged. isClientRuntimeReady()'s own page.evaluate
-          // can still report "ready" here since it never touches the stale internal handles
-          // whatsapp-web.js's own getChats() uses, so waiting alone can't self-heal this state.
-          // Force-kill the wedged browser and surface a real disconnect so the session lifecycle
-          // reconnects on its own, instead of leaving a broken engine (and, previously, a zombie
-          // Chromium process) that a caller has to notice and restart by hand.
+          // can still report "ready" here since it never touches the stale internal handles the
+          // wrapped call uses, so waiting alone can't self-heal this state. Force-kill the wedged
+          // browser and surface a real disconnect so the session lifecycle reconnects on its own,
+          // instead of leaving a broken engine (and, previously, a zombie Chromium process) that a
+          // caller has to notice and restart by hand.
           this.logger.error(
-            `getChats: page never recovered after ${MAX_RETRIES} retries, forcing session restart`,
+            `${label}: page never recovered after ${MAX_RETRIES} retries, forcing session restart`,
             msg,
           );
           await this.forceDestroy();
@@ -1909,6 +1954,14 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
 
     // All retries exhausted.
     throw lastError ?? new EngineNotReadyError('WhatsApp Web is reconnecting, please try again');
+  }
+
+  async getChats(): Promise<ChatSummary[]> {
+    this.ensureReady();
+    return this.withDetachedFrameRetry('getChats', async () => {
+      const chats = await this.client!.getChats();
+      return this.buildChatSummaries(chats);
+    });
   }
 
   /** Map raw whatsapp-web.js chat objects to library-agnostic ChatSummary, skipping entries with no id. */

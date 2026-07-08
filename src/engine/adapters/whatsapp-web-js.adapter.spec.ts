@@ -754,6 +754,115 @@ describe('WhatsAppWebJsAdapter.getChats (self-heal after a long-idle detached-fr
   });
 });
 
+// getChats' self-heal (detached-frame retry) was originally inline and only covered getChats.
+// withDetachedFrameRetry extracted it so every other Puppeteer-touching call gets the same
+// self-heal instead of surfacing a raw error during a page-reload window. These two describe
+// blocks give getChatHistory and sendTextMessage (via sendResolved, the choke point for every send
+// method) the same recovers-within-retries / force-kills-after-exhaustion coverage getChats has
+// above, rather than re-deriving the retry mechanics itself.
+describe('WhatsAppWebJsAdapter.getChatHistory (self-heal after a detached-frame page reload)', () => {
+  const newReadyAdapter = (client: unknown): WhatsAppWebJsAdapter => {
+    const adapter = new WhatsAppWebJsAdapter({ sessionId: 's', sessionDataPath: './data/sessions', puppeteer: {} });
+    (adapter as unknown as { status: EngineStatus }).status = EngineStatus.READY;
+    (adapter as unknown as { client: unknown }).client = client;
+    return adapter;
+  };
+  const setCallbacks = (adapter: WhatsAppWebJsAdapter, callbacks: unknown): void => {
+    (adapter as unknown as { callbacks: unknown }).callbacks = callbacks;
+  };
+
+  const runtimeReadyClient = (getChatById: jest.Mock) => ({
+    getChatById,
+    getState: jest.fn().mockResolvedValue(WAState.CONNECTED),
+    info: { wid: { user: '628123' } },
+    pupPage: { evaluate: jest.fn().mockResolvedValue(true) },
+    pupBrowser: { process: () => ({ kill: jest.fn() }) },
+    destroy: jest.fn().mockResolvedValue(undefined),
+  });
+
+  const chat = { isGroup: false, name: 'Some Chat', fetchMessages: jest.fn().mockResolvedValue([]) };
+
+  it('recovers within retries once the page becomes usable again', async () => {
+    const getChatById = jest
+      .fn()
+      .mockRejectedValueOnce(new Error("Attempted to use detached Frame 'X'."))
+      .mockResolvedValueOnce(chat);
+    const adapter = newReadyAdapter(runtimeReadyClient(getChatById));
+    setCallbacks(adapter, { onDisconnected: jest.fn() });
+
+    await expect(adapter.getChatHistory('123@c.us', 50, false)).resolves.toEqual([]);
+    expect(getChatById).toHaveBeenCalledTimes(2);
+  });
+
+  it('force-kills the wedged browser and surfaces a disconnect once retries are exhausted', async () => {
+    const getChatById = jest.fn().mockRejectedValue(new Error("Attempted to use detached Frame 'X'."));
+    const client = runtimeReadyClient(getChatById);
+    const adapter = newReadyAdapter(client);
+    const onDisconnected = jest.fn();
+    setCallbacks(adapter, { onDisconnected });
+
+    await expect(adapter.getChatHistory('123@c.us', 50, false)).rejects.toThrow('detached Frame');
+
+    expect(client.destroy).toHaveBeenCalledTimes(1);
+    expect(onDisconnected).toHaveBeenCalledTimes(1);
+    expect(adapter.getStatus()).toBe(EngineStatus.DISCONNECTED);
+  });
+});
+
+describe('WhatsAppWebJsAdapter.sendTextMessage (self-heal after a detached-frame page reload)', () => {
+  const newReadyAdapter = (client: unknown): WhatsAppWebJsAdapter => {
+    const adapter = new WhatsAppWebJsAdapter({ sessionId: 's', sessionDataPath: './data/sessions', puppeteer: {} });
+    (adapter as unknown as { status: EngineStatus }).status = EngineStatus.READY;
+    (adapter as unknown as { client: unknown }).client = client;
+    return adapter;
+  };
+  const setCallbacks = (adapter: WhatsAppWebJsAdapter, callbacks: unknown): void => {
+    (adapter as unknown as { callbacks: unknown }).callbacks = callbacks;
+  };
+
+  // A `@lid` chatId short-circuits resolveSendId (only `@c.us` triggers the getNumberId lookup), so
+  // sendMessage is the only client method under test here — same isolation the getChats tests use.
+  const runtimeReadyClient = (sendMessage: jest.Mock) => ({
+    sendMessage,
+    getState: jest.fn().mockResolvedValue(WAState.CONNECTED),
+    info: { wid: { user: '628123' } },
+    pupPage: { evaluate: jest.fn().mockResolvedValue(true) },
+    pupBrowser: { process: () => ({ kill: jest.fn() }) },
+    destroy: jest.fn().mockResolvedValue(undefined),
+  });
+
+  const sentMsg = { id: { _serialized: 'true_1@lid_ABC' }, timestamp: 1700000000 };
+
+  it('recovers within retries once the page becomes usable again', async () => {
+    const sendMessage = jest
+      .fn()
+      .mockRejectedValueOnce(new Error("Attempted to use detached Frame 'X'."))
+      .mockResolvedValueOnce(sentMsg);
+    const adapter = newReadyAdapter(runtimeReadyClient(sendMessage));
+    setCallbacks(adapter, { onDisconnected: jest.fn() });
+
+    await expect(adapter.sendTextMessage('1@lid', 'hi')).resolves.toEqual({
+      id: 'true_1@lid_ABC',
+      timestamp: 1700000000,
+    });
+    expect(sendMessage).toHaveBeenCalledTimes(2);
+  });
+
+  it('force-kills the wedged browser and surfaces a disconnect once retries are exhausted', async () => {
+    const sendMessage = jest.fn().mockRejectedValue(new Error("Attempted to use detached Frame 'X'."));
+    const client = runtimeReadyClient(sendMessage);
+    const adapter = newReadyAdapter(client);
+    const onDisconnected = jest.fn();
+    setCallbacks(adapter, { onDisconnected });
+
+    await expect(adapter.sendTextMessage('1@lid', 'hi')).rejects.toThrow('detached Frame');
+
+    expect(client.destroy).toHaveBeenCalledTimes(1);
+    expect(onDisconnected).toHaveBeenCalledTimes(1);
+    expect(adapter.getStatus()).toBe(EngineStatus.DISCONNECTED);
+  });
+});
+
 describe('WhatsAppWebJsAdapter ready reconciliation (#251/#273)', () => {
   const newAdapter = (): WhatsAppWebJsAdapter =>
     new WhatsAppWebJsAdapter({ sessionId: 'sess-1', sessionDataPath: './data/sessions', puppeteer: {} });
