@@ -719,10 +719,43 @@ export class BaileysAdapter implements IWhatsAppEngine {
     return (await this.sock!.groupRevokeInvite(groupId)) ?? '';
   }
 
+  private profilePicCache = new Map<string, string>();
+
+  private profilePicPath(contactId: string): string {
+    const dir = this.config.profilesDir ?? path.join('data', 'profiles', this.config.sessionId);
+    const safeName = contactId.replace(/@/g, '_');
+    return path.join(dir, `${safeName}.jpg`);
+  }
+
   async getProfilePicture(contactId: string): Promise<string | null> {
+    // Check in-memory cache first
+    const cached = this.profilePicCache.get(contactId);
+    if (cached) return cached;
+
+    // Check on-disk cache
+    const filePath = this.profilePicPath(contactId);
+    if (fs.existsSync(filePath)) {
+      const key = `profiles/${this.config.sessionId}/${contactId.replace(/@/g, '_')}.jpg`;
+      this.profilePicCache.set(contactId, key);
+      return key;
+    }
+
+    // Fetch from WhatsApp
     this.ensureReady();
     try {
-      return (await this.sock!.profilePictureUrl(contactId, 'image')) ?? null;
+      const url = await this.sock!.profilePictureUrl(contactId, 'image');
+      if (!url) return null;
+
+      const response = await fetch(url);
+      if (!response.ok) return null;
+      const buffer = Buffer.from(await response.arrayBuffer());
+
+      await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+      await fs.promises.writeFile(filePath, buffer);
+
+      const key = `profiles/${this.config.sessionId}/${contactId.replace(/@/g, '_')}.jpg`;
+      this.profilePicCache.set(contactId, key);
+      return key;
     } catch (err) {
       this.logger.debug('profilePictureUrl failed; no picture or hidden', {
         contactId,

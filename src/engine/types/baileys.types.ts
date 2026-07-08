@@ -28,6 +28,8 @@ export interface BaileysAdapterConfig {
   messageStore?: BaileysMessageStore;
   /** Persisted, cross-session lid->phone resolution table. Backs lid resolution beyond the in-memory map. */
   lidMappingStore?: LidMappingStore;
+  /** Directory to cache profile pictures (default: ./data/profiles/<sessionId>). */
+  profilesDir?: string;
 }
 
 /**

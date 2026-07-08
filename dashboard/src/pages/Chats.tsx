@@ -38,6 +38,7 @@ import {
 import { useChatScrollPosition } from '../hooks/useChatScrollPosition';
 import MessageBody from '../components/chats/MessageBody';
 import MediaLightbox, { type LightboxItem } from '../components/chats/MediaLightbox';
+import ContactAvatarImg from '../components/chats/ContactAvatarImg';
 import './Chats.css';
 
 type MessageMedia = { mimetype: string; filename?: string; data?: string; omitted?: boolean; sizeBytes?: number };
@@ -746,6 +747,7 @@ export function Chats() {
                       onClick={() => setActiveChat(chat)}
                     >
                       <div className="chat-avatar">
+                        <ContactAvatarImg sessionId={selectedSessionId} contactId={chat.id} className="chat-avatar-img" />
                         {chat.isGroup ? <Users size={20} /> : <User size={20} />}
                       </div>
 
@@ -786,6 +788,7 @@ export function Chats() {
                     <ArrowLeft size={20} />
                   </button>
                   <div className="room-avatar">
+                    <ContactAvatarImg sessionId={selectedSessionId} contactId={activeChat.id} className="room-avatar-img" />
                     {activeChat.isGroup ? <Users size={20} /> : <User size={20} />}
                   </div>
                   <div className="room-contact-info">

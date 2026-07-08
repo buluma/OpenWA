@@ -379,6 +379,31 @@ async function requestText(endpoint: string): Promise<string> {
   return response.text();
 }
 
+/** Like {@link requestText} but for a binary response (e.g. an image) — used for endpoints an `<img
+ * src>` can't hit directly, since a plain `<img>` tag can't attach the `X-API-Key` header the API
+ * requires. Returns `null` on 204 (no content) or any non-ok response, so callers can fall back to a
+ * placeholder without having to catch. */
+async function requestBlob(endpoint: string): Promise<Blob | null> {
+  const apiKey = sessionStorage.getItem('openwa_api_key');
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    headers: { ...(apiKey ? { 'X-API-Key': apiKey } : {}) },
+  });
+
+  if (response.status === 401) {
+    sessionStorage.removeItem('openwa_api_key');
+    if (typeof window !== 'undefined') {
+      window.location.assign('/');
+      return new Promise<null>(() => {});
+    }
+  }
+
+  if (response.status === 204 || !response.ok) {
+    return null;
+  }
+
+  return response.blob();
+}
+
 // =============================================================================
 // Session API
 // =============================================================================
@@ -492,6 +517,8 @@ export interface CheckNumberResponse {
 export const contactApi = {
   checkNumber: (sessionId: string, number: string) =>
     request<CheckNumberResponse>(`/sessions/${sessionId}/contacts/check/${encodeURIComponent(number)}`),
+  getProfilePicture: (sessionId: string, contactId: string) =>
+    requestBlob(`/sessions/${sessionId}/contacts/${encodeURIComponent(contactId)}/profile-picture/image`),
 };
 
 // =============================================================================
