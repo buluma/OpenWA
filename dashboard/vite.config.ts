@@ -22,7 +22,11 @@ export default defineConfig({
   server: {
     port: 2886,
     proxy: {
-      '/api': {
+      // Regex, not a plain '/api' prefix string: a string key matches ANY path starting with
+      // "api", including the frontend route /api-keys — that hijacked the SPA shell request to
+      // the backend (which serves its own bundled dashboard with different asset hashes), 404ing
+      // the page's JS and rendering blank on a hard-refresh/deep-link to /api-keys.
+      '^/api/': {
         target: 'http://localhost:2785',
         changeOrigin: true,
         secure: false,
