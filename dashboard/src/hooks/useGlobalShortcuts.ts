@@ -11,9 +11,43 @@ interface ShortcutMap {
   onSettings?: () => void;
 }
 
+export type ShortcutAction = 'escape' | 'palette' | 'newItem' | 'settings' | null;
+
+interface ShortcutEvent {
+  key: string;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  target: { tagName: string; isContentEditable?: boolean };
+}
+
 /**
- * Registers global keyboard shortcuts scoped to the app. Shortcuts are suppressed when an input,
- * textarea, or select element is focused to avoid interfering with typing.
+ * Pure-function shortcut matcher — given a keyboard event shape, returns which action (if any)
+ * should fire. Escape is never suppressed regardless of input focus; all other shortcuts are
+ * suppressed when an input/textarea/select or contentEditable element is the target.
+ *
+ * Extracted from the hook for testability.
+ */
+export function matchShortcut(ev: ShortcutEvent): ShortcutAction {
+  const tag = ev.target.tagName;
+  const isInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+
+  // Escape — always works
+  if (ev.key === 'Escape') return 'escape';
+
+  // Other shortcuts suppressed when typing
+  if (isInput || ev.target.isContentEditable) return null;
+
+  const mod = ev.ctrlKey || ev.metaKey;
+
+  if (mod && ev.key === 'k') return 'palette';
+  if (mod && ev.key === 'n') return 'newItem';
+  if (mod && ev.key === ',') return 'settings';
+
+  return null;
+}
+
+/**
+ * Registers global keyboard shortcuts scoped to the app.
  *
  * @example
  * useGlobalShortcuts({
@@ -30,37 +64,33 @@ export function useGlobalShortcuts(
     if (!enabled) return;
 
     const handler = (e: KeyboardEvent) => {
-      // Suppress shortcuts when typing in inputs (except Escape which should always work)
-      const tag = (e.target as HTMLElement)?.tagName;
-      const isInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+      const action = matchShortcut({
+        key: e.key,
+        ctrlKey: e.ctrlKey,
+        metaKey: e.metaKey,
+        target: {
+          tagName: (e.target as HTMLElement)?.tagName ?? '',
+          isContentEditable: !!(e.target as HTMLElement)?.isContentEditable,
+        },
+      });
 
-      // Escape — always works, including inside inputs (closes modals/popovers)
-      if (e.key === 'Escape' && shortcuts.onEscape) {
-        e.preventDefault();
-        shortcuts.onEscape();
-        return;
-      }
-
-      // Don't handle other shortcuts when typing
-      if (isInput || (e.target as HTMLElement)?.isContentEditable) return;
-
-      // Respect container scoping
-      if (containerRef?.current) {
-        const target = e.target as Node;
-        if (!containerRef.current.contains(target)) return;
-      }
-
-      const mod = e.ctrlKey || e.metaKey;
-
-      if (mod && e.key === 'k') {
-        e.preventDefault();
-        shortcuts.onCommandPalette?.();
-      } else if (mod && e.key === 'n') {
-        e.preventDefault();
-        shortcuts.onNewItem?.();
-      } else if (mod && e.key === ',') {
-        e.preventDefault();
-        shortcuts.onSettings?.();
+      switch (action) {
+        case 'escape':
+          e.preventDefault();
+          shortcuts.onEscape?.();
+          break;
+        case 'palette':
+          e.preventDefault();
+          shortcuts.onCommandPalette?.();
+          break;
+        case 'newItem':
+          e.preventDefault();
+          shortcuts.onNewItem?.();
+          break;
+        case 'settings':
+          e.preventDefault();
+          shortcuts.onSettings?.();
+          break;
       }
     };
 
