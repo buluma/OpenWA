@@ -397,9 +397,17 @@
     "eventDescriptions": {
       "message.received": "כאשר מתקבלת הודעה",
       "message.sent": "כאשר נשלחת הודעה",
-      "session.connected": "כאשר Session מתחבר",
-      "session.disconnected": "כאשר Session מתנתק",
+      "message.ack": "כאשר סטטוס המסירה של הודעה משתנה",
+      "message.failed": "כאשר שליחת הודעה יוצאת נכשלת",
+      "message.revoked": "כאשר הודעה נמחקת עבור כולם",
+      "message.reaction": "כאשר תגובה נוספת, משתנה או מוסרת",
+      "session.status": "כאשר סטטוס ה-Session משתנה",
       "session.qr": "כאשר נוצר קוד QR",
+      "session.authenticated": "כאשר Session מתחבר (מספר טלפון זמין)",
+      "session.disconnected": "כאשר Session מתנתק",
+      "group.join": "כאשר מישהו מצטרף לקבוצה",
+      "group.leave": "כאשר מישהו עוזב קבוצה",
+      "group.update": "כאשר פרטי קבוצה מתעדכנים",
       "all": "כל האירועים"
     }
   },

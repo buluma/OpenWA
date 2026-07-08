@@ -400,9 +400,17 @@
     "eventDescriptions": {
       "message.received": "عند استقبال رسالة",
       "message.sent": "عند إرسال رسالة",
-      "session.connected": "عند اتصال جلسة",
-      "session.disconnected": "عند انقطاع جلسة",
+      "message.ack": "عند تغيّر حالة تسليم رسالة",
+      "message.failed": "عند فشل إرسال رسالة صادرة",
+      "message.revoked": "عند حذف رسالة للجميع",
+      "message.reaction": "عند إضافة تفاعل أو تغييره أو إزالته",
+      "session.status": "عند تغيّر حالة جلسة",
       "session.qr": "عند إنشاء رمز QR",
+      "session.authenticated": "عند تسجيل دخول جلسة (يتوفر رقم الهاتف)",
+      "session.disconnected": "عند انقطاع جلسة",
+      "group.join": "عند انضمام شخص إلى مجموعة",
+      "group.leave": "عند مغادرة شخص لمجموعة",
+      "group.update": "عند تحديث معلومات مجموعة",
       "all": "كل الأحداث"
     }
   },

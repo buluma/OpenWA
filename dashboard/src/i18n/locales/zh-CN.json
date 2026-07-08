@@ -396,9 +396,17 @@
     "eventDescriptions": {
       "message.received": "收到消息时",
       "message.sent": "发送消息时",
-      "session.connected": "会话连接时",
-      "session.disconnected": "会话断开时",
+      "message.ack": "消息送达状态变化时",
+      "message.failed": "消息发送失败时",
+      "message.revoked": "消息被撤回（对所有人删除）时",
+      "message.reaction": "添加、更改或移除表情回应时",
+      "session.status": "会话状态变化时",
       "session.qr": "生成 QR 码时",
+      "session.authenticated": "会话登录时（已获取电话号码）",
+      "session.disconnected": "会话断开时",
+      "group.join": "有人加入群组时",
+      "group.leave": "有人离开群组时",
+      "group.update": "群组信息更新时",
       "all": "所有事件"
     }
   },

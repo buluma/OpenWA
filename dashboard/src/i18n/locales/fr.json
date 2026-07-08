@@ -396,9 +396,17 @@
     "eventDescriptions": {
       "message.received": "Lorsqu'un message est reçu",
       "message.sent": "Lorsqu'un message est envoyé",
-      "session.connected": "Lorsqu'une session se connecte",
-      "session.disconnected": "Lorsqu'une session se déconnecte",
+      "message.ack": "Lorsque le statut de livraison d'un message change",
+      "message.failed": "Lorsque l'envoi d'un message échoue",
+      "message.revoked": "Lorsqu'un message est supprimé pour tout le monde",
+      "message.reaction": "Lorsqu'une réaction est ajoutée, modifiée ou supprimée",
+      "session.status": "Lorsque le statut d'une session change",
       "session.qr": "Lorsqu'un code QR est généré",
+      "session.authenticated": "Lorsqu'une session se connecte (numéro de téléphone disponible)",
+      "session.disconnected": "Lorsqu'une session se déconnecte",
+      "group.join": "Lorsque quelqu'un rejoint un groupe",
+      "group.leave": "Lorsque quelqu'un quitte un groupe",
+      "group.update": "Lorsque les informations d'un groupe sont mises à jour",
       "all": "Tous les événements"
     }
   },
