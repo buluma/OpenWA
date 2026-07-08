@@ -20,6 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Top-chats no longer shows raw digits for a dormant self-chat row.** WhatsApp can migrate a
+  self-chat's own JID from a phone-form (`@c.us`) to a lid-form mid-history; the lid-form chatId
+  keeps getting named via the existing per-message backfills (it keeps receiving traffic), but a
+  dormant phone-form chatId never receives another message and so was never backfilled — it showed
+  raw digits instead of a name. Session ready now backfills any such row with the session's own
+  pushName.
 - **Chat history and message sends now self-heal from a WhatsApp Web page reload (whatsapp-web.js).**
   `getChats` already detected a detached Puppeteer frame — the transient state left behind when
   WhatsApp Web reloads its page internally every few hours — and retried instead of failing. That
