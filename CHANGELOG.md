@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Chat history and message sends now self-heal from a WhatsApp Web page reload (whatsapp-web.js).**
+  `getChats` already detected a detached Puppeteer frame — the transient state left behind when
+  WhatsApp Web reloads its page internally every few hours — and retried instead of failing. That
+  retry logic was inline and getChats-only; `GET .../history` and every send endpoint (text, media,
+  location, contact, poll, sticker, reply, forward) had no such protection and returned a raw 500
+  during the same reload window. They now share the same self-heal: wait for the page, retry up to
+  3 times, and force a session restart if it never recovers.
 - **Top-chats `chatName` now actually populates.** The field shipped in a prior release (#558) but
   the engine adapters never attached it to a live message, so it stayed `NULL` for any chat that
   hadn't been resolved through the one narrow path that happened to set it — the stat query showed
