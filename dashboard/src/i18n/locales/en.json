@@ -882,5 +882,14 @@
       }
     },
     "hookPriority": "Priority"
+  },
+  "search": {
+    "placeholder": "Search messages…",
+    "results": "{{count}} results",
+    "empty": "No messages found.",
+    "error": "Search failed. Try again.",
+    "unavailable": "Search is not configured.",
+    "scope": { "current": "This session" },
+    "loading": "Searching…"
   }
 }

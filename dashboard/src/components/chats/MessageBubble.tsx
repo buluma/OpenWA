@@ -45,6 +45,7 @@ export function MessageBubble({
 
   const isRevoked = msg.type === 'revoked';
   const isMasked = msg.type === 'masked';
+  const isMediaMessage = msg.type !== 'text';
   const mediaInfo = msg.metadata?.media as MessageMedia | undefined;
   const reactions = msg.metadata?.reactions || {};
   const hasReactions = Object.keys(reactions).length > 0;
@@ -134,8 +135,8 @@ export function MessageBubble({
       <div className="message-bubble-container">
         <div
           className={`message-bubble ${isMe ? 'outgoing' : 'incoming'} ${msg.status} ${
-            isRevoked ? 'revoked-type' : ''
-          }`}
+            isMediaMessage ? 'media-type' : ''
+          } ${isRevoked ? 'revoked-type' : ''}`}
         >
           {msg.metadata?.quotedMessage && (
             <div className="message-quote-box">

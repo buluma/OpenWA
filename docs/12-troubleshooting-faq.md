@@ -333,9 +333,13 @@ specific failure (Chromium can't resolve its home directory on a read-only rootf
 immediately above this one for the fix. The bundled image already handles this; it only resurfaces on a
 custom container that drops the `XDG_CONFIG_HOME` / `XDG_CACHE_HOME` setup or the writable `/tmp` tmpfs.
 
+**Cause D — Debian 12 OS Chromium SIGTRAP in non-root Pods.**
+If `Code: null` happens on Kubernetes, and the host kernel logs or `dmesg` shows `Trace/breakpoint trap (core dumped)` with exit code 133, the underlying Debian 12 OS `chromium` package has crashed due to strict non-root or seccomp constraints (even with `--no-zygote` or `Unconfined` seccomp). 
+*Fix:* On amd64, do not use the `chromium` package from Debian's `apt` — it SIGTRAPs under strict non-root/seccomp. Instead, download Chrome for Testing via Puppeteer during the Docker build (`./node_modules/.bin/puppeteer browsers install 'chrome@146.0.7680.31'`) and point `PUPPETEER_EXECUTABLE_PATH` to it. (Chrome for Testing has no linux-arm64 build, so arm64 keeps Debian's `chromium`, which ships a native arm64 binary.) The official `Dockerfile` implements this mixed approach.
+
 **Quick triage:** run `docker stats openwa-api`, click **Start**, and watch which resource spikes toward its
 limit the instant before the failure — that tells you A vs B. If neither moves and you see the crashpad
-`--database` line, it's C.
+`--database` line, it's C. If running in K8s as non-root with the Debian `chromium` package, it is likely D.
 
 ### Issue: Frequent Disconnections
 
@@ -670,6 +674,8 @@ npm run migration:revert
 # The auth/audit DB has parallel :main variants, e.g.:
 npm run migration:run:main
 ```
+
+**PostgreSQL crash-loop on boot after upgrade** — if logs show `column "id" is of type uuid but default expression is of type character varying` or `foreign key constraint ... cannot be implemented ... incompatible types: character varying and uuid`, the deployment was previously bootstrapped with `DATABASE_SYNCHRONIZE=true` (native `uuid` columns vs the migrations' `varchar`). A guard migration converts the columns automatically on the next boot; for large `messages` tables, run the migration against the stopped app (`npm run migration:run`) during a maintenance window. See [14.5 / 14.9 — PostgreSQL crash-loop after upgrading a `DATABASE_SYNCHRONIZE=true` deployment](./14-migration-guide.md). `DATABASE_SYNCHRONIZE=true` is unsupported on PostgreSQL for production.
 
 ## 12.6 Docker Issues
 

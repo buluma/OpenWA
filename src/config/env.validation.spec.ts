@@ -112,6 +112,17 @@ describe('validateEnv', () => {
     expect(() => validateEnv({})).not.toThrow();
   });
 
+  it('rejects a SEARCH_PROVIDER typo instead of silently falling back to auto', () => {
+    // A bogus / typo value must fail fast at boot rather than silently selecting the default provider.
+    expect(() => validateEnv({ SEARCH_PROVIDER: 'bogus' })).toThrow(/SEARCH_PROVIDER/);
+    // The three documented values are accepted.
+    expect(() => validateEnv({ SEARCH_PROVIDER: 'auto' })).not.toThrow();
+    expect(() => validateEnv({ SEARCH_PROVIDER: 'builtin-fts' })).not.toThrow();
+    expect(() => validateEnv({ SEARCH_PROVIDER: 'none' })).not.toThrow();
+    // Unset is accepted (the configuration default of 'auto' applies downstream).
+    expect(() => validateEnv({})).not.toThrow();
+  });
+
   it('rejects a sqlite data DB path that collides with the internal main database file', () => {
     // The 'main' (auth/audit) and 'data' connections must be separate SQLite files; sharing one
     // file means two migration ledgers + synchronize policies on the same tables.
@@ -134,5 +145,58 @@ describe('validateEnv', () => {
         DATABASE_NAME: 'main.sqlite',
       }),
     ).not.toThrow();
+  });
+
+  it('rejects DATABASE_SYNCHRONIZE=true with DATABASE_TYPE=postgres (drops body_ts → /search 501)', () => {
+    // The Postgres data connection hardcodes migrationsRun=true; an opted-in synchronize=true makes
+    // TypeORM re-sync from entities on every boot, dropping the migration-created `body_ts` generated
+    // tsvector column (not declared on the Message entity) → /search 501 every restart. The breaking
+    // combo must fail fast at boot.
+    expect(() =>
+      validateEnv({
+        DATABASE_TYPE: 'postgres',
+        DATABASE_HOST: 'db',
+        DATABASE_USERNAME: 'u',
+        DATABASE_PASSWORD: 'p',
+        DATABASE_SYNCHRONIZE: 'true',
+      }),
+    ).toThrow(/DATABASE_SYNCHRONIZE.*postgres|migrations/);
+    // The production default (synchronize=false / unset) is fine on Postgres.
+    expect(() =>
+      validateEnv({
+        DATABASE_TYPE: 'postgres',
+        DATABASE_HOST: 'db',
+        DATABASE_USERNAME: 'u',
+        DATABASE_PASSWORD: 'p',
+        DATABASE_SYNCHRONIZE: 'false',
+      }),
+    ).not.toThrow();
+    expect(() =>
+      validateEnv({
+        DATABASE_TYPE: 'postgres',
+        DATABASE_HOST: 'db',
+        DATABASE_USERNAME: 'u',
+        DATABASE_PASSWORD: 'p',
+      }),
+    ).not.toThrow();
+    // SQLite is migration-managed only when synchronize is unset/false, but the combo is NOT breaking
+    // there (SQLite has no generated-column migration to drop), so it stays allowed.
+    expect(() => validateEnv({ DATABASE_TYPE: 'sqlite', DATABASE_SYNCHRONIZE: 'true' })).not.toThrow();
+  });
+
+  it('rejects a bare SQLite DATABASE_NAME (PG-name leak) that has no path separator or file extension', () => {
+    // Regression for #677: .env.example shipped `DATABASE_NAME=openwa` (a PostgreSQL db name).
+    // In a SQLite run that bare name becomes the file PATH → SQLite opens a file named 'openwa'
+    // under the read-only app rootfs → SQLITE_CANTOPEN boot-loop. The guard catches the leak at boot.
+    expect(() => validateEnv({ DATABASE_TYPE: 'sqlite', DATABASE_NAME: 'openwa' })).toThrow(/file path/);
+    expect(() => validateEnv({ DATABASE_TYPE: 'sqlite', DATABASE_NAME: 'prod_db' })).toThrow(/file path/);
+    // A bare name WITH a .sqlite/.db suffix is a legitimate file in the cwd — let it pass.
+    expect(() => validateEnv({ DATABASE_TYPE: 'sqlite', DATABASE_NAME: 'openwa.sqlite' })).not.toThrow();
+    expect(() => validateEnv({ DATABASE_TYPE: 'sqlite', DATABASE_NAME: 'cache.db' })).not.toThrow();
+    // A path (with a separator) is always honored, explicit host paths included.
+    expect(() => validateEnv({ DATABASE_TYPE: 'sqlite', DATABASE_NAME: '/app/data/openwa.sqlite' })).not.toThrow();
+    expect(() => validateEnv({ DATABASE_TYPE: 'sqlite', DATABASE_NAME: './data/openwa.sqlite' })).not.toThrow();
+    // Unset falls through to the default path (configuration.ts) — the boot-loop fix.
+    expect(() => validateEnv({ DATABASE_TYPE: 'sqlite' })).not.toThrow();
   });
 });

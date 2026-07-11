@@ -861,5 +861,14 @@
       }
     },
     "hookPriority": "Priority"
+  },
+  "search": {
+    "placeholder": "Pesquisar mensagens…",
+    "results": "{{count}} resultados",
+    "empty": "Nenhuma mensagem encontrada.",
+    "error": "Falha na pesquisa. Tente novamente.",
+    "unavailable": "A pesquisa não está configurada.",
+    "scope": { "current": "Esta sessão" },
+    "loading": "Pesquisando…"
   }
 }

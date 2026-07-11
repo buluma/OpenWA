@@ -43,6 +43,7 @@ import { EngineNotReadyError } from '../../common/errors/engine-not-ready.error'
 import { EngineNotSupportedError } from '../../common/errors/engine-not-supported.error';
 import { MessageNotFoundError } from '../../common/errors/message-not-found.error';
 import { ChannelNotFoundError } from '../../common/errors/channel-not-found.error';
+import { ChannelMediaNotSupportedError } from '../../common/errors/channel-media-not-supported.error';
 import { loadRemoteMediaBuffer } from '../../common/media/load-remote-media';
 import {
   GroupChat,
@@ -259,7 +260,12 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
   private readonly logger = createLogger('WhatsAppWebJsAdapter');
   // Bound concurrent inbound media downloads: downloadMedia() materialises the full base64 blob, so an
   // unbounded burst could stack many multi-MB allocations.
-  private readonly inboundLimiter = new ConcurrencyLimiter(inboundMediaConcurrency());
+  private readonly inboundLimiter = new ConcurrencyLimiter(
+    inboundMediaConcurrency(),
+    // Queue cap == active slots: beyond (active + queued) concurrent media messages, reject instead of
+    // parking, so a burst can't grow heap without bound (each parked closure holds the message).
+    inboundMediaConcurrency(),
+  );
 
   /**
    * Download inbound media safely. downloadMedia() can't be size-bounded at the source, so (1) pre-gate
@@ -320,8 +326,16 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
         () => undefined,
       );
     });
-    // The slot-holder runs in the background; never let it surface as an unhandled rejection.
-    void slotHeld.catch(() => undefined);
+    // The slot-holder runs in the background. It only rejects when the limiter's waiter queue is
+    // saturated (queue full) — in which case the download task never ran and boundedReady would hang.
+    // Resolve null so the caller unblocks and emits the message without media, matching the
+    // timeout/byte-cap no-media path. Never let it surface as an unhandled rejection either.
+    void slotHeld.catch(() => {
+      this.logger.warn('Inbound media limiter saturated; emitting message without media', {
+        msgId: msg.id._serialized,
+      });
+      resolveBounded(null);
+    });
     const media = await boundedReady;
     if (!media) return undefined;
     const capped = capInboundMedia({
@@ -1036,6 +1050,7 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
     extraOptions?: { sendAudioAsVoice?: boolean },
   ): Promise<MessageResult> {
     this.ensureReady();
+    this.ensureNotChannelRecipient(chatId);
 
     let messageMedia: MessageMedia;
 
@@ -1191,6 +1206,10 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
 
   async sendStickerMessage(chatId: string, media: MediaInput): Promise<MessageResult> {
     this.ensureReady();
+    // Sticker has its own send path (sendMediaAsSticker), not the sendMediaMessage funnel, but it
+    // hits the same channel crash: for a channel wwjs drops the sticker form and runs processMediaData
+    // with sendToChannel, which still ends at msg.avParams() (Utils.js:518). Guard it too (#673).
+    this.ensureNotChannelRecipient(chatId);
     let messageMedia: MessageMedia;
 
     if (typeof media.data === 'string') {
@@ -2079,6 +2098,15 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
       // instead of a 500 when an engine op is attempted while the session is
       // disconnected / reconnecting / still initializing (#100).
       throw new EngineNotReadyError();
+    }
+  }
+
+  private ensureNotChannelRecipient(chatId: string): void {
+    // whatsapp-web.js crashes building a channel media message (`msg.avParams is not a function`,
+    // upstream wwebjs#201823 — WA Web removed Msg.avParams). Text→channel works; media does not.
+    // Fail fast with a typed 501 instead of surfacing the raw TypeError as a 500 (#673).
+    if (isChannelJid(chatId)) {
+      throw new ChannelMediaNotSupportedError();
     }
   }
 }
