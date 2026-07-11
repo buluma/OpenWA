@@ -52,6 +52,15 @@
     "collapse": "Réduire",
     "logout": "Déconnexion",
     "refresh": "Actualiser",
+    "select": "Sélectionner",
+    "deselect": "Désélectionner",
+    "selectAll": "Tout sélectionner",
+    "deselectAll": "Tout désélectionner",
+    "connecting": "Connexion...",
+    "clear": "Effacer",
+    "navigate": "Naviguer",
+    "open": "Ouvrir",
+    "noResults": "Aucun résultat",
     "errorGeneric": "Une erreur est survenue",
     "unknownError": "Erreur inconnue",
     "retry": "Réessayer"
@@ -167,6 +176,7 @@
     "stats": {
       "activeSessions": "Sessions actives",
       "messagesToday": "Messages aujourd'hui",
+      "failedMessages": "Messages échoués",
       "webhooksConfigured": "Webhooks configurés",
       "apiCalls": "Appels API (24h)",
       "totalMessages": "Messages totaux"
@@ -321,6 +331,16 @@
       "step3": "<strong>3.</strong> Appuyez sur <strong>Connecter un appareil</strong>, puis sur <strong>Lier avec un numéro de téléphone</strong>",
       "step4": "<strong>4.</strong> Saisissez sur votre téléphone le code à 8 caractères affiché ci-dessus",
       "waitingConnection": "En attente de la liaison de votre téléphone…"
+    },
+    "bulk": {
+      "selected": "{{count}} sélectionnée(s)",
+      "stoppedTitle": "Sessions arrêtées",
+      "stoppedDesc": "{{count}} session(s) arrêtée(s)",
+      "startedTitle": "Sessions démarrées",
+      "startedDesc": "{{count}} session(s) démarrée(s)",
+      "deletedTitle": "Sessions supprimées",
+      "deletedDesc": "{{count}} session(s) supprimée(s)",
+      "deleteConfirm": "Supprimer {{count}} sessions ? Cette action est irréversible."
     }
   },
   "webhooks": {
@@ -571,6 +591,7 @@
       "messageId": "ID du message",
       "error": "Erreur"
     },
+    "history": "Envois récents ({{count}})",
     "sendFailed": "Échec de l'envoi du message",
     "notOnWhatsApp": "Ce numéro n'est pas enregistré sur WhatsApp"
   },

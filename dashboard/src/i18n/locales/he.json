@@ -52,6 +52,15 @@
     "collapse": "כיווץ",
     "logout": "יציאה",
     "refresh": "רענון",
+    "select": "בחר",
+    "deselect": "בטל בחירה",
+    "selectAll": "בחר הכול",
+    "deselectAll": "בטל בחירת הכול",
+    "connecting": "מתחבר...",
+    "clear": "נקה",
+    "navigate": "ניווט",
+    "open": "פתח",
+    "noResults": "אין תוצאות",
     "errorGeneric": "אירעה שגיאה",
     "unknownError": "שגיאה לא ידועה",
     "retry": "נסה שוב"
@@ -167,6 +176,7 @@
     "stats": {
       "activeSessions": "Sessions פעילים",
       "messagesToday": "הודעות היום",
+      "failedMessages": "הודעות שנכשלו",
       "webhooksConfigured": "Webhooks מוגדרים",
       "apiCalls": "קריאות API (24 שעות)",
       "totalMessages": "סה\"כ הודעות"
@@ -321,6 +331,16 @@
       "step3": "<strong>3.</strong> יש להקיש על <strong>קישור מכשיר</strong>, ולאחר מכן על <strong>קישור עם מספר טלפון במקום זאת</strong>",
       "step4": "<strong>4.</strong> יש להזין במכשיר את הקוד בן 8 התווים המוצג למעלה",
       "waitingConnection": "ממתין לקישור המכשיר שלך…"
+    },
+    "bulk": {
+      "selected": "{{count}} נבחרו",
+      "stoppedTitle": "Sessions הופסקו",
+      "stoppedDesc": "{{count}} Sessions הופסקו",
+      "startedTitle": "Sessions הופעלו",
+      "startedDesc": "{{count}} Sessions הופעלו",
+      "deletedTitle": "Sessions נמחקו",
+      "deletedDesc": "{{count}} Sessions נמחקו",
+      "deleteConfirm": "למחוק {{count}} Sessions? לא ניתן לבטל פעולה זו."
     }
   },
   "webhooks": {
@@ -572,6 +592,7 @@
       "messageId": "מזהה הודעה",
       "error": "שגיאה"
     },
+    "history": "נשלחו לאחרונה ({{count}})",
     "sendFailed": "שליחת ההודעה נכשלה",
     "notOnWhatsApp": "מספר זה אינו רשום בוואטסאפ"
   },

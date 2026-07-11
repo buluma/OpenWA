@@ -52,6 +52,15 @@
     "collapse": "접기",
     "logout": "로그아웃",
     "refresh": "새로고침",
+    "select": "선택",
+    "deselect": "선택 해제",
+    "selectAll": "전체 선택",
+    "deselectAll": "전체 선택 해제",
+    "connecting": "연결 중...",
+    "clear": "지우기",
+    "navigate": "이동",
+    "open": "열기",
+    "noResults": "결과 없음",
     "errorGeneric": "오류가 발생했습니다",
     "unknownError": "알 수 없는 오류",
     "retry": "다시 시도"
@@ -63,7 +72,20 @@
     "label": "테마: {{value}}",
     "appearance": "화면 모드",
     "mode": "모드",
-    "palette": "팔레트"
+    "palette": "팔레트",
+    "background": "배경",
+    "intensity": "강도",
+    "backgroundPatterns": {
+      "none": "끄기",
+      "dots": "점",
+      "synapse": "시냅스",
+      "rain": "비",
+      "constellations": "별자리",
+      "perlin-flow": "흐름",
+      "petals": "꽃잎",
+      "sparkles": "반짝임",
+      "embers": "잉걸불"
+    }
   },
   "nav": {
     "dashboard": "대시보드",
@@ -154,6 +176,7 @@
     "stats": {
       "activeSessions": "활성 세션",
       "messagesToday": "오늘의 메시지",
+      "failedMessages": "실패한 메시지",
       "webhooksConfigured": "설정된 웹훅",
       "apiCalls": "API 호출 (24시간)",
       "totalMessages": "전체 메시지"
@@ -308,6 +331,16 @@
       "step3": "<strong>3.</strong> <strong>기기 연결</strong>을 누른 다음 <strong>전화번호로 연결하기</strong>를 누르세요",
       "step4": "<strong>4.</strong> 위에 표시된 8자리 코드를 휴대폰에 입력하세요",
       "waitingConnection": "휴대폰이 연결되기를 기다리는 중…"
+    },
+    "bulk": {
+      "selected": "{{count}}개 선택됨",
+      "stoppedTitle": "세션 중지됨",
+      "stoppedDesc": "{{count}}개 세션을 중지했습니다",
+      "startedTitle": "세션 시작됨",
+      "startedDesc": "{{count}}개 세션을 시작했습니다",
+      "deletedTitle": "세션 삭제됨",
+      "deletedDesc": "{{count}}개 세션을 삭제했습니다",
+      "deleteConfirm": "{{count}}개 세션을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다."
     }
   },
   "webhooks": {
@@ -383,9 +416,18 @@
     "eventDescriptions": {
       "message.received": "메시지를 받았을 때",
       "message.sent": "메시지를 보냈을 때",
+      "message.ack": "메시지의 전송 상태가 변경되었을 때",
+      "message.failed": "발신 메시지 전송에 실패했을 때",
+      "message.revoked": "메시지가 모두에게 삭제되었을 때",
+      "message.reaction": "반응이 추가, 변경 또는 삭제되었을 때",
+      "session.status": "세션 상태가 변경되었을 때",
+      "session.qr": "QR 코드가 생성되었을 때",
+      "session.authenticated": "세션이 로그인했을 때(전화번호 확인됨)",
       "session.connected": "세션이 연결되었을 때",
       "session.disconnected": "세션 연결이 끊어졌을 때",
-      "session.qr": "QR 코드가 생성되었을 때",
+      "group.join": "누군가 그룹에 참여했을 때",
+      "group.leave": "누군가 그룹을 나갔을 때",
+      "group.update": "그룹 정보가 업데이트되었을 때",
       "all": "모든 이벤트"
     }
   },
@@ -550,6 +592,7 @@
       "messageId": "메시지 ID",
       "error": "오류"
     },
+    "history": "최근 전송 내역 ({{count}})",
     "sendFailed": "메시지를 보내지 못했습니다",
     "notOnWhatsApp": "이 번호는 WhatsApp에 등록되어 있지 않습니다"
   },
@@ -836,7 +879,8 @@
         "secretRegenerated": "시크릿이 재생성되었습니다",
         "actionFailed": "작업 실패"
       }
-    }
+    },
+    "hookPriority": "Priority"
   },
   "search": {
     "placeholder": "메시지 검색…",

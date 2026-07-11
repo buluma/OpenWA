@@ -50,6 +50,15 @@
     "collapse": "Recolher",
     "logout": "Sair",
     "refresh": "Atualizar",
+    "select": "Selecionar",
+    "deselect": "Desmarcar",
+    "selectAll": "Selecionar tudo",
+    "deselectAll": "Desmarcar tudo",
+    "connecting": "Conectando...",
+    "clear": "Limpar",
+    "navigate": "Navegar",
+    "open": "Abrir",
+    "noResults": "Nenhum resultado",
     "errorGeneric": "Ocorreu um erro",
     "unknownError": "Erro desconhecido",
     "showApiKey": "Mostrar chave API",
@@ -167,6 +176,7 @@
     "stats": {
       "activeSessions": "Sessões ativas",
       "messagesToday": "Mensagens hoje",
+      "failedMessages": "Mensagens com falha",
       "webhooksConfigured": "Webhooks configurados",
       "apiCalls": "Chamadas API (24h)",
       "totalMessages": "Total de mensagens"
@@ -321,6 +331,16 @@
       "step3": "<strong>3.</strong> Toque em <strong>Conectar dispositivo</strong> e depois em <strong>Vincular com número de telefone</strong>",
       "step4": "<strong>4.</strong> Digite no seu celular o código de 8 caracteres mostrado acima",
       "waitingConnection": "Aguardando a conexão do seu celular…"
+    },
+    "bulk": {
+      "selected": "{{count}} selecionada(s)",
+      "stoppedTitle": "Sessões paradas",
+      "stoppedDesc": "{{count}} sessão(ões) parada(s)",
+      "startedTitle": "Sessões iniciadas",
+      "startedDesc": "{{count}} sessão(ões) iniciada(s)",
+      "deletedTitle": "Sessões excluídas",
+      "deletedDesc": "{{count}} sessão(ões) excluída(s)",
+      "deleteConfirm": "Excluir {{count}} sessões? Esta ação não pode ser desfeita."
     }
   },
   "webhooks": {
@@ -526,6 +546,7 @@
       "messageId": "ID da mensagem",
       "error": "Erro"
     },
+    "history": "Envios recentes ({{count}})",
     "sendFailed": "Erro ao enviar a mensagem",
     "notOnWhatsApp": "Este número não está registrado no WhatsApp"
   },

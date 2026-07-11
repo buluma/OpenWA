@@ -52,6 +52,15 @@
     "collapse": "طي",
     "logout": "تسجيل الخروج",
     "refresh": "تحديث",
+    "select": "تحديد",
+    "deselect": "إلغاء التحديد",
+    "selectAll": "تحديد الكل",
+    "deselectAll": "إلغاء تحديد الكل",
+    "connecting": "جارٍ الاتصال...",
+    "clear": "مسح",
+    "navigate": "تنقل",
+    "open": "فتح",
+    "noResults": "لا توجد نتائج",
     "errorGeneric": "حدث خطأ",
     "unknownError": "خطأ غير معروف",
     "retry": "إعادة المحاولة"
@@ -167,6 +176,7 @@
     "stats": {
       "activeSessions": "الجلسات النشطة",
       "messagesToday": "رسائل اليوم",
+      "failedMessages": "الرسائل الفاشلة",
       "webhooksConfigured": "الويب هوك المُهيّأة",
       "apiCalls": "استدعاءات API (24 ساعة)",
       "totalMessages": "إجمالي الرسائل"
@@ -321,6 +331,16 @@
       "step3": "<strong>3.</strong> اضغط على <strong>ربط جهاز</strong>، ثم اضغط على <strong>الربط عبر رقم الهاتف بدلاً من ذلك</strong>",
       "step4": "<strong>4.</strong> أدخل الرمز المكوّن من 8 أحرف المعروض أعلاه في هاتفك",
       "waitingConnection": "في انتظار ربط هاتفك…"
+    },
+    "bulk": {
+      "selected": "تم تحديد {{count}}",
+      "stoppedTitle": "تم إيقاف الجلسات",
+      "stoppedDesc": "تم إيقاف {{count}} جلسة",
+      "startedTitle": "تم تشغيل الجلسات",
+      "startedDesc": "تم تشغيل {{count}} جلسة",
+      "deletedTitle": "تم حذف الجلسات",
+      "deletedDesc": "تم حذف {{count}} جلسة",
+      "deleteConfirm": "هل تريد حذف {{count}} جلسة؟ لا يمكن التراجع عن هذا الإجراء."
     }
   },
   "webhooks": {
@@ -575,6 +595,7 @@
       "messageId": "معرّف الرسالة",
       "error": "خطأ"
     },
+    "history": "المرسل مؤخرًا ({{count}})",
     "sendFailed": "فشل إرسال الرسالة",
     "notOnWhatsApp": "هذا الرقم غير مسجَّل على واتساب"
   },

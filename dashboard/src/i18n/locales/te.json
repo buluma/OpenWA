@@ -52,6 +52,15 @@
     "collapse": "కుదించు",
     "logout": "లాగౌట్",
     "refresh": "రిఫ్రెష్",
+    "select": "ఎంచుకోండి",
+    "deselect": "ఎంపిక తీసివేయండి",
+    "selectAll": "అన్నీ ఎంచుకోండి",
+    "deselectAll": "అన్నీ ఎంపిక తీసివేయండి",
+    "connecting": "కనెక్ట్ అవుతోంది...",
+    "clear": "క్లియర్",
+    "navigate": "నావిగేట్",
+    "open": "తెరవండి",
+    "noResults": "ఫలితాలు లేవు",
     "errorGeneric": "ఒక లోపం సంభవించింది",
     "unknownError": "తెలియని లోపం",
     "retry": "మళ్లీ ప్రయత్నించండి"
@@ -167,6 +176,7 @@
     "stats": {
       "activeSessions": "యాక్టివ్ సెషన్స్",
       "messagesToday": "ఈరోజు సందేశాలు",
+      "failedMessages": "విఫలమైన సందేశాలు",
       "webhooksConfigured": "కాన్ఫిగర్ చేసిన వెబ్‌హుక్స్",
       "apiCalls": "API కాల్స్ (24 గంటలు)",
       "totalMessages": "మొత్తం సందేశాలు"
@@ -321,6 +331,16 @@
       "step3": "<strong>3.</strong> <strong>Link a Device</strong> పై నొక్కి, ఆపై <strong>Link with phone number instead</strong> పై నొక్కండి",
       "step4": "<strong>4.</strong> పైన చూపిన 8-అక్షరాల కోడ్‌ను మీ ఫోన్‌లో నమోదు చేయండి",
       "waitingConnection": "మీ ఫోన్ లింక్ అయ్యే వరకు వేచి ఉంది…"
+    },
+    "bulk": {
+      "selected": "{{count}} ఎంచుకున్నారు",
+      "stoppedTitle": "సెషన్స్ ఆపివేయబడ్డాయి",
+      "stoppedDesc": "{{count}} సెషన్(లు) ఆపివేయబడ్డాయి",
+      "startedTitle": "సెషన్స్ ప్రారంభించబడ్డాయి",
+      "startedDesc": "{{count}} సెషన్(లు) ప్రారంభించబడ్డాయి",
+      "deletedTitle": "సెషన్స్ తొలగించబడ్డాయి",
+      "deletedDesc": "{{count}} సెషన్(లు) తొలగించబడ్డాయి",
+      "deleteConfirm": "{{count}} సెషన్‌లను తొలగించాలా? దీన్ని రద్దు చేయడం సాధ్యం కాదు."
     }
   },
   "webhooks": {
@@ -571,6 +591,7 @@
       "messageId": "సందేశం ID",
       "error": "లోపం"
     },
+    "history": "ఇటీవలి పంపినవి ({{count}})",
     "sendFailed": "సందేశాన్ని పంపడం విఫలమైంది",
     "notOnWhatsApp": "ఈ నంబర్ WhatsAppలో నమోదు కాలేదు"
   },

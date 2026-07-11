@@ -52,6 +52,15 @@
     "collapse": "收起",
     "logout": "退出登录",
     "refresh": "刷新",
+    "select": "选择",
+    "deselect": "取消选择",
+    "selectAll": "全选",
+    "deselectAll": "取消全选",
+    "connecting": "正在连接...",
+    "clear": "清除",
+    "navigate": "导航",
+    "open": "打开",
+    "noResults": "无结果",
     "errorGeneric": "发生错误",
     "unknownError": "未知错误",
     "retry": "重试"
@@ -167,6 +176,7 @@
     "stats": {
       "activeSessions": "活跃会话",
       "messagesToday": "今日消息",
+      "failedMessages": "失败消息",
       "webhooksConfigured": "已配置 Webhook",
       "apiCalls": "API 调用（24 小时）",
       "totalMessages": "消息总数"
@@ -321,6 +331,16 @@
       "step3": "<strong>3.</strong> 点击<strong>关联设备</strong>，然后点击<strong>改用电话号码关联</strong>",
       "step4": "<strong>4.</strong> 在手机上输入上方显示的 8 位字符配对码",
       "waitingConnection": "正在等待您的手机完成关联…"
+    },
+    "bulk": {
+      "selected": "已选择 {{count}} 个",
+      "stoppedTitle": "会话已停止",
+      "stoppedDesc": "已停止 {{count}} 个会话",
+      "startedTitle": "会话已启动",
+      "startedDesc": "已启动 {{count}} 个会话",
+      "deletedTitle": "会话已删除",
+      "deletedDesc": "已删除 {{count}} 个会话",
+      "deleteConfirm": "删除 {{count}} 个会话？此操作无法撤销。"
     }
   },
   "webhooks": {
@@ -571,6 +591,7 @@
       "messageId": "消息 ID",
       "error": "错误"
     },
+    "history": "最近发送（{{count}}）",
     "sendFailed": "发送消息失败",
     "notOnWhatsApp": "该号码未在 WhatsApp 注册"
   },
