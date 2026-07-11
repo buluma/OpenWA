@@ -352,7 +352,7 @@ export function Sessions() {
     setBulkActionLoading(false);
     clearSelection();
     toast.success(t('sessions.bulk.stoppedTitle'), t('sessions.bulk.stoppedDesc', { count: selectedIds.size }));
-  }, [selectedIds, sessions, toast, t]);
+  }, [selectedIds, sessions, toast, t, clearSelection]);
 
   const handleBulkStart = useCallback(async () => {
     setBulkActionLoading(true);
@@ -372,7 +372,7 @@ export function Sessions() {
     if (started > 0) {
       toast.success(t('sessions.bulk.startedTitle'), t('sessions.bulk.startedDesc', { count: started }));
     }
-  }, [selectedIds, sessions, toast, t]);
+  }, [selectedIds, sessions, toast, t, clearSelection]);
 
   const handleBulkDelete = useCallback(async () => {
     setBulkActionLoading(true);
@@ -388,7 +388,7 @@ export function Sessions() {
     clearSelection();
     toast.success(t('sessions.bulk.deletedTitle'), t('sessions.bulk.deletedDesc', { count: deleted }));
     void fetchSessions();
-  }, [selectedIds, fetchSessions, toast, t]);
+  }, [selectedIds, fetchSessions, toast, t, clearSelection]);
 
   const handleBulkDeleteConfirm = useCallback(() => {
     // Just set the first selected for confirmation (simplified UX)
