@@ -74,6 +74,9 @@ const allNavItems = [
 
 const themeIcons = { light: Sun, dark: Moon, system: Monitor };
 
+// Stable, never-mutated events object so useWebSocket's internal useEffect doesn't re-fire every render.
+const EMPTY_WS_EVENTS: Record<string, never> = {};
+
 export function Layout({ onLogout, userRole }: LayoutProps) {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
@@ -85,23 +88,7 @@ export function Layout({ onLogout, userRole }: LayoutProps) {
   const activePalette = paletteOptions.find(option => option.value === palette) ?? paletteOptions[0];
 
   // WebSocket connection status (no event handlers needed — just the indicator)
-  // Use a stable ref so the useWebSocket hook's internal useEffect doesn't re-fire every render.
-  const wsEventsRef = useRef<Record<string, never>>({});
-  const { isConnected: isWsConnected, connectionFailed: isWsFailed } = useWebSocket(wsEventsRef.current);
-
-  // Global keyboard shortcuts
-  const handleEscape = useCallback(() => {
-    // Close any open menus first
-    setIsLanguageMenuOpen(false);
-    setIsAppearanceMenuOpen(false);
-    setShowCommandPalette(false);
-  }, []);
-
-  useGlobalShortcuts({
-    onEscape: handleEscape,
-    onCommandPalette: () => setShowCommandPalette(prev => !prev),
-    onNewItem: () => navigate('/sessions'),
-  });
+  const { isConnected: isWsConnected, connectionFailed: isWsFailed } = useWebSocket(EMPTY_WS_EVENTS);
 
   const navItems = allNavItems.filter(item => !item.adminOnly || userRole === 'admin');
 
@@ -115,6 +102,20 @@ export function Layout({ onLogout, userRole }: LayoutProps) {
   const [isAppearanceMenuOpen, setIsAppearanceMenuOpen] = useState(false);
   const languageMenuRef = useRef<HTMLDivElement>(null);
   const appearanceMenuRef = useRef<HTMLDivElement>(null);
+
+  // Global keyboard shortcuts
+  const handleEscape = useCallback(() => {
+    // Close any open menus first
+    setIsLanguageMenuOpen(false);
+    setIsAppearanceMenuOpen(false);
+    setShowCommandPalette(false);
+  }, [setIsLanguageMenuOpen, setIsAppearanceMenuOpen, setShowCommandPalette]);
+
+  useGlobalShortcuts({
+    onEscape: handleEscape,
+    onCommandPalette: () => setShowCommandPalette(prev => !prev),
+    onNewItem: () => navigate('/sessions'),
+  });
 
   useEffect(() => {
     const handleResize = () => {

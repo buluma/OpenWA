@@ -374,19 +374,6 @@ export function Sessions() {
     }
   }, [selectedIds, sessions, toast, t]);
 
-  const handleBulkDeleteConfirm = useCallback(() => {
-    // Just set the first selected for confirmation (simplified UX)
-    const firstSelected = Array.from(selectedIds)[0];
-    if (selectedIds.size === 1 && firstSelected) {
-      setDeleteConfirmId(firstSelected);
-    } else if (selectedIds.size > 1) {
-      // Multi-delete: confirm once, then delete all
-      if (window.confirm(t('sessions.bulk.deleteConfirm', { count: selectedIds.size }))) {
-        handleBulkDelete();
-      }
-    }
-  }, [selectedIds]);
-
   const handleBulkDelete = useCallback(async () => {
     setBulkActionLoading(true);
     let deleted = 0;
@@ -402,6 +389,19 @@ export function Sessions() {
     toast.success(t('sessions.bulk.deletedTitle'), t('sessions.bulk.deletedDesc', { count: deleted }));
     void fetchSessions();
   }, [selectedIds, fetchSessions, toast, t]);
+
+  const handleBulkDeleteConfirm = useCallback(() => {
+    // Just set the first selected for confirmation (simplified UX)
+    const firstSelected = Array.from(selectedIds)[0];
+    if (selectedIds.size === 1 && firstSelected) {
+      setDeleteConfirmId(firstSelected);
+    } else if (selectedIds.size > 1) {
+      // Multi-delete: confirm once, then delete all
+      if (window.confirm(t('sessions.bulk.deleteConfirm', { count: selectedIds.size }))) {
+        handleBulkDelete();
+      }
+    }
+  }, [selectedIds, handleBulkDelete, t]);
 
   if (loading) {
     return (
