@@ -1920,6 +1920,7 @@ describe('BaileysAdapter profile + block', () => {
     const readyWithProfilesDir = async (): Promise<BaileysAdapter> => {
       const adapter = new BaileysAdapter({
         sessionId: 'sess-1',
+        dbSessionId: 'db-uuid-1',
         authDir: './data/baileys',
         messageStore: fakeStore,
         profilesDir,
