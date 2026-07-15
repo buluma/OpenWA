@@ -267,7 +267,7 @@ flowchart TB
 1. **Technical**
    - WhatsApp Web protocol can change at any time
    - Puppeteer requires significant resources (~300-500MB RAM per session) when using the default whatsapp-web.js engine; the baileys engine is browser-free and has a much lower footprint
-   - WhatsApp rate limiting
+   - WhatsApp rate limiting.
 
 2. **Legal**
    - Unofficial API, not affiliated with Meta
