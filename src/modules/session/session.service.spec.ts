@@ -3,7 +3,7 @@ import { getRepositoryToken, getDataSourceToken } from '@nestjs/typeorm';
 import { Repository, DataSource, In, IsNull } from 'typeorm';
 import { NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { SessionService, ACK_RECONCILE_DELAY_MS } from './session.service';
+import { SessionService, ACK_RECONCILE_DELAY_MS, EngineInitTimeoutError } from './session.service';
 import { Session, SessionStatus } from './entities/session.entity';
 import { Message, MessageDirection, MessageStatus } from '../message/entities/message.entity';
 import { MessageBatch } from '../message/entities/message-batch.entity';
@@ -653,6 +653,102 @@ describe('SessionService', () => {
 
       expect(intern().engines.has('sess-uuid-1')).toBe(false);
       expect(mockEngine.forceDestroy).toHaveBeenCalled();
+    });
+  });
+
+  // ── initializeEngine init-timeout race (#667 follow-up) ───────────
+  describe('initializeEngine init-timeout race', () => {
+    type Intern = {
+      engines: Map<string, unknown>;
+      sessionErrors: Map<string, string>;
+    };
+    const intern = () => service as unknown as Intern;
+
+    it('a REAL engine.initialize() rejection still becomes FAILED with the reason recorded (the timeout-scoped catch must NOT downgrade it to DISCONNECTED)', async () => {
+      // Regression guard for #600/#631 diagnosability: a real init failure (e.g. Chromium can't launch)
+      // must stay FAILED+reason. The catch inside initializeEngine handles ONLY the timeout case and
+      // rethrows everything else untouched, so start()'s catch still owns the FAILED+reason path.
+      (repository.findOne as jest.Mock).mockResolvedValue(createMockSession());
+      (repository.update as jest.Mock).mockResolvedValue({ affected: 1 });
+      mockEngine.initialize.mockRejectedValueOnce(new Error('chromium launch failed'));
+
+      await expect(service.start('sess-uuid-1')).rejects.toThrow('chromium launch failed');
+
+      expect(intern().engines.has('sess-uuid-1')).toBe(false); // evicted, not left wedged
+      expect(mockEngine.forceDestroy).toHaveBeenCalled();
+      expect(repository.update).toHaveBeenCalledWith('sess-uuid-1', { status: SessionStatus.FAILED });
+      expect(intern().sessionErrors.get('sess-uuid-1')).toBe('chromium launch failed');
+    });
+
+    it('a wedged engine.initialize() (never settles) is force-destroyed, evicted, marked DISCONNECTED, and rethrows after 60s', async () => {
+      (repository.findOne as jest.Mock).mockResolvedValue(createMockSession());
+      (repository.update as jest.Mock).mockResolvedValue({ affected: 1 });
+      // The hang: initialize() neither resolves nor rejects.
+      mockEngine.initialize.mockReturnValue(new Promise<void>(() => undefined));
+
+      jest.useFakeTimers();
+      // A start()-path timeout must NOT auto-schedule a reconnect (reconnect is executeReconnect's
+      // domain; a manual start that times out leaves the session DISCONNECTED for the operator).
+      const scheduleReconnect = jest.spyOn(
+        service as unknown as { scheduleReconnect: (...a: unknown[]) => void },
+        'scheduleReconnect',
+      );
+      try {
+        const pending = service.start('sess-uuid-1');
+        // Attach the handler synchronously so the timeout rejection is never briefly unhandled
+        // during the fake-timer tick (which would otherwise fail the test for the wrong reason).
+        let caught: unknown;
+        const settled = pending.catch((e: unknown) => {
+          caught = e;
+        });
+        // Advance past the 60s init deadline (the async variant flushes microtasks so the
+        // teardown + status writes settle within the same advance).
+        await jest.advanceTimersByTimeAsync(60_000);
+        await settled;
+
+        expect(caught).toBeInstanceOf(EngineInitTimeoutError);
+        expect(String(caught)).toMatch(/timed out after 60000ms/i);
+        expect(mockEngine.forceDestroy).toHaveBeenCalled(); // wedged browser reaped
+        expect(intern().engines.has('sess-uuid-1')).toBe(false); // slot freed for retry
+        expect(repository.update).toHaveBeenCalledWith('sess-uuid-1', { status: SessionStatus.DISCONNECTED });
+        expect(scheduleReconnect).not.toHaveBeenCalled(); // no auto-reconnect from a start() timeout
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('extends the init deadline past 60s when WWEBJS_AUTH_TIMEOUT_MS is raised, so a legitimate slow auth wait is not cut short', async () => {
+      // #353 slow-boot escape hatch: operators raise the auth wait because WA-Web's inject poll
+      // legitimately takes longer on WSL2/low-resource containers. The init race must extend with
+      // it, not SIGKILL the init at the 60s floor mid-auth.
+      (repository.findOne as jest.Mock).mockResolvedValue(createMockSession());
+      (repository.update as jest.Mock).mockResolvedValue({ affected: 1 });
+      mockEngine.initialize.mockReturnValue(new Promise<void>(() => undefined));
+      process.env.WWEBJS_AUTH_TIMEOUT_MS = '120000'; // → derived deadline max(60s, 120s+30s) = 150s
+
+      jest.useFakeTimers();
+      try {
+        const pending = service.start('sess-uuid-1');
+        let caught: unknown;
+        const settled = pending.catch((e: unknown) => {
+          caught = e;
+        });
+
+        // At 60s the old hardcoded deadline would have fired and killed a healthy slow init; the
+        // derived one must still be waiting.
+        await jest.advanceTimersByTimeAsync(60_000);
+        expect(caught).toBeUndefined();
+        expect(mockEngine.forceDestroy).not.toHaveBeenCalled(); // NOT cut short mid-auth
+
+        // Past the derived 150s deadline the race finally fires.
+        await jest.advanceTimersByTimeAsync(90_000); // 60s + 90s = 150s
+        await settled;
+        expect(caught).toBeInstanceOf(EngineInitTimeoutError);
+        expect(String(caught)).toMatch(/timed out after 150000ms/i);
+      } finally {
+        jest.useRealTimers();
+        delete process.env.WWEBJS_AUTH_TIMEOUT_MS;
+      }
     });
   });
 

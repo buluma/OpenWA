@@ -39,6 +39,7 @@ import { loadRemoteMediaBuffer } from '../../common/media/load-remote-media';
 import { EngineNotReadyError } from '../../common/errors/engine-not-ready.error';
 import { EngineNotSupportedError } from '../../common/errors/engine-not-supported.error';
 import { MessageNotFoundError } from '../../common/errors/message-not-found.error';
+import { ChannelNotFoundError } from '../../common/errors/channel-not-found.error';
 import { createLogger } from '../../common/services/logger.service';
 import { BaileysAdapterConfig, BaileysLogger } from '../types/baileys.types';
 import { BaileysSessionStore } from './baileys-session-store';
@@ -52,7 +53,7 @@ import {
   isMediaDownloadEnabled,
   withInboundDownloadTimeout,
 } from './inbound-media-cap';
-import { ConcurrencyLimiter } from './concurrency-limiter';
+import { ConcurrencyLimiter } from '../../common/utils/concurrency-limiter';
 
 /** Linked-device identity shown in WhatsApp (Settings → Linked Devices). */
 const BAILEYS_BROWSER: [string, string, string] = ['OpenWA', 'Chrome', '120.0.0'];
@@ -505,11 +506,12 @@ export class BaileysAdapter implements IWhatsAppEngine {
 
   async sendTextMessage(chatId: string, text: string, mentions?: string[]): Promise<MessageResult> {
     this.ensureReady();
-    const options = this.withEphemeral(chatId);
+    const jid = await this.toDeliverableJid(chatId);
+    const options = this.withEphemeral(jid);
     const content = { text, ...this.withMentions(mentions) };
     const sent = options
-      ? await this.sock!.sendMessage(chatId, content, options)
-      : await this.sock!.sendMessage(chatId, content);
+      ? await this.sock!.sendMessage(jid, content, options)
+      : await this.sock!.sendMessage(jid, content);
     if (sent) {
       void this.config.messageStore?.put(this.config.dbSessionId, sent).catch(err =>
         this.logger.warn('Failed to persist sent message to store', {
@@ -543,7 +545,7 @@ export class BaileysAdapter implements IWhatsAppEngine {
     this.ensureReady();
     const presence = state === 'typing' ? 'composing' : state === 'recording' ? 'recording' : 'paused';
     try {
-      await this.sock!.sendPresenceUpdate(presence, chatId);
+      await this.sock!.sendPresenceUpdate(presence, await this.toDeliverableJid(chatId));
     } catch (error) {
       // Presence is best-effort — a failure here must never surface as a 500 on the direct typing
       // endpoint or MCP tool (mirrors the whatsapp-web.js adapter; #583 R4). A migrated contact can
@@ -650,12 +652,23 @@ export class BaileysAdapter implements IWhatsAppEngine {
 
   async deleteMessage(chatId: string, messageId: string, forEveryone = true): Promise<void> {
     this.ensureReady();
-    if (!forEveryone) {
-      // Baileys only supports revoke-for-everyone via sendMessage; delete-for-me is not implemented.
-      throw new EngineNotSupportedError('deleteMessage (delete-for-me)');
-    }
     const target = await this.requireStored(messageId);
-    await this.sock!.sendMessage(chatId, { delete: target.key });
+    if (forEveryone) {
+      await this.sock!.sendMessage(chatId, { delete: target.key });
+      return;
+    }
+    // Delete-for-me (revoke on this device only): Baileys exposes it as a chat modification, not a
+    // sendMessage. The stored message timestamp (epoch seconds) is part of the payload.
+    await this.sock!.chatModify(
+      {
+        deleteForMe: {
+          deleteMedia: true,
+          key: target.key,
+          timestamp: this.toUnixSeconds(target.messageTimestamp),
+        },
+      },
+      chatId,
+    );
   }
 
   // ----- Groups -----
@@ -888,26 +901,73 @@ export class BaileysAdapter implements IWhatsAppEngine {
   getChatLabels(_chatId: string): Promise<Label[]> {
     return this.unsupported('getChatLabels');
   }
-  addLabelToChat(_chatId: string, _labelId: string): Promise<void> {
-    return this.unsupported('addLabelToChat');
+  // WhatsApp Business only — Baileys rejects these on personal accounts. The label must already
+  // exist (use getLabels on an engine that lists them); addChatLabel/removeChatLabel associate it
+  // with a chat, they do not create/edit the label definition.
+  async addLabelToChat(chatId: string, labelId: string): Promise<void> {
+    this.ensureReady();
+    await this.sock!.addChatLabel(chatId, labelId);
   }
-  removeLabelFromChat(_chatId: string, _labelId: string): Promise<void> {
-    return this.unsupported('removeLabelFromChat');
+  async removeLabelFromChat(chatId: string, labelId: string): Promise<void> {
+    this.ensureReady();
+    await this.sock!.removeChatLabel(chatId, labelId);
   }
   getSubscribedChannels(): Promise<Channel[]> {
     return this.unsupported('getSubscribedChannels');
   }
-  getChannelById(_channelId: string): Promise<Channel | null> {
-    return this.unsupported('getChannelById');
+  async getChannelById(channelId: string): Promise<Channel | null> {
+    this.ensureReady();
+    // newsletterMetadata resolves ANY channel by jid (richer than the wwjs subscribed-list lookup).
+    const meta = await this.sock!.newsletterMetadata('jid', channelId);
+    return meta ? this.toChannel(meta) : null;
   }
-  subscribeToChannel(_inviteCode: string): Promise<Channel> {
-    return this.unsupported('subscribeToChannel');
+
+  async subscribeToChannel(inviteCode: string): Promise<Channel> {
+    this.ensureReady();
+    const meta = await this.sock!.newsletterMetadata('invite', inviteCode);
+    if (!meta) {
+      throw new ChannelNotFoundError(inviteCode);
+    }
+    await this.sock!.newsletterFollow(meta.id);
+    return this.toChannel(meta);
   }
-  unsubscribeFromChannel(_channelId: string): Promise<void> {
-    return this.unsupported('unsubscribeFromChannel');
+
+  async unsubscribeFromChannel(channelId: string): Promise<void> {
+    this.ensureReady();
+    await this.sock!.newsletterUnfollow(channelId);
   }
+
+  // getChannelMessages is not wired: Baileys' newsletterFetchMessages returns the RAW query
+  // BinaryNode with no library parser, so mapping it to ChannelMessage[] needs a verified
+  // BinaryNode walk (or a live spike) that can't be validated without a WhatsApp session. Kept as a
+  // documented adapter-gap in the engine capability matrix rather than shipped as an unverified walk.
   getChannelMessages(_channelId: string, _limit?: number): Promise<ChannelMessage[]> {
     return this.unsupported('getChannelMessages');
+  }
+
+  /** Map a Baileys NewsletterMetadata to the neutral Channel shape (optionals only when present). */
+  private toChannel(meta: {
+    id: string;
+    name: string;
+    description?: string;
+    invite?: string;
+    creation_time?: number;
+    subscribers?: number;
+    picture?: { url?: string };
+    verification?: string;
+    thread_metadata?: { creation_time?: number };
+  }): Channel {
+    const createdAt = meta.creation_time ?? meta.thread_metadata?.creation_time;
+    return {
+      id: meta.id,
+      name: meta.name,
+      ...(meta.description ? { description: meta.description } : {}),
+      ...(meta.invite ? { inviteCode: meta.invite } : {}),
+      ...(meta.subscribers !== undefined ? { subscriberCount: meta.subscribers } : {}),
+      ...(meta.picture?.url ? { picture: meta.picture.url } : {}),
+      ...(meta.verification ? { verified: meta.verification === 'VERIFIED' } : {}),
+      ...(createdAt !== undefined ? { createdAt } : {}),
+    };
   }
   getContactStatuses(): Promise<Status[]> {
     return this.unsupported('getContactStatuses');
@@ -1499,6 +1559,26 @@ export class BaileysAdapter implements IWhatsAppEngine {
    * `undefined` keeps the send a 2-arg call, identical to before. React/delete/status do not route
    * through here, so they are excluded by construction (reactions are NOT excluded by Baileys' guard).
    */
+  /**
+   * Resolve a 1:1 phone-dialect chat id (`@c.us` / `@s.whatsapp.net`) to the contact's `@lid` when the
+   * mapping is known. WhatsApp rejects PN-addressed 1:1 sends to LID-migrated accounts with ack error
+   * 463 ("missing tctoken" — the privacy token is stored and honored under the LID), while the very
+   * same send addressed to the LID delivers (verified live). Groups, broadcast, already-lid and
+   * unmapped ids pass through unchanged, reproducing the previous behavior.
+   */
+  private async toDeliverableJid(chatId: string): Promise<string> {
+    if (!chatId.endsWith('@c.us') && !chatId.endsWith('@s.whatsapp.net')) {
+      return chatId;
+    }
+    try {
+      const pn = this.sessionStore.toEngineJid(chatId);
+      const lid = await this.sock?.signalRepository?.lidMapping?.getLIDForPN(pn);
+      return lid ?? chatId;
+    } catch {
+      return chatId; // resolution is best-effort; an unmapped contact sends to the PN as before
+    }
+  }
+
   private withEphemeral(
     chatId: string,
     options?: MiscMessageGenerationOptions,
@@ -1516,10 +1596,11 @@ export class BaileysAdapter implements IWhatsAppEngine {
     content: AnyMessageContent,
     options?: MiscMessageGenerationOptions,
   ): Promise<MessageResult> {
-    const merged = this.withEphemeral(chatId, options);
+    const jid = await this.toDeliverableJid(chatId);
+    const merged = this.withEphemeral(jid, options);
     const sent = merged
-      ? await this.sock!.sendMessage(chatId, content, merged)
-      : await this.sock!.sendMessage(chatId, content);
+      ? await this.sock!.sendMessage(jid, content, merged)
+      : await this.sock!.sendMessage(jid, content);
     if (sent) {
       void this.config.messageStore?.put(this.config.dbSessionId, sent).catch(err =>
         this.logger.warn('Failed to persist sent message to store', {
