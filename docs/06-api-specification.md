@@ -1449,7 +1449,7 @@ Cancel a running (pending/processing) bulk batch. No request body.
 
 ### 6.4.3 Contacts
 
-Contact endpoints are scoped under a session: `/api/sessions/:sessionId/contacts`. All read routes require a valid API key; the block/unblock writes require an `OPERATOR` key. Every route returns `400 "Session is not started"` when the target session exists but is not in a started/ready state, and `404` when the session itself does not exist. Responses are the raw handler payload (no envelope).
+Contact endpoints are scoped under a session: `/api/sessions/:sessionId/contacts`. All read routes require a valid API key; the block/unblock/upsert/remove writes require an `OPERATOR` key. Every route returns `400 "Session is not started"` when the target session exists but is not in a started/ready state, and `404` when the session itself does not exist. Responses are the raw handler payload (no envelope). `upsertContact`/`removeContact` write to the account's own WhatsApp contact book (distinct from the read routes above, which read the engine's synced contact list) and are only supported on the Baileys engine today — whatsapp-web.js has no library primitive for either, so both return `501` there.
 
 The `Contact` object returned by the list and get-by-id routes has this shape:
 
@@ -1659,6 +1659,61 @@ No `@HttpCode` override is present, so this DELETE returns the NestJS default `2
 ```
 
 **Errors:** `400` session is not started · `401` missing/invalid API key · `403` key role below OPERATOR · `404` session not found
+
+#### PUT /api/sessions/:sessionId/contacts/:contactId
+
+Add or edit a contact in the account's own WhatsApp contact book. Baileys only — whatsapp-web.js has no library primitive for this (`501`).
+
+**Auth:** API key (OPERATOR)
+
+**Path parameters**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| sessionId | string | Session ID. |
+| contactId | string | Contact id / JID, e.g. `6281234567890@c.us`. |
+
+**Request body** — `UpsertContactDto`
+
+| Field | Type | Required | Constraints | Description |
+| --- | --- | --- | --- | --- |
+| fullName | string | No | max 256 chars | Full display name to save for this contact |
+| firstName | string | No | max 256 chars | First name to save for this contact |
+
+```json
+{ "fullName": "Ada Lovelace", "firstName": "Ada" }
+```
+
+**Response** `200`
+
+```json
+{ "success": true, "message": "Contact saved" }
+```
+
+**Errors:** `400` session is not started · `401` missing/invalid API key · `403` key role below OPERATOR · `404` session not found · `501` not supported by the active engine (whatsapp-web.js)
+
+#### DELETE /api/sessions/:sessionId/contacts/:contactId
+
+Remove a contact from the account's own WhatsApp contact book. Baileys only — whatsapp-web.js has no library primitive for this (`501`).
+
+**Auth:** API key (OPERATOR)
+
+**Path parameters**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| sessionId | string | Session ID. |
+| contactId | string | Contact id / JID, e.g. `6281234567890@c.us`. |
+
+No request body.
+
+**Response** `200`
+
+```json
+{ "success": true, "message": "Contact removed" }
+```
+
+**Errors:** `400` session is not started · `401` missing/invalid API key · `403` key role below OPERATOR · `404` session not found · `501` not supported by the active engine (whatsapp-web.js)
 
 ### 6.4.4 Groups
 
@@ -4562,6 +4617,70 @@ contract surface for a future plugin provider whose `search()` throws `ServiceUn
 > Scoping is authoritative: a scoped API key's `allowedSessions` is applied server-side and cannot be
 > overridden via the query — there is no `sessionIds` query parameter, and `SearchService` overwrites
 > any session scope at the provider boundary.
+
+### 6.4.13 Quick Replies
+
+Quick replies (WhatsApp Business canned responses) are scoped under a session: `/api/sessions/:sessionId/quick-replies`. Both routes require an `OPERATOR` key. Supported on Baileys only — whatsapp-web.js exposes no quick-reply primitive at all (Business-app-only feature), so both routes return `501` on that engine.
+
+Baileys has no separate quick-reply id: the action's own `timestamp` field IS its identity. `id` in the DTO/response below IS that timestamp.
+
+#### POST /api/sessions/:sessionId/quick-replies
+
+Create a new quick reply, or edit an existing one.
+
+**Auth:** API key (OPERATOR)
+
+**Path parameters**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| sessionId | string | Session ID. |
+
+**Request body** — `UpsertQuickReplyDto`
+
+| Field | Type | Required | Constraints | Description |
+| --- | --- | --- | --- | --- |
+| id | string | No | — | Existing quick reply id to edit. Omit to create a new one. |
+| shortcut | string | Yes | max 64 chars | Shortcut text that triggers this quick reply (e.g. `/hi`) |
+| message | string | Yes | max 4096 chars | The message body sent when the shortcut is used |
+| keywords | string[] | No | — | Optional keywords that also trigger this quick reply |
+
+```json
+{ "shortcut": "/hi", "message": "Hello there!", "keywords": ["greet"] }
+```
+
+**Response** `200`
+
+Note the `200` status (via `@HttpCode`), not `201`.
+
+```json
+{ "success": true, "id": "1752345678901" }
+```
+
+**Errors:** `400` session is not started / unknown body field · `401` missing/invalid API key · `403` key role below OPERATOR · `404` session not found · `501` not supported by the active engine (whatsapp-web.js)
+
+#### DELETE /api/sessions/:sessionId/quick-replies/:id
+
+Remove a quick reply.
+
+**Auth:** API key (OPERATOR)
+
+**Path parameters**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| sessionId | string | Session ID. |
+| id | string | Quick reply id (returned when it was created). |
+
+No request body.
+
+**Response** `200`
+
+```json
+{ "success": true, "message": "Quick reply removed" }
+```
+
+**Errors:** `400` session is not started · `401` missing/invalid API key · `403` key role below OPERATOR · `404` session not found · `501` not supported by the active engine (whatsapp-web.js)
 
 ## 6.5 Real-time API (WebSocket)
 

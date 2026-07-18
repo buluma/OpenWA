@@ -236,6 +236,15 @@ export interface Label {
   hexColor: string;
 }
 
+// Quick Replies (WhatsApp Business canned responses)
+export interface QuickReply {
+  /** Engine-native identifier for this quick reply — pass back to edit or remove it. */
+  id: string;
+  shortcut: string;
+  message: string;
+  keywords?: string[];
+}
+
 // Phase 3: Status/Stories
 export interface Status {
   id: string;
@@ -525,6 +534,10 @@ export interface IWhatsAppEngine {
   getProfilePicture(contactId: string): Promise<string | null>;
   blockContact(contactId: string): Promise<void>;
   unblockContact(contactId: string): Promise<void>;
+  /** Add a contact to the account's own WhatsApp contact book, or edit an existing entry's display name. */
+  upsertContact(contactId: string, details: { fullName?: string; firstName?: string }): Promise<void>;
+  /** Remove a contact from the account's own WhatsApp contact book. */
+  removeContact(contactId: string): Promise<void>;
 
   // Labels (Phase 3) - WhatsApp Business only
   getLabels(): Promise<Label[]>;
@@ -532,6 +545,13 @@ export interface IWhatsAppEngine {
   getChatLabels(chatId: string): Promise<Label[]>;
   addLabelToChat(chatId: string, labelId: string): Promise<void>;
   removeLabelFromChat(chatId: string, labelId: string): Promise<void>;
+
+  // Quick Replies - WhatsApp Business only
+  /** Create a new quick reply (omit `id`) or edit an existing one (pass its `id`). Returns the resulting id. */
+  upsertQuickReply(quickReply: { id?: string; shortcut: string; message: string; keywords?: string[] }): Promise<{
+    id: string;
+  }>;
+  removeQuickReply(id: string): Promise<void>;
 
   // Channels/Newsletter (Phase 3)
   getSubscribedChannels(): Promise<Channel[]>;

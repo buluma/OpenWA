@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `POST /api/sessions/{id}/messages/star` — star or unstar a message on both engines (`starMessage` on
   `IWhatsAppEngine`). WhatsApp-side state only; not reflected in the local database.
+- `PUT`/`DELETE /api/sessions/{id}/contacts/{contactId}` — add/edit or remove a contact in the account's
+  own WhatsApp contact book, and `POST`/`DELETE /api/sessions/{id}/quick-replies` — create/edit or
+  remove a WhatsApp Business quick reply (canned response). Baileys only; whatsapp-web.js has no library
+  primitive for either and returns `501`.
 
 ### Fixed
 

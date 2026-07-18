@@ -78,4 +78,12 @@ export class ContactService {
   unblockContact(sessionId: string, contactId: string) {
     return this.getEngine(sessionId).unblockContact(contactId);
   }
+
+  upsertContact(sessionId: string, contactId: string, details: { fullName?: string; firstName?: string }) {
+    return this.getEngine(sessionId).upsertContact(contactId, details);
+  }
+
+  removeContact(sessionId: string, contactId: string) {
+    return this.getEngine(sessionId).removeContact(contactId);
+  }
 }

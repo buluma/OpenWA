@@ -159,8 +159,20 @@ export const ENGINE_CAPABILITY_MATRIX: Record<string, MethodCapability> = {
   postVideoStatus: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
   promoteParticipants: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
   reactToMessage: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
+  removeContact: {
+    wwjs: { status: 'not-available', rootCause: 'library-limitation' },
+    baileys: { status: 'supported' },
+    evidence:
+      'wwjs index.d.ts has no removeContact/addOrEditContact symbol on Client (0 hits); baileys Socket/chats.d.ts:67 removeContact(jid)',
+  },
   removeLabelFromChat: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
   removeParticipants: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
+  removeQuickReply: {
+    wwjs: { status: 'not-available', rootCause: 'library-limitation' },
+    baileys: { status: 'supported' },
+    evidence:
+      'wwjs index.d.ts has no quick-reply symbols on Client at all (Business-app-only feature); baileys Socket/chats.d.ts:79 removeQuickReply(timestamp)',
+  },
   replyToMessage: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
   requestPairingCode: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
   resolveContactPhone: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
@@ -194,4 +206,16 @@ export const ENGINE_CAPABILITY_MATRIX: Record<string, MethodCapability> = {
   subscribeToChannel: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
   unblockContact: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
   unsubscribeFromChannel: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
+  upsertContact: {
+    wwjs: { status: 'not-available', rootCause: 'library-limitation' },
+    baileys: { status: 'supported' },
+    evidence:
+      'wwjs index.d.ts has no removeContact/addOrEditContact symbol on Client (0 hits); baileys Socket/chats.d.ts:66 addOrEditContact(jid, IContactAction)',
+  },
+  upsertQuickReply: {
+    wwjs: { status: 'not-available', rootCause: 'library-limitation' },
+    baileys: { status: 'supported' },
+    evidence:
+      'wwjs index.d.ts has no quick-reply symbols on Client at all (Business-app-only feature); baileys Socket/chats.d.ts:78 addOrEditQuickReply(QuickReplyAction)',
+  },
 };

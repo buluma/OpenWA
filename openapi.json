@@ -2786,6 +2786,86 @@
         "tags": [
           "contacts"
         ]
+      },
+      "put": {
+        "operationId": "ContactController_upsertContact",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": true,
+            "in": "path",
+            "description": "Session ID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "contactId",
+            "required": true,
+            "in": "path",
+            "description": "Contact ID (e.g., 628xxx@c.us)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertContactDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Contact saved"
+          },
+          "501": {
+            "description": "Not supported by the active engine"
+          }
+        },
+        "summary": "Add or edit a contact in the account's own WhatsApp contact book",
+        "tags": [
+          "contacts"
+        ]
+      },
+      "delete": {
+        "operationId": "ContactController_removeContact",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": true,
+            "in": "path",
+            "description": "Session ID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "contactId",
+            "required": true,
+            "in": "path",
+            "description": "Contact ID (e.g., 628xxx@c.us)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Contact removed"
+          },
+          "501": {
+            "description": "Not supported by the active engine"
+          }
+        },
+        "summary": "Remove a contact from the account's own WhatsApp contact book",
+        "tags": [
+          "contacts"
+        ]
       }
     },
     "/api/sessions/{sessionId}/contacts/check/{number}": {
@@ -3632,6 +3712,82 @@
         "summary": "Remove a label from a chat",
         "tags": [
           "labels"
+        ]
+      }
+    },
+    "/api/sessions/{sessionId}/quick-replies": {
+      "post": {
+        "description": "Pass `id` to edit an existing quick reply; omit it to create a new one. Returns the resulting id.",
+        "operationId": "QuickReplyController_upsert",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": true,
+            "in": "path",
+            "description": "Session ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertQuickReplyDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Quick reply saved"
+          },
+          "501": {
+            "description": "Not supported by the active engine"
+          }
+        },
+        "summary": "Create or edit a WhatsApp Business quick reply (canned response)",
+        "tags": [
+          "quick-replies"
+        ]
+      }
+    },
+    "/api/sessions/{sessionId}/quick-replies/{id}": {
+      "delete": {
+        "operationId": "QuickReplyController_remove",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": true,
+            "in": "path",
+            "description": "Session ID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Quick reply id (returned when it was created)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Quick reply removed"
+          },
+          "501": {
+            "description": "Not supported by the active engine"
+          }
+        },
+        "summary": "Remove a quick reply",
+        "tags": [
+          "quick-replies"
         ]
       }
     },
@@ -6968,6 +7124,19 @@
           }
         }
       },
+      "UpsertContactDto": {
+        "type": "object",
+        "properties": {
+          "fullName": {
+            "type": "string",
+            "description": "Full display name to save for this contact"
+          },
+          "firstName": {
+            "type": "string",
+            "description": "First name to save for this contact"
+          }
+        }
+      },
       "CreateGroupDto": {
         "type": "object",
         "properties": {
@@ -7028,6 +7197,36 @@
         },
         "required": [
           "description"
+        ]
+      },
+      "UpsertQuickReplyDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Existing quick reply id to edit. Omit to create a new one."
+          },
+          "shortcut": {
+            "type": "string",
+            "description": "Shortcut text that triggers this quick reply (e.g. \"/hi\")",
+            "maxLength": 64
+          },
+          "message": {
+            "type": "string",
+            "description": "The message body sent when the shortcut is used",
+            "maxLength": 4096
+          },
+          "keywords": {
+            "description": "Optional keywords that also trigger this quick reply",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "shortcut",
+          "message"
         ]
       },
       "SendTextStatusDto": {

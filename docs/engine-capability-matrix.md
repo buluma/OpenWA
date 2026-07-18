@@ -22,7 +22,7 @@ The `rootCause`/`evidence` fields are hand-curated from source traces of the ins
 
 ## Unwired-capability inventory
 
-14 of the 72 interface methods are `not-available` on at least one adapter (19 not-available adapter-cells total). Grouped by cluster below. Each entry shows: status today → rootCause → evidence → wiring note.
+18 of the 76 interface methods are `not-available` on at least one adapter (23 not-available adapter-cells total). Grouped by cluster below. Each entry shows: status today → rootCause → evidence → wiring note.
 
 ### Channels / Newsletter
 
@@ -77,6 +77,19 @@ The `rootCause`/`evidence` fields are hand-curated from source traces of the ins
 
 > **Wired.** ✅ `getContactStatus` / `getContactStatuses` on whatsapp-web.js — `getBroadcastById(id)` / `getBroadcasts()` flattened to `Status[]` (contact via `broadcast.getContact()`; type from `MessageTypes`; 24h TTL). **Caveat:** `Status.type` is the `text|image|video` union — audio/other story types collapse to `text`.
 - **`getContactStatus` / `getContactStatuses` (baileys, library-limitation).** `fetchStatus` (`Socket/chats.d.ts:42` via `USyncStatusProtocol`) returns the *about/profile text* line (`{status, setAt}`), **not** 24h stories. No story-read getter exists; story broadcasts surface only as `status@broadcast` messages via `messages.upsert` / `messaging-history.set` events. Would require OpenWA to accumulate `status@broadcast` messages itself and project them into `Status[]`.
+
+### Contact book / Quick replies (WhatsApp Business)
+
+| Method | baileys | wwjs |
+|---|---|---|
+| `upsertContact` | supported | not-available — **library-limitation** |
+| `removeContact` | supported | not-available — **library-limitation** |
+| `upsertQuickReply` | supported | not-available — **library-limitation** |
+| `removeQuickReply` | supported | not-available — **library-limitation** |
+
+> **Wired.** ✅ All four on Baileys: `upsertContact`/`removeContact` → `sock.addOrEditContact(jid, IContactAction)` / `sock.removeContact(jid)` (`Socket/chats.d.ts:66-67`); `upsertQuickReply`/`removeQuickReply` → `sock.addOrEditQuickReply(QuickReplyAction)` / `sock.removeQuickReply(timestamp)` (`chats.d.ts:78-79`). Baileys has no separate quick-reply id — the action's own `timestamp` field IS its identity; the adapter generates one (`Date.now().toString()`) when the caller omits `id`, and reuses the caller-supplied `id` as that timestamp to edit in place.
+- **`upsertContact` / `removeContact` (wwjs, library-limitation).** No contact-book write symbol anywhere in `index.d.ts` (0 hits for `addOrEditContact`/`removeContact`/`saveContact`). `whatsapp-web.js` only reads the device's synced contacts; there is no way to write to the account's own address book through this library.
+- **`upsertQuickReply` / `removeQuickReply` (wwjs, library-limitation).** Quick replies are a WhatsApp *Business* app feature; `whatsapp-web.js`'s `Client` exposes no quick-reply symbol at all (0 hits). No workaround exists short of a raw-proto/app-state relay.
 
 ### Messaging misc — delete / history / reactions
 
@@ -137,16 +150,18 @@ These are honestly out of reach of a clean adapter wiring because the installed 
 - `getContactStatus` / `getContactStatuses` — `fetchStatus` returns the *about* text, not 24h stories; stories only surface as `status@broadcast` messages. Needs an OpenWA-side story accumulator.
 - `sendCatalog` — no catalog-share message type in `AnyMessageContent` (only single `{product}`).
 
-**wwjs (5 cells):**
+**wwjs (9 cells):**
 - `getCatalog` / `getProducts` / `getProduct` — no catalog API at all (`index.d.ts` 0 hits; `Product` is inbound-only).
 - `sendProduct` — no outbound product content type.
 - `sendCatalog` — no outbound catalog content type.
+- `upsertContact` / `removeContact` — no contact-book write symbol at all (`index.d.ts` 0 hits).
+- `upsertQuickReply` / `removeQuickReply` — Business-app-only feature; no quick-reply symbol on `Client` at all.
 
 ---
 
 ## Snapshot summary
 
-- **72** interface methods, **144** adapter-cells (72 × 2 engines).
-- **125** supported cells; **19** not-available cells across **14** methods.
-- Of the 19 not-available cells: **5 adapter-gaps** (fixable) + **14 library-limitations** + **0 uncertain**.
+- **76** interface methods, **152** adapter-cells (76 × 2 engines).
+- **129** supported cells; **23** not-available cells across **18** methods.
+- Of the 23 not-available cells: **5 adapter-gaps** (fixable) + **18 library-limitations** + **0 uncertain**.
 - **3 phantom-support rows** (wwjs `getCatalog`/`getProducts`/`getProduct` — they stub without throwing, so the drift gate's throw-heuristic cannot see them; the matrix is the source of truth for these).

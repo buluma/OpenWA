@@ -1,7 +1,8 @@
-import { Controller, Get, Post, Delete, Param, Query, HttpCode, HttpStatus, Res } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Param, Query, Body, HttpCode, HttpStatus, Res } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { ContactService } from './contact.service';
+import { UpsertContactDto } from './dto/upsert-contact.dto';
 import { RequireRole } from '../auth/decorators/auth.decorators';
 import { ApiKeyRole } from '../auth/entities/api-key.entity';
 
@@ -151,5 +152,40 @@ export class ContactController {
   async unblockContact(@Param('sessionId') sessionId: string, @Param('contactId') contactId: string) {
     await this.contactService.unblockContact(sessionId, contactId);
     return { success: true, message: 'Contact unblocked' };
+  }
+
+  @Put(':contactId')
+  @RequireRole(ApiKeyRole.OPERATOR)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Add or edit a contact in the account's own WhatsApp contact book" })
+  @ApiParam({ name: 'sessionId', description: 'Session ID' })
+  @ApiParam({ name: 'contactId', description: 'Contact ID (e.g., 628xxx@c.us)' })
+  @ApiResponse({
+    status: 200,
+    description: 'Contact saved',
+  })
+  @ApiResponse({ status: 501, description: 'Not supported by the active engine' })
+  async upsertContact(
+    @Param('sessionId') sessionId: string,
+    @Param('contactId') contactId: string,
+    @Body() dto: UpsertContactDto,
+  ) {
+    await this.contactService.upsertContact(sessionId, contactId, dto);
+    return { success: true, message: 'Contact saved' };
+  }
+
+  @Delete(':contactId')
+  @RequireRole(ApiKeyRole.OPERATOR)
+  @ApiOperation({ summary: "Remove a contact from the account's own WhatsApp contact book" })
+  @ApiParam({ name: 'sessionId', description: 'Session ID' })
+  @ApiParam({ name: 'contactId', description: 'Contact ID (e.g., 628xxx@c.us)' })
+  @ApiResponse({
+    status: 200,
+    description: 'Contact removed',
+  })
+  @ApiResponse({ status: 501, description: 'Not supported by the active engine' })
+  async removeContact(@Param('sessionId') sessionId: string, @Param('contactId') contactId: string) {
+    await this.contactService.removeContact(sessionId, contactId);
+    return { success: true, message: 'Contact removed' };
   }
 }

@@ -44,6 +44,10 @@ class FakeSock extends EventEmitter {
   public newsletterMetadata = jest.fn();
   public newsletterFollow = jest.fn().mockResolvedValue(undefined);
   public newsletterUnfollow = jest.fn().mockResolvedValue(undefined);
+  public addOrEditContact = jest.fn().mockResolvedValue(undefined);
+  public removeContact = jest.fn().mockResolvedValue(undefined);
+  public addOrEditQuickReply = jest.fn().mockResolvedValue(undefined);
+  public removeQuickReply = jest.fn().mockResolvedValue(undefined);
   public signalRepository: { lidMapping: { getLIDForPN: jest.Mock } } | undefined;
   fire(event: string, arg: unknown): void {
     this.emitter.emit(event, arg);
@@ -2314,6 +2318,51 @@ describe('BaileysAdapter profile + block', () => {
     expect(fakeSock.updateBlockStatus).toHaveBeenCalledWith('628111@s.whatsapp.net', 'block');
     await adapter.unblockContact('628111@s.whatsapp.net');
     expect(fakeSock.updateBlockStatus).toHaveBeenCalledWith('628111@s.whatsapp.net', 'unblock');
+  });
+
+  it('upsertContact wires 1:1 to sock.addOrEditContact(jid, contact)', async () => {
+    const adapter = await ready();
+    await adapter.upsertContact('628111@s.whatsapp.net', { fullName: 'Ada Lovelace', firstName: 'Ada' });
+    expect(fakeSock.addOrEditContact).toHaveBeenCalledWith('628111@s.whatsapp.net', {
+      fullName: 'Ada Lovelace',
+      firstName: 'Ada',
+    });
+  });
+
+  it('removeContact wires 1:1 to sock.removeContact(jid)', async () => {
+    const adapter = await ready();
+    await adapter.removeContact('628111@s.whatsapp.net');
+    expect(fakeSock.removeContact).toHaveBeenCalledWith('628111@s.whatsapp.net');
+  });
+
+  it('upsertQuickReply creates a new quick reply with a generated id when none is given', async () => {
+    const adapter = await ready();
+    const result = await adapter.upsertQuickReply({ shortcut: '/hi', message: 'Hello there!', keywords: ['greet'] });
+    expect(fakeSock.addOrEditQuickReply).toHaveBeenCalledWith({
+      shortcut: '/hi',
+      message: 'Hello there!',
+      keywords: ['greet'],
+      timestamp: result.id,
+    });
+    expect(result.id).toBeTruthy();
+  });
+
+  it('upsertQuickReply edits an existing quick reply when an id is given', async () => {
+    const adapter = await ready();
+    const result = await adapter.upsertQuickReply({ id: 'TS123', shortcut: '/hi', message: 'Updated!' });
+    expect(fakeSock.addOrEditQuickReply).toHaveBeenCalledWith({
+      shortcut: '/hi',
+      message: 'Updated!',
+      keywords: undefined,
+      timestamp: 'TS123',
+    });
+    expect(result.id).toBe('TS123');
+  });
+
+  it('removeQuickReply wires 1:1 to sock.removeQuickReply(id)', async () => {
+    const adapter = await ready();
+    await adapter.removeQuickReply('TS123');
+    expect(fakeSock.removeQuickReply).toHaveBeenCalledWith('TS123');
   });
 });
 

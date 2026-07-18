@@ -832,6 +832,40 @@ export class BaileysAdapter implements IWhatsAppEngine {
     await this.sock!.updateBlockStatus(contactId, 'unblock');
   }
 
+  async upsertContact(contactId: string, details: { fullName?: string; firstName?: string }): Promise<void> {
+    this.ensureReady();
+    await this.sock!.addOrEditContact(contactId, details);
+  }
+
+  async removeContact(contactId: string): Promise<void> {
+    this.ensureReady();
+    await this.sock!.removeContact(contactId);
+  }
+
+  async upsertQuickReply(quickReply: {
+    id?: string;
+    shortcut: string;
+    message: string;
+    keywords?: string[];
+  }): Promise<{ id: string }> {
+    this.ensureReady();
+    // Baileys has no separate "quick reply id" — the action's own `timestamp` field IS its identity.
+    // Passing the same timestamp as an existing entry edits it in place; a fresh one creates a new entry.
+    const timestamp = quickReply.id ?? Date.now().toString();
+    await this.sock!.addOrEditQuickReply({
+      shortcut: quickReply.shortcut,
+      message: quickReply.message,
+      keywords: quickReply.keywords,
+      timestamp,
+    });
+    return { id: timestamp };
+  }
+
+  async removeQuickReply(id: string): Promise<void> {
+    this.ensureReady();
+    await this.sock!.removeQuickReply(id);
+  }
+
   // ----- Contacts & chats -----
 
   // eslint-disable-next-line @typescript-eslint/require-await

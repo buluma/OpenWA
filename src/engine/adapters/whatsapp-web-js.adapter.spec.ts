@@ -467,6 +467,33 @@ describe('WhatsAppWebJsAdapter.starMessage', () => {
   });
 });
 
+describe('WhatsAppWebJsAdapter quick replies + contact book (no library primitive)', () => {
+  const readyAdapter = (): WhatsAppWebJsAdapter => {
+    const adapter = new WhatsAppWebJsAdapter({ sessionId: 's', sessionDataPath: './data/sessions', puppeteer: {} });
+    (adapter as unknown as { status: EngineStatus }).status = EngineStatus.READY;
+    (adapter as unknown as { client: unknown }).client = {};
+    return adapter;
+  };
+
+  it('upsertContact throws EngineNotSupportedError', async () => {
+    await expect(readyAdapter().upsertContact('628111@c.us', { fullName: 'Ada' })).rejects.toThrow(/not supported/i);
+  });
+
+  it('removeContact throws EngineNotSupportedError', async () => {
+    await expect(readyAdapter().removeContact('628111@c.us')).rejects.toThrow(/not supported/i);
+  });
+
+  it('upsertQuickReply throws EngineNotSupportedError', async () => {
+    await expect(readyAdapter().upsertQuickReply({ shortcut: '/hi', message: 'Hello!' })).rejects.toThrow(
+      /not supported/i,
+    );
+  });
+
+  it('removeQuickReply throws EngineNotSupportedError', async () => {
+    await expect(readyAdapter().removeQuickReply('TS123')).rejects.toThrow(/not supported/i);
+  });
+});
+
 describe('WhatsAppWebJsAdapter channels (#625 — wwebjs Client has no getChannelById)', () => {
   const CHANNEL = '120363401234567890@newsletter';
 

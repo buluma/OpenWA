@@ -2135,6 +2135,33 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
     throw new EngineNotSupportedError('sendCatalog');
   }
 
+  // ========== Quick Replies + Contact Book (no library primitive) ==========
+
+  async upsertContact(_contactId: string, _details: { fullName?: string; firstName?: string }): Promise<void> {
+    this.ensureReady();
+    throw new EngineNotSupportedError('upsertContact');
+  }
+
+  async removeContact(_contactId: string): Promise<void> {
+    this.ensureReady();
+    throw new EngineNotSupportedError('removeContact');
+  }
+
+  async upsertQuickReply(_quickReply: {
+    id?: string;
+    shortcut: string;
+    message: string;
+    keywords?: string[];
+  }): Promise<{ id: string }> {
+    this.ensureReady();
+    throw new EngineNotSupportedError('upsertQuickReply');
+  }
+
+  async removeQuickReply(_id: string): Promise<void> {
+    this.ensureReady();
+    throw new EngineNotSupportedError('removeQuickReply');
+  }
+
   /* eslint-enable @typescript-eslint/require-await, @typescript-eslint/no-unused-vars */
 
   /**

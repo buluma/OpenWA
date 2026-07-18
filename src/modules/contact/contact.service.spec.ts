@@ -51,4 +51,16 @@ describe('ContactService', () => {
     );
     expect(resolveContactPhone).toHaveBeenCalledWith('123@lid');
   });
+
+  it('delegates upsertContact to the engine', async () => {
+    const upsertContact = jest.fn().mockResolvedValue(undefined);
+    await makeService({ upsertContact }).upsertContact('s1', '628123@c.us', { fullName: 'Ada Lovelace' });
+    expect(upsertContact).toHaveBeenCalledWith('628123@c.us', { fullName: 'Ada Lovelace' });
+  });
+
+  it('delegates removeContact to the engine', async () => {
+    const removeContact = jest.fn().mockResolvedValue(undefined);
+    await makeService({ removeContact }).removeContact('s1', '628123@c.us');
+    expect(removeContact).toHaveBeenCalledWith('628123@c.us');
+  });
 });
