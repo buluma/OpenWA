@@ -2,7 +2,7 @@ import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { lazyWithRetry as lazy } from '../utils/lazyWithRetry';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { MessageSquare, Send, Webhook, Activity, AlertTriangle, ArrowUpRight, ArrowDownRight, Loader2, AlertCircle } from 'lucide-react';
+import { MessageSquare, Send, Webhook, Activity, AlertTriangle, Loader2, AlertCircle } from 'lucide-react';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import {
   useSessionsQuery,
