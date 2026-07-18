@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- whatsapp-web.js engine: `GET /api/sessions/{id}/chats` no longer 500s for the whole list when a single
+  chat (commonly a `@lid`-migrated contact) fails to serialize inside WhatsApp Web's own Store code —
+  the poisoned chat is now skipped and logged, and the rest of the list loads normally.
+
 ## [0.9.0] - 2026-07-18
 
 ### Added

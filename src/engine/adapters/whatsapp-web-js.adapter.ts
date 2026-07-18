@@ -2220,9 +2220,54 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
   async getChats(): Promise<ChatSummary[]> {
     this.ensureReady();
     return this.withDetachedFrameRetry('getChats', async () => {
-      const chats = await this.client!.getChats();
-      return this.buildChatSummaries(chats);
+      try {
+        const chats = await this.client!.getChats();
+        return this.buildChatSummaries(chats);
+      } catch (error) {
+        // whatsapp-web.js's own getChats() rejects the whole list when a single chat model throws
+        // while serializing inside WhatsApp Web's Store code (seen with @lid-migrated contacts).
+        // withDetachedFrameRetry already handles transient detached-frame/reload errors above us —
+        // for anything else, fall back to walking chats one at a time so a poisoned chat is skipped
+        // instead of failing every other chat too. If the fallback can't help either, surface the
+        // original error rather than the fallback's (less informative) failure.
+        try {
+          const chats = await this.getChatsResilient();
+          return this.buildChatSummaries(chats as Parameters<typeof this.buildChatSummaries>[0]);
+        } catch {
+          throw error;
+        }
+      }
     });
+  }
+
+  /** Per-chat fallback for {@link getChats}: skips any chat whose model throws while serializing. */
+  private async getChatsResilient(): Promise<unknown[]> {
+    const page = (
+      this.client as unknown as {
+        pupPage: { evaluate: <T>(fn: () => Promise<T>) => Promise<T> };
+      }
+    ).pupPage;
+    const { chats, failedCount } = await page.evaluate(async () => {
+      const w = window as unknown as {
+        require: (mod: string) => { Chat: { getModelsArray: () => unknown[] } };
+        WWebJS: { getChatModel: (chat: unknown) => Promise<unknown> };
+      };
+      const models = w.require('WAWebCollections').Chat.getModelsArray();
+      const results: unknown[] = [];
+      let failed = 0;
+      for (const model of models) {
+        try {
+          results.push(await w.WWebJS.getChatModel(model));
+        } catch {
+          failed++;
+        }
+      }
+      return { chats: results, failedCount: failed };
+    });
+    if (failedCount > 0) {
+      this.logger.warn(`getChats: skipped ${failedCount} chat(s) that failed to serialize`);
+    }
+    return chats;
   }
 
   /** Map raw whatsapp-web.js chat objects to library-agnostic ChatSummary, skipping entries with no id. */

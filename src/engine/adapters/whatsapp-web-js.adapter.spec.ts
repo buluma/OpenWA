@@ -822,6 +822,34 @@ describe('WhatsAppWebJsAdapter.getChats (self-heal after a long-idle detached-fr
     expect(client.destroy).not.toHaveBeenCalled();
     expect(onDisconnected).not.toHaveBeenCalled();
   });
+
+  it('falls back to a per-chat walk when one poisoned chat model throws inside getChats()', async () => {
+    // Mirrors whatsapp-web.js's own Promise.all(...) rejecting the whole list because a single
+    // chat model threw while serializing (seen in production with @lid-migrated contacts).
+    const getChats = jest.fn().mockRejectedValue(new Error('r: r'));
+    const evaluate = jest.fn().mockResolvedValue({
+      chats: [{ id: { _serialized: '123@c.us' }, name: 'Alice', isGroup: false, unreadCount: 0, timestamp: 0 }],
+      failedCount: 1,
+    });
+    const client = { ...runtimeReadyClient(getChats), pupPage: { evaluate } };
+    const adapter = newReadyAdapter(client);
+    setCallbacks(adapter, { onDisconnected: jest.fn() });
+
+    await expect(adapter.getChats()).resolves.toEqual([
+      { id: '123@c.us', name: 'Alice', isGroup: false, unreadCount: 0, timestamp: 0, lastMessage: undefined },
+    ]);
+    expect(client.destroy).not.toHaveBeenCalled();
+  });
+
+  it('surfaces the original error when both getChats() and the per-chat fallback fail', async () => {
+    const getChats = jest.fn().mockRejectedValue(new Error('some validation error'));
+    const evaluate = jest.fn().mockRejectedValue(new Error('fallback also broken'));
+    const client = { ...runtimeReadyClient(getChats), pupPage: { evaluate } };
+    const adapter = newReadyAdapter(client);
+    setCallbacks(adapter, { onDisconnected: jest.fn() });
+
+    await expect(adapter.getChats()).rejects.toThrow('some validation error');
+  });
 });
 
 // getChats' self-heal (detached-frame retry) was originally inline and only covered getChats.
