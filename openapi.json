@@ -12,6 +12,7 @@
             "schema": {
               "enum": [
                 "api_key_created",
+                "api_key_updated",
                 "api_key_used",
                 "api_key_revoked",
                 "api_key_deleted",
@@ -212,6 +213,9 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "The change would remove the last usable admin key."
           }
         },
         "summary": "Update API key (admin only)",
@@ -234,6 +238,9 @@
         "responses": {
           "204": {
             "description": "API key deleted"
+          },
+          "409": {
+            "description": "The key is the last usable admin key."
           }
         },
         "summary": "Delete API key (admin only)",
@@ -265,6 +272,9 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "The key is the last usable admin key."
           }
         },
         "summary": "Revoke API key (admin only)",
@@ -2481,7 +2491,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "string"
+                "$ref": "#/components/schemas/SaveConfigDto"
               }
             }
           }
@@ -2501,6 +2511,16 @@
       "post": {
         "operationId": "InfraController_requestRestart",
         "parameters": [],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestartDto"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Server will restart with new profiles"
@@ -2732,6 +2752,7 @@
     },
     "/api/sessions/{sessionId}/contacts/check/{number}": {
       "get": {
+        "description": "Returns whether the number is a registered WhatsApp account and its canonical id. Use this to pre-validate a recipient before sending: the send endpoints return 201 on accepting a message even for numbers that are not on WhatsApp, so this is the only way to confirm a new number is reachable before you send to it.",
         "operationId": "ContactController_checkNumber",
         "parameters": [
           {
@@ -3856,10 +3877,10 @@
         },
         "responses": {
           "201": {
-            "description": "Text status posted to the specified recipients."
+            "description": "Text status posted. The recipients allow-list is honored on Baileys only; whatsapp-web.js broadcasts to the account's status-privacy audience."
           }
         },
-        "summary": "Post a text status (Baileys only)",
+        "summary": "Post a text status",
         "tags": [
           "status"
         ]
@@ -3890,10 +3911,13 @@
         },
         "responses": {
           "201": {
-            "description": "Image status posted to the specified recipients."
+            "description": "Image status posted. The recipients allow-list is honored on Baileys only; whatsapp-web.js broadcasts to the account's status-privacy audience."
+          },
+          "413": {
+            "description": "Base64 media exceeds MEDIA_DOWNLOAD_MAX_BYTES."
           }
         },
-        "summary": "Post an image status (Baileys only)",
+        "summary": "Post an image status",
         "tags": [
           "status"
         ]
@@ -3924,10 +3948,13 @@
         },
         "responses": {
           "201": {
-            "description": "Video status posted to the specified recipients."
+            "description": "Video status posted. The recipients allow-list is honored on Baileys only; whatsapp-web.js broadcasts to the account's status-privacy audience."
+          },
+          "413": {
+            "description": "Base64 media exceeds MEDIA_DOWNLOAD_MAX_BYTES."
           }
         },
-        "summary": "Post a video status (Baileys only)",
+        "summary": "Post a video status",
         "tags": [
           "status"
         ]
@@ -3980,10 +4007,13 @@
         ],
         "responses": {
           "200": {
-            "description": "Business catalog metadata for the session."
+            "description": "Always null on whatsapp-web.js: catalog reads are not implemented on either engine."
+          },
+          "501": {
+            "description": "Not supported by the active engine: Baileys does not implement catalog reads."
           }
         },
-        "summary": "Get business catalog info",
+        "summary": "Get business catalog info (not implemented by any engine)",
         "tags": [
           "catalog"
         ]
@@ -4026,10 +4056,13 @@
         ],
         "responses": {
           "200": {
-            "description": "Paginated list of catalog products."
+            "description": "Always an empty page on whatsapp-web.js: catalog reads are not implemented on either engine."
+          },
+          "501": {
+            "description": "Not supported by the active engine: Baileys does not implement catalog reads."
           }
         },
-        "summary": "List catalog products",
+        "summary": "List catalog products (not implemented by any engine)",
         "tags": [
           "catalog"
         ]
@@ -4058,10 +4091,13 @@
         ],
         "responses": {
           "200": {
-            "description": "The requested catalog product."
+            "description": "Always null on whatsapp-web.js: catalog reads are not implemented on either engine."
+          },
+          "501": {
+            "description": "Not supported by the active engine: Baileys does not implement catalog reads."
           }
         },
-        "summary": "Get a specific product",
+        "summary": "Get a specific product (not implemented by any engine)",
         "tags": [
           "catalog"
         ]
@@ -4091,11 +4127,11 @@
           }
         },
         "responses": {
-          "201": {
-            "description": "Product message sent."
+          "501": {
+            "description": "Not supported by the active engine: no engine can send product messages."
           }
         },
-        "summary": "Send a product message",
+        "summary": "Send a product message (not supported by any engine)",
         "tags": [
           "catalog"
         ]
@@ -4125,11 +4161,11 @@
           }
         },
         "responses": {
-          "201": {
-            "description": "Catalog link sent."
+          "501": {
+            "description": "Not supported by the active engine: no engine can send catalog links."
           }
         },
-        "summary": "Send catalog link",
+        "summary": "Send catalog link (not supported by any engine)",
         "tags": [
           "catalog"
         ]
@@ -4952,7 +4988,7 @@
         ],
         "responses": {
           "201": {
-            "description": "Dead-lettered ingress deliveries for the instance re-dispatched. Returns the count redriven."
+            "description": "One bounded batch of dead-lettered ingress deliveries re-dispatched, with remaining depth."
           }
         },
         "tags": [
@@ -5302,7 +5338,7 @@
   "info": {
     "title": "OpenWA API",
     "description": "Open Source WhatsApp API Gateway - Free, Self-Hosted HTTP API",
-    "version": "0.8.17",
+    "version": "0.9.0",
     "contact": {
       "name": "OpenWA",
       "url": "https://github.com/rmyndharis/OpenWA",
@@ -5627,8 +5663,7 @@
           },
           "proxyUrl": {
             "type": "string",
-            "description": "Proxy URL for this session (e.g., http://user:pass@proxy.example.com:8080)",
-            "example": "http://proxy.example.com:8080"
+            "description": "Optional per-session egress proxy URL (http/https/socks4/socks5; credentialed form \"http://user:pass@host\" allowed). Must be a REAL, REACHABLE proxy — an unreachable value silently blocks the WhatsApp WebSocket (no QR is ever delivered) and the session start times out (~30s → 504 Gateway Timeout). Leave unset unless your network cannot reach WhatsApp directly."
           },
           "proxyType": {
             "type": "string",
@@ -5851,6 +5886,7 @@
                 "message.failed",
                 "message.revoked",
                 "message.reaction",
+                "message.edited",
                 "session.status",
                 "session.qr",
                 "session.authenticated",
@@ -5993,6 +6029,7 @@
                 "message.failed",
                 "message.revoked",
                 "message.reaction",
+                "message.edited",
                 "session.status",
                 "session.qr",
                 "session.authenticated",
@@ -6077,10 +6114,12 @@
         "properties": {
           "messageId": {
             "type": "string",
+            "description": "The message id, assigned when the gateway accepts the message for sending. A 201 here means the message was handed to the WhatsApp client — it does NOT confirm delivery. WhatsApp does not reject an unregistered recipient synchronously, so a message to a number that is not on WhatsApp still returns 201 with a valid messageId; whether it later delivers, stalls, or is reported as an error reaches you asynchronously, if at all. To confirm a number is on WhatsApp before sending, use GET /api/sessions/{sessionId}/contacts/check/{number}; track real delivery via the message `status` field (sent → delivered → read, or failed if WhatsApp reports an error for it). A message resting at `sent` is not diagnostic on its own: a registered recipient whose device has not come online since the send stays at `sent` too.",
             "example": "true_628123456789@c.us_3EB0123456789"
           },
           "timestamp": {
             "type": "number",
+            "description": "Unix timestamp (seconds) at which the gateway accepted the message for sending.",
             "example": 1706868000
           }
         },
@@ -6668,6 +6707,169 @@
           }
         }
       },
+      "DatabaseConfigDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "sqlite",
+              "postgres"
+            ]
+          },
+          "builtIn": {
+            "type": "boolean"
+          },
+          "host": {
+            "type": "string"
+          },
+          "port": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          },
+          "database": {
+            "type": "string"
+          },
+          "schema": {
+            "type": "string"
+          },
+          "poolSize": {
+            "type": "number"
+          },
+          "sslEnabled": {
+            "type": "boolean"
+          },
+          "sslRejectUnauthorized": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "RedisConfigDto": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "builtIn": {
+            "type": "boolean"
+          },
+          "host": {
+            "type": "string"
+          },
+          "port": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          }
+        }
+      },
+      "QueueConfigDto": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          }
+        }
+      },
+      "StorageConfigDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "local",
+              "s3"
+            ]
+          },
+          "builtIn": {
+            "type": "boolean"
+          },
+          "localPath": {
+            "type": "string"
+          },
+          "s3Bucket": {
+            "type": "string"
+          },
+          "s3Region": {
+            "type": "string"
+          },
+          "s3AccessKey": {
+            "type": "string"
+          },
+          "s3SecretKey": {
+            "type": "string"
+          },
+          "s3Endpoint": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "EngineConfigDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "headless": {
+            "type": "boolean"
+          },
+          "sessionDataPath": {
+            "type": "string"
+          },
+          "browserArgs": {
+            "type": "string"
+          }
+        }
+      },
+      "SaveConfigDto": {
+        "type": "object",
+        "properties": {
+          "database": {
+            "$ref": "#/components/schemas/DatabaseConfigDto"
+          },
+          "redis": {
+            "$ref": "#/components/schemas/RedisConfigDto"
+          },
+          "queue": {
+            "$ref": "#/components/schemas/QueueConfigDto"
+          },
+          "storage": {
+            "$ref": "#/components/schemas/StorageConfigDto"
+          },
+          "engine": {
+            "$ref": "#/components/schemas/EngineConfigDto"
+          }
+        }
+      },
+      "RestartDto": {
+        "type": "object",
+        "properties": {
+          "profiles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "profilesToRemove": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
       "CreateGroupDto": {
         "type": "object",
         "properties": {
@@ -6752,7 +6954,7 @@
             "maximum": 5
           },
           "recipients": {
-            "description": "Recipient JIDs (1–256). WhatsApp Status is not posted to a group — use @c.us or @lid individuals.",
+            "description": "Recipient JIDs (1–256). WhatsApp Status is not posted to a group — use @c.us or @lid individuals. Honored on the Baileys engine only: whatsapp-web.js ignores this allow-list and broadcasts to the account's status-privacy audience.",
             "example": [
               "628123456789@c.us"
             ],
@@ -6780,7 +6982,7 @@
           "base64": {
             "type": "string",
             "description": "Base64-encoded media. Requires mimetype.",
-            "example": "data:image/jpeg;base64,..."
+            "example": "/9j/4AAQSkZJRg..."
           },
           "mimetype": {
             "type": "string",
@@ -6807,7 +7009,7 @@
             "maxLength": 1024
           },
           "recipients": {
-            "description": "Recipient JIDs (1–256), @c.us or @lid.",
+            "description": "Recipient JIDs (1–256), @c.us or @lid. Honored on the Baileys engine only: whatsapp-web.js ignores this allow-list and broadcasts to the account's status-privacy audience.",
             "example": [
               "628123456789@c.us"
             ],
@@ -6842,7 +7044,7 @@
             "maxLength": 1024
           },
           "recipients": {
-            "description": "Recipient JIDs (1–256), @c.us or @lid.",
+            "description": "Recipient JIDs (1–256), @c.us or @lid. Honored on the Baileys engine only: whatsapp-web.js ignores this allow-list and broadcasts to the account's status-privacy audience.",
             "example": [
               "628123456789@c.us"
             ],

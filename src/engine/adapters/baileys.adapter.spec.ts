@@ -84,14 +84,14 @@ jest.mock('@whiskeysockets/baileys', () => ({
   proto: {
     Message: {
       ProtocolMessage: {
-        Type: { REVOKE: 0 },
+        Type: { REVOKE: 0, MESSAGE_EDIT: 14 },
       },
     },
   },
 }));
 
 import { BaileysAdapter } from './baileys.adapter';
-import { EngineStatus, EngineEventCallbacks } from '../interfaces/whatsapp-engine.interface';
+import { EditedMessage, EngineStatus, EngineEventCallbacks } from '../interfaces/whatsapp-engine.interface';
 import { EngineNotReadyError } from '../../common/errors/engine-not-ready.error';
 import { EngineNotSupportedError } from '../../common/errors/engine-not-supported.error';
 import { ChannelNotFoundError } from '../../common/errors/channel-not-found.error';
@@ -124,6 +124,13 @@ const newAdapter = (): BaileysAdapter =>
   });
 
 const noopCallbacks = (over: Partial<EngineEventCallbacks> = {}): EngineEventCallbacks => over;
+
+function firstEditedMessage(callback: jest.Mock): EditedMessage {
+  const calls = callback.mock.calls as Array<[EditedMessage]>;
+  const first = calls[0];
+  if (!first) throw new Error('Expected an edited-message callback');
+  return first[0];
+}
 
 describe('BaileysAdapter lifecycle & status', () => {
   beforeEach(() => {
@@ -1449,6 +1456,193 @@ describe('BaileysAdapter inbound fan-out', () => {
     expect(revoked.chatId).toBe('628111@c.us'); // canonicalized to the neutral dialect
     expect(revoked.type).toBe('revoked');
     expect(revoked.body).toBe('');
+  });
+
+  it('EDIT protocolMessage: fires onMessageEdited and NOT onMessage', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+    const baileys = jest.requireMock('@whiskeysockets/baileys') as { getContentType: jest.Mock };
+    baileys.getContentType.mockReturnValueOnce('protocolMessage').mockReturnValueOnce('conversation');
+
+    const onMessage = jest.fn();
+    const onMessageEdited = jest.fn();
+    const adapter = newAdapter();
+    await adapter.initialize({ onMessage, onMessageEdited });
+    fakeSock.fire('messages.upsert', {
+      type: 'notify',
+      messages: [
+        {
+          key: {
+            remoteJid: '628111@s.whatsapp.net',
+            participant: '628111@s.whatsapp.net',
+            fromMe: false,
+            id: 'PROTO_EDIT',
+          },
+          message: {
+            protocolMessage: {
+              key: { id: 'ORIGINAL_MSG_ID' },
+              type: 14, // MESSAGE_EDIT
+              timestampMs: 1700000030123,
+              editedMessage: { conversation: 'New edited message text' },
+            },
+          },
+          messageTimestamp: 1700000000,
+        },
+      ],
+    });
+    await new Promise(r => setImmediate(r));
+    expect(onMessage).not.toHaveBeenCalled();
+    expect(onMessageEdited).toHaveBeenCalledTimes(1);
+    expect(fakeStore.put).not.toHaveBeenCalled();
+
+    expect(firstEditedMessage(onMessageEdited)).toEqual({
+      messageId: 'ORIGINAL_MSG_ID',
+      chatId: '628111@c.us',
+      body: 'New edited message text',
+      senderId: '628111@c.us',
+      from: '628111@c.us',
+      to: '628999@c.us',
+      fromMe: false,
+      isGroup: false,
+      type: 'text',
+      hasMedia: false,
+      timestamp: 1700000030,
+    });
+  });
+
+  it('EDIT protocolMessage: extracts media caption correctly (e.g. image caption)', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+    const baileys = jest.requireMock('@whiskeysockets/baileys') as { getContentType: jest.Mock };
+    baileys.getContentType.mockReturnValueOnce('protocolMessage').mockReturnValueOnce('imageMessage');
+
+    const onMessage = jest.fn();
+    const onMessageEdited = jest.fn();
+    const adapter = newAdapter();
+    await adapter.initialize({ onMessage, onMessageEdited });
+    fakeSock.fire('messages.upsert', {
+      type: 'notify',
+      messages: [
+        {
+          key: {
+            remoteJid: '628111@s.whatsapp.net',
+            participant: '628111@s.whatsapp.net',
+            fromMe: false,
+            id: 'PROTO_EDIT_MEDIA',
+          },
+          message: {
+            protocolMessage: {
+              key: { id: 'ORIGINAL_MSG_ID' },
+              type: 14, // MESSAGE_EDIT
+              editedMessage: {
+                imageMessage: { caption: 'Edited image caption text' },
+              },
+            },
+          },
+          messageTimestamp: 1700000035,
+        },
+      ],
+    });
+    await new Promise(r => setImmediate(r));
+    expect(onMessage).not.toHaveBeenCalled();
+    expect(onMessageEdited).toHaveBeenCalledTimes(1);
+
+    const edited = firstEditedMessage(onMessageEdited);
+    expect(edited.messageId).toBe('ORIGINAL_MSG_ID');
+    expect(edited.chatId).toBe('628111@c.us');
+    expect(edited.body).toBe('Edited image caption text');
+    expect(edited.senderId).toBe('628111@c.us');
+    expect(edited.timestamp).toBe(1700000035);
+    expect(edited.type).toBe('image');
+    expect(edited.hasMedia).toBe(true);
+  });
+
+  it('EDIT protocolMessage: correctly maps senderId for own outgoing edits (fromMe = true)', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+    const baileys = jest.requireMock('@whiskeysockets/baileys') as { getContentType: jest.Mock };
+    baileys.getContentType.mockReturnValueOnce('protocolMessage').mockReturnValueOnce('conversation');
+    fakeSock.user = { id: '628999:1@s.whatsapp.net', name: 'Me' };
+
+    const onMessage = jest.fn();
+    const onMessageEdited = jest.fn();
+    const adapter = newAdapter();
+    await adapter.initialize({ onMessage, onMessageEdited });
+    fakeSock.fire('messages.upsert', {
+      type: 'notify',
+      messages: [
+        {
+          key: { remoteJid: '628111@s.whatsapp.net', fromMe: true, id: 'PROTO_EDIT_SELF' },
+          message: {
+            protocolMessage: {
+              key: { id: 'ORIGINAL_MSG_ID' },
+              type: 14, // MESSAGE_EDIT
+              editedMessage: { conversation: 'Self-edited text' },
+            },
+          },
+          messageTimestamp: 1700000040,
+        },
+      ],
+    });
+    await new Promise(r => setImmediate(r));
+    expect(onMessage).not.toHaveBeenCalled();
+    expect(onMessageEdited).toHaveBeenCalledTimes(1);
+
+    const edited = firstEditedMessage(onMessageEdited);
+    expect(edited.messageId).toBe('ORIGINAL_MSG_ID');
+    expect(edited.chatId).toBe('628111@c.us');
+    expect(edited.body).toBe('Self-edited text');
+    expect(edited.senderId).toBe('628999@c.us');
+    expect(edited.timestamp).toBe(1700000040);
+    expect(edited.from).toBe('628999@c.us');
+    expect(edited.to).toBe('628111@c.us');
+    expect(edited.fromMe).toBe(true);
+  });
+
+  it('EDIT protocolMessage: normalizes group author and mentions for webhook filters', async () => {
+    baileys.getContentType.mockReturnValueOnce('protocolMessage').mockReturnValueOnce('extendedTextMessage');
+    fakeSock.user = { id: '628999:1@s.whatsapp.net', name: 'Me' };
+
+    const onMessageEdited = jest.fn();
+    const adapter = newAdapter();
+    await adapter.initialize({ onMessageEdited });
+    fakeSock.fire('messages.upsert', {
+      type: 'notify',
+      messages: [
+        {
+          key: {
+            remoteJid: '120363000@g.us',
+            participant: '628111@s.whatsapp.net',
+            fromMe: false,
+            id: 'PROTO_EDIT_GROUP',
+          },
+          message: {
+            protocolMessage: {
+              key: { id: 'GROUP_MSG_ID' },
+              type: 14,
+              editedMessage: {
+                extendedTextMessage: {
+                  text: 'Hello @628222',
+                  contextInfo: { mentionedJid: ['628222@s.whatsapp.net'] },
+                },
+              },
+            },
+          },
+          messageTimestamp: 1700000045,
+        },
+      ],
+    });
+    await new Promise(resolve => setImmediate(resolve));
+
+    expect(firstEditedMessage(onMessageEdited)).toEqual(
+      expect.objectContaining({
+        chatId: '120363000@g.us',
+        from: '120363000@g.us',
+        to: '628999@c.us',
+        senderId: '628111@c.us',
+        author: '628111@c.us',
+        mentionedIds: ['628222@c.us'],
+        isGroup: true,
+        type: 'text',
+      }),
+    );
   });
 
   it('reactionMessage: fires onMessageReaction and NOT onMessage', async () => {

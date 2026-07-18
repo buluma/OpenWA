@@ -20,9 +20,9 @@
   <img src="https://img.shields.io/github/package-json/v/rmyndharis/OpenWA?label=version&color=blue" alt="Version"/>
   <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License"/>
   <img src="https://img.shields.io/badge/node-22_LTS-brightgreen.svg" alt="Node"/>
-  <img src="https://img.shields.io/badge/NestJS-11.x-red.svg" alt="NestJS"/>
+  <img src="https://img.shields.io/github/package-json/dependency-version/rmyndharis/OpenWA/@nestjs/core?label=NestJS&color=red" alt="NestJS"/>
   <img src="https://img.shields.io/badge/docker-ready-blue.svg" alt="Docker"/>
-  <img src="https://img.shields.io/badge/TypeScript-5.x-3178C6.svg" alt="TypeScript"/>
+  <img src="https://img.shields.io/github/package-json/dependency-version/rmyndharis/OpenWA/dev/typescript?label=TypeScript&color=3178C6" alt="TypeScript"/>
 </p>
 
 ---
@@ -31,7 +31,7 @@
 
 **OpenWA** is a free, open-source WhatsApp API Gateway designed for developers who need full control over their messaging infrastructure—without vendor lock-in or hidden paywalls.
 
-Built on a **pluggable architecture**, OpenWA lets you swap database engines (SQLite/PostgreSQL), storage backends (Local/S3), and cache layers (Memory/Redis) without changing a single line of application code.
+Built on a **pluggable architecture**, OpenWA lets you select database engines (SQLite/PostgreSQL), backup/migration storage backends (Local/S3), and cache layers (disabled/Redis) through configuration rather than application-code changes. Message media itself is returned inline to API and webhook consumers; it is not automatically persisted to the storage backend.
 
 |                               |                                                              |
 | ----------------------------- | ------------------------------------------------------------ |
@@ -65,6 +65,7 @@ Built on a **pluggable architecture**, OpenWA lets you swap database engines (SQ
 | Text Messages     | ✅     | Send/receive text messages       |
 | Media Messages    | ✅     | Images, videos, documents, audio |
 | Message Reactions | ✅     | React to messages with emoji     |
+| Message Editing   | ✅     | Live `message.edited` events on both engines |
 | Bulk Messaging    | ✅     | Send to multiple recipients      |
 | Message Status    | ✅     | Track delivery and read receipts |
 
@@ -87,7 +88,7 @@ Built on a **pluggable architecture**, OpenWA lets you swap database engines (SQ
 | SQLite           | ✅     | Zero-config embedded database  |
 | PostgreSQL       | ✅     | Production-grade database      |
 | Redis Cache      | ✅     | Optional performance caching   |
-| S3/MinIO Storage | ✅     | Scalable media storage         |
+| S3/MinIO Storage | ✅     | Media-directory backup/migration backend |
 | Docker           | ✅     | One-command deployment         |
 | Health Checks    | ✅     | Kubernetes-ready probes        |
 | Data Migration   | ✅     | Export/import between backends |
@@ -153,10 +154,6 @@ openwa-api  ──TCP 2375──▶  docker-proxy  ──unix──▶  /var/run
 ```
 
 Only the operations needed for container orchestration are enabled (`CONTAINERS`, `IMAGES`, `VOLUMES`, `INFO`, `PING`, `POST`, `DELETE`). The application connects via the `DOCKER_HOST=tcp://docker-proxy:2375` environment variable, which `DockerService` detects automatically.
-
----
-
-## 🔒 Security Architecture
 
 ### Non-root Container Execution
 

@@ -7,8 +7,404 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-07-18
+
 ### Added
 
+- Live message-edit support now emits `message.edited` through webhooks and WebSocket subscriptions on
+  both engines, updates the stored message and Chats dashboard in occurrence order, and exposes the
+  standard sender/direction/type/media/mention fields to webhook smart filters. Existing wildcard (`*`)
+  subscriptions receive the new event automatically. Thanks @rogeriorioli. (#734)
+
+### Changed
+
+- ⚠️ **Breaking:** `GET /api/settings` no longer returns the incorrect, always-zero
+  `general.sessionTimeout` field. Migration: remove reads, destructuring, or schema requirements for that
+  admin-only field; there is no replacement because OpenWA has no equivalent session-timeout setting.
+- Java SDK callers sending audio/voice notes now pass `SendAudioRequest` to `sendAudio`; other media sends
+  continue to use `SendMediaRequest`. Bulk media uses the nested `BulkMediaRequest` type.
+- The PHP SDK's configured `timeout` now applies to every request, including calls made through an injected
+  Guzzle client; pass `timeout` explicitly when a different bound is required.
+- PHP SDK contributor installs now remain compatible with the declared PHP 8.1 runtime floor, and CI
+  exercises the suite on both PHP 8.1 and 8.2.
+
+### Fixed
+
+- Preserve plugin state across package updates, make data/storage backup and restore cover both engine
+  auth stores plus generated secrets, and preserve message `chatName` during data import.
+- Bound webhook and integration redrive work, make Redis throttling atomic, guard stale engine teardown,
+  and make media precedence, data-URI normalization, limits, and omission markers consistent across engines.
+- Record API-key authorization changes in administrative activity logs, protect the final usable admin,
+  and align action-style POST routes with their documented HTTP `200` responses.
+- Correct ingress method/verification/dedup metadata, dashboard session-state visibility and plugin config
+  fallback, SDK timeout/type parity, metrics types, deployment configuration forwarding, and CI contract gates.
+
+## [0.8.19] - 2026-07-17
+
+### Added
+- **Official Go SDK (`sdk/go`).** Hand-written, stdlib-only (no third-party dependencies) Go client
+  covering the user-facing API surface, joining the JavaScript/Python/PHP/Java clients. Entry point is
+  `openwa.New(baseURL, apiKey, opts...)`, which returns a concurrency-safe `*Client` whose exported
+  fields group the API by domain (`Sessions`, `Messages`, `Contacts`, `Groups`, `Webhooks`, `Chats`,
+  `Status`, `Labels`, `Channels`, `Catalog`, `Templates`, `Health`, `Search`, `Auth`). Every network
+  method is context-first; configuration and dependency injection go through functional options
+  (`WithHTTPClient`, `WithTransport`, `WithLogger`, `WithRetry`, `WithMiddleware`, `WithTimeout`,
+  `WithUserAgent`, `WithHeader`, `WithInsecureHTTP`). Errors are typed: match the sentinels with
+  `errors.Is` (`ErrBadRequest`, `ErrUnauthorized`, `ErrForbidden`, `ErrNotFound`, `ErrConflict`,
+  `ErrRateLimited`, `ErrNotImplemented`) or unwrap the concrete `*APIError` with `errors.As`. Retries
+  are opt-in (`WithRetry`), honour `Retry-After`, and rewind request bodies via `GetBody`. Because the
+  API has no idempotency key, a `POST` is never replayed after a network error, and on a retryable
+  status only for `429`/`503` — which prove the gateway declined the request before acting on it —
+  since a `500`/`502`/`504` can arrive after the message was already sent. Redirects
+  are never followed, so the bearer-equivalent `X-API-Key` is never re-sent to a redirect target. A
+  `TestRouting` table asserts the exact method and path of every service call, and the suite runs in CI
+  (`gofmt`/`go vet`/`go test -race`) on both SDK and server-contract changes, so route drift fails at
+  test time. Requires Go 1.22+. Thanks @Revelts.
+
+### Changed
+- **v0.8.18's whatsapp-web.js id-rename fix also restored the Chats page (docs only).** The v0.8.18 entry
+  credits that fix with repairing inbound media downloads, message ids, acks, reply quoting, and reactions,
+  but never mentions `GET /sessions/{id}/chats` — which the same patch repaired as well. The rename broke the
+  injected read of each chat's last-received message key, and because every chat resolves through a single
+  `Promise.all`, one unreadable key rejected the entire request, so the dashboard's Chats page returned
+  `500 Internal server error` on every load while the rest of the dashboard kept working from stored data.
+  Operators on v0.8.17 hitting that symptom found nothing in the release notes matching it and so had no
+  reason to upgrade. No behavior change, and no change to which release carries the fix — it is still
+  v0.8.18. The chat-list site was first reported here by @SkywardLab in #748.
+  Refs #748, #753, #757.
+
+- **Typed SDK response models now match the status, label, and channel payloads the server actually
+  returns.** The status, label, and channel routes hand back the engine-neutral shape from
+  `whatsapp-engine.interface.ts` verbatim — no DTO, no remap — but the record types the typed SDKs
+  declare for them were hand-written and never bound to that contract, so they advertised fields the
+  server never sends while omitting most of the ones it does. `StatusRecord` gains
+  `contact`/`caption`/`expiresAt` (plus the declared-but-not-yet-populated
+  `mediaUrl`/`backgroundColor`/`font`) and drops the never-sent `statusId`/`body`; `LabelRecord`
+  replaces `color`/`colorHex` with the real `hexColor`; `ChannelRecord` gains
+  `inviteCode`/`picture`/`verified`/`createdAt` and drops the never-sent `pictureUrl`/`role`; and
+  channel messages get a dedicated `ChannelMessageRecord` (`id`/`body`/`timestamp`/`hasMedia`/`mediaUrl`)
+  instead of being typed as the persisted `MessageRecord`, which that endpoint never returns — it reads
+  WhatsApp live. This mirrors how `ChatHistoryMessage` already models the live `messages.history()`
+  payload. Status timestamps are typed as the ISO 8601 strings they serialize to rather than
+  `Date`/`Object`. JavaScript, Python, and Java needed all four corrections; Go needed the two channel
+  ones (its status and label models were already right). The PHP SDK is array-based and unaffected.
+  ⚠️ **Breaking (typed SDK consumers):** every field named here was one the server has never sent (always
+  `undefined`/`null`), so the code reading it was already broken at runtime; it now fails to compile.
+  `label.color`/`label.colorHex` → `label.hexColor`; `channel.pictureUrl` → `channel.picture`;
+  `status.statusId` → `status.id`; `status.body` → `status.caption`. `channel.role` has no successor —
+  the server has no such field, so drop the read. Conversely the
+  real fields (`status.contact`, `channel.inviteCode`, `message.hasMedia`, …) were previously compile
+  errors and now resolve. Nothing caught this before: these controllers declare no `@ApiResponse` type,
+  so `openapi.json` carries no response schema for them and `openapi:check` had nothing to diff, while
+  the SDK suites mocked the transport and asserted URLs only. A type-level wire contract
+  (`sdk/javascript/test/wire-contract.test-d.ts`, gated by `tsc` in the JavaScript SDK's `npm test`) plus
+  per-model decode guards in the Java and Go suites now pin the models to the engine shapes. Refs #754.
+
+- **Swagger now agrees with the engine capability matrix on status and catalog (docs only).** Eight
+  operations were describing something other than what they do, and the drift ran in both directions.
+  The three status-post routes were labelled "(Baileys only)" — stale since #714 wired them on
+  whatsapp-web.js, and contradicted by the matrix, which has listed both engines as `supported` ever
+  since; the label told whatsapp-web.js users a working endpoint was unavailable to them. Their `201`
+  also promised the status was "posted to the specified recipients", which is true only on Baileys:
+  whatsapp-web.js ignores the `recipients` allow-list and broadcasts to the account's status-privacy
+  audience, as the adapter already warns at runtime. Dropping the stale label without that caveat would
+  have replaced a wrong label with a worse silence, so the responses and the `recipients` field now say
+  which engine honors it. In the other direction, the three catalog reads documented a plain `200` as
+  though they returned data, and the two catalog **sends** documented a `201` they can never return —
+  the matrix marks all five `not-available` on both engines. whatsapp-web.js stubs the reads (`null`/an
+  empty page with a warn log) and Baileys raises `501`; the sends are `501` on both. Every real response
+  is now documented and the summaries name the gap. The matrix's own header claimed five whatsapp-web.js
+  entries were `not-available` while two of the five it named said `supported` two lines below; it is
+  three, and the stale adapter line references in the catalog evidence now cite the symbols instead, so they cannot drift again. No
+  behavior change; `openapi.json` regenerated.
+
+- **The send-response Swagger text now matches the prose it was corrected alongside (docs only).** The
+  `messageId` description still asserted that a message to a number not on WhatsApp "never delivers" —
+  the same unevidenced claim about WhatsApp's behavior that was retracted from `docs/06` in the same
+  change that edited this string. It now says what the prose says: the outcome reaches you
+  asynchronously, if at all. `openapi.json` regenerated.
+
+- **The Message Tester's status code renders in monospace.** It was emitted as `<span class="mono">`,
+  but every monospace rule in the dashboard hangs off a compound selector (`.detail-value.mono`), which
+  a bare span never matches — so the class contributed only the RTL direction isolation it was chosen
+  for, and nothing else. A plain `<code>` earns both from the existing global rules with no new CSS.
+
+- **Corrected the send-response documentation (docs only).** The guidance added in #739 overstated what a
+  stalled send tells you: it said a message resting at `sent` for a recipient you have never reached is
+  "almost certainly a number that is not on WhatsApp." That inference does not hold in the other
+  direction — a *registered* recipient whose device has not come online since the send stays at `sent`
+  indefinitely too, by design, so the state is not diagnostic on its own. The unevidenced claim that an
+  unregistered recipient is "the most common cause" of a send that never arrives is gone, as is the
+  description of what the message looks like in a WhatsApp client, which is not ours to assert. The
+  section also claimed *every* send route returns `201` with `{ messageId, timestamp }`; `POST send-bulk`
+  returns `202` with a batch envelope, and the `status/send-*` routes return a `statusId` and an ISO
+  timestamp rather than a `messageId` and epoch seconds. Both exceptions are now stated where the rule
+  is. Finally, the documented `status` lifecycle omitted its terminal error state: WhatsApp reporting an
+  error for a message advances it to `failed` and dispatches a `message.failed` webhook, on both engines
+  — that signal existed all along and is now written down. No behavior change. Refs #738.
+
+### Fixed
+
+- **A deleted message is cleared again on a WhatsApp Web build that renamed the id field.** The rename
+  sweep reached the send, ack, status and inbound paths but not `message_revoke_everyone`, which read
+  both ids unguarded. `revokedId` needed the fallback even on a patched install: whatsapp-web.js
+  overwrites the normalized id with a raw spread of the revocation's `protocolMessageKey`, and that key
+  is normalized by neither the structure constructor nor the injected serializer — so it is the one
+  place a fully patched build still hands back a raw key. Without it the id arrived undefined, the
+  update fell back to the notification's own id, matched no row, and the deleted message's text stayed
+  in the database and on the dashboard while WhatsApp showed it as deleted. The status listing
+  (`collectStatuses`) and channel-message reads had the same gap: a status whose id was lost could not
+  be revoked by `deleteStatus`, and a channel message reported the literal string `"undefined"` as its
+  id rather than the empty sentinel. The channel-message type declared the id in a shape that made the
+  renamed field unreadable without a cast, the same defect corrected on the inbound path.
+
+- **Documentation corrected where it contradicted the code.** `docs/06` told whatsapp-web.js operators —
+  the default engine — that posting a status returns `501`, which has been untrue since #714 wired it;
+  the shipped OpenAPI schema and the adapter both say otherwise. In the other direction it promised that
+  the `recipients` allow-list restricts who sees a status, which holds on Baileys but not on
+  whatsapp-web.js, where the list is ignored and the status reaches the account's whole status-privacy
+  audience with no error — the one drift here that could surprise someone about who read their status.
+  The catalog routes documented success bodies no engine can return (both sends always `501`; the reads
+  are stubs that return `null`/empty unconditionally). `docs/03` marked Phone Link unavailable on
+  whatsapp-web.js though the adapter has implemented it since #552. `docs/18` and `sdk/README.md` still
+  described three or four SDKs, listed three of five in their tables, omitted Maven Central entirely, and
+  pinned a gateway version last true at 0.7.3. The capability-matrix summary counts were stale
+  (recomputed from the matrix itself: 123 supported, 19 not-available across 14 methods), and its catalog
+  evidence now cites symbols rather than line numbers, which had drifted twice in two releases.
+
+- **`PLUGINS_ENABLED` removed from `.env.example` and the compose file.** It was documented, plumbed into
+  the container, and read by nothing — an operator setting it to `false` still got the full plugin
+  surface. The flag is gone rather than wired: the plugins module is `@Global()` and eight non-plugin
+  files inject its providers, so a genuine opt-out is a change of its own, not a release-eve edit. All
+  plugin routes remain ADMIN-only.
+
+- **Inbound messages keep their id on a WhatsApp Web build that renamed the field.** The id-rename
+  sweep (#762/#765/#773) taught the send, ack and status paths to read `$1` when `_serialized` is
+  absent, but missed the busiest path of all: `buildIncomingMessageBase`, which runs on every message
+  that arrives (`onMessage`) and every message the account sends from a linked phone
+  (`onMessage_create`). It read `msg.id._serialized` unguarded — and its parameter type declared the
+  id as `{ _serialized: string }`, so the renamed field was not merely unread but *unreachable*
+  without a cast, and the `id: string` it produced was `undefined` at runtime. On an affected build
+  without the build-time backport applied, every inbound message reached the webhook, the WebSocket
+  and the database with no id: nothing to dedup on, nothing to quote in a reply, nothing for an ack
+  to match. The id now falls back to `$1`, and an id readable by neither name reports the same empty
+  sentinel the send path uses — normalized to NULL at the persist chokepoint, mirroring
+  `saveOutgoingMessage`, because the non-partial `(sessionId, waMessageId)` unique index exempts NULL
+  but would collide the second `''`.
+- **Logs CSV export truncated at 200 rows.** The export loop requested 500-row pages and treated any
+  short page as the last one, but `GET /audit` clamps `limit` to `MAX_AUDIT_PAGE_SIZE` (200) — so the
+  first page always looked short and every export stopped at 200 rows regardless of how much history
+  matched. Pagination now terminates on the server-reported `total` (and on empty pages) instead of on
+  a guessed page size, so the export can no longer be truncated by a server-side clamp. Thanks
+  @kabir74705 for the report and the original fix.
+
+- **Dashboard overstated connected sessions and showed a fabricated trend.** The "Active Sessions" KPI
+  read `stats.active`, which counts running engine instances — including `initializing`, `qr_ready`,
+  and `connecting` — so it reported sessions that could not yet send or receive as active. The green
+  "+N" trend arrow beneath it was not a delta at all: it rendered the current READY count as though it
+  were a period-over-period gain, so a steady deployment appeared to be permanently growing. The card
+  now reports the READY count (relabelled "Connected Sessions") with a plain `{running} running ·
+  {total} total` breakdown, and the fake trend indicator is gone. Thanks @kabir74705 for spotting both.
+
+- **The whatsapp-web.js backport can no longer latch in a half-patched dependency.** The patcher proves a
+  tree is whole before standing down, and #759 added that check precisely so a run that died mid-apply
+  could not be mistaken for an upstream fix. The proof was incomplete in the one place it mattered most.
+  `REQUIRED_SITES` asserted the eight structure constructors but not `src/util/Injected/Utils.js` — the
+  browser-side normalizer every inbound message crosses on its way to Node, and the **last** of the
+  twelve files `patch` writes, one after the `Message.js` the stand-down check keys on. A run that died in
+  that window left a tree where every assertion passed, so each later run stood down as healthy while the
+  primary normalizer was permanently absent — the exact latch the check exists to prevent. `Client.js` and
+  `GroupChat.js` normalize ids too and were likewise unasserted; all three are now covered. The Docker
+  image build runs the patcher directly, so it now fails the build on such a tree instead of shipping it.
+  Separately, the half-patched error was the only one of the four not marked as leaving a partial tree, so
+  `--best-effort` downgraded it to a warning; it now exits non-zero like the other three. Note this makes
+  the tree *reported* on the `npm install` path rather than rejected there — the `postinstall` hook
+  discards the patcher's exit code, so the install still succeeds; that is pre-existing and deliberately
+  untouched, since failing `npm install` outright is the trade the flag exists to avoid. Both fixes are
+  regression-tested, including the `--best-effort` path.
+
+- **A status post no longer claims success it cannot prove, and no longer throws away a readable id.**
+  #762 established that `whatsapp-web.js` can *resolve* `undefined` instead of throwing, and that reporting
+  that as success is unrecoverable — so a send with no message back now fails loudly. Status posts were
+  left on the old behavior: they returned **201** with an empty `statusId` and a `new Date()` invented on
+  the spot, for a status that may never have been published. Their case is in fact simpler than a send's —
+  the engine returns the status model before reaching the lookup that makes a send's empty result
+  ambiguous, so no message back means nothing was posted, full stop — and it now surfaces as a `500`
+  carrying that reason rather than a fabricated success. Separately, the id was read only as `_serialized`,
+  so on a build that renamed the field to `$1` (#747) a status that posted perfectly well came back with
+  `statusId: ""` — and since `deleteStatus` takes that id as its revoke handle, the status could never be
+  taken down. The rename fallback the send path has since #762 is now applied here too. The same fallback
+  is added to the ack listener, where an unreadable id previously stranded a message at `sent` forever —
+  including the `failed` ack that is the only signal a send was rejected. Baileys is unaffected: its send
+  and status paths already agree with each other.
+
+- **The Message Tester no longer invents HTTP status codes.** Its result banner rendered one of two
+  hardcoded strings — `200 OK - Success` or `400 - Failed` — for every outcome, in all eleven locales.
+  Neither number was ever read from the response. Send routes return **201**, not 200, so the success
+  banner was wrong on every successful send; and *any* failure displayed `400`, including a server 500
+  and the recipient pre-check that short-circuits in the browser without issuing a request at all. The
+  banner now states the outcome and, when a request actually reached the gateway, the real status the
+  gateway returned — which `services/api.ts` already attaches to the error for exactly this purpose.
+  Where no request was made, no code is shown rather than a fabricated one. This is what made a plain
+  `500` get reported as a mystery `400` in #750. Fixes #750.
+
+- **A production boot that serves the dashboard over plain HTTP now warns about the CSP upgrade that
+  blanks it.** In production OpenWA emits `upgrade-insecure-requests`, which is correct behind a
+  TLS-terminating reverse proxy — the shipped `docker-compose.yml` topology — but silently breaks a
+  direct-HTTP deployment: the browser upgrades the dashboard's own script fetches to `https://`, the
+  non-TLS server cannot answer them, no JavaScript runs, and the UI renders a blank white screen. The
+  failure happens entirely in the browser, so the server log stayed clean and the operator had nothing
+  to go on; the existing `CSP_UPGRADE_INSECURE_REQUESTS=false` opt-out was documented only under
+  `.env.example`'s "Developer settings" heading, where a production operator had no reason to look.
+  Boot now names the setting when the trap is possible, `.env.example` documents it under Security with
+  the symptom spelled out, and `docs/12-troubleshooting-faq.md` gains a "Dashboard renders a blank white
+  screen" entry. The warning cannot distinguish direct HTTP from a TLS proxy at boot (Express
+  `trust proxy` is off), so it fires for both and tells a proxied operator to ignore it. The CSP default
+  is unchanged. (#731)
+- **The startup banner now advertises `BASE_URL` instead of a hardcoded `localhost`.** The
+  `🚀 running on`, `📚 Swagger docs`, and `🖥️ Dashboard` lines printed `http://localhost:${PORT}` as a
+  literal, regardless of where the instance was actually reachable — contradicting the `AuthService`
+  banner directly above them, which already honoured `BASE_URL`. Two adjacent log lines could therefore
+  report different URLs for the same server, which read as "the UI is pinned to localhost" and sent #731
+  chasing `BASE_URL`/`BIND_HOST`/`API_PORT` rather than the actual cause. (#731)
+
+- **Saving Infrastructure no longer persists a guessed engine when the running engine is unknown.** The
+  engine radio falls back to its `whatsapp-web.js` default until `/infra/engines/current` resolves; if that
+  request failed, saving wrote that default as `ENGINE_TYPE`, silently switching a Baileys deployment on
+  the next restart. The save payload now omits `engine.type` unless the radio actually seeded from the
+  running engine or the operator picked one — the backend leaves a saved `ENGINE_TYPE` untouched when the
+  field is absent, so an unrelated save can no longer flip the engine.
+
+- **The dashboard now clears a message deleted for everyone while the thread is open (whatsapp-web.js).**
+  `message.revoked` carries `revokedId` — the id of the original deleted message, which whatsapp-web.js
+  resolves separately from the event's own `id` — but the dashboard's WebSocket projection dropped the
+  field and matched its message cache on `id` alone. Persistence was always correct (the backend keys
+  its `UPDATE` on `revokedId`), and webhook/API consumers already received the field; only the live
+  dashboard view was affected, where `staleTime: Infinity` meant an already-open thread kept rendering
+  the deleted message's original text until a reload, reconnect, or cache eviction. The projection now
+  forwards `revokedId`, and the cache lookup matches on either candidate id (against both the row id
+  and `waMessageId`), which keeps the Baileys path — where the two ids are identical — unchanged. When
+  whatsapp-web.js cannot resolve the original (it is no longer in its local store) `revokedId` is
+  absent and the lookup falls back to `id`, as before. Refs #755.
+
+- **A failed group creation now reports why it failed.** `whatsapp-web.js` signals a failed
+  `createGroup` by *resolving* with a plain string (`'CreateGroupError: …'`) instead of throwing, and
+  its typings say so (`Promise<CreateGroupResult | string>`) — but the adapter cast that union away and
+  read `.gid` off the string, so the reason upstream gave us was replaced by an opaque
+  `TypeError`. The union is handled, and an unreadable group id now fails loudly rather than being
+  coerced through `String()` into the literal id `"undefined"`. The status is unchanged (the group
+  genuinely wasn't created, so it was always a 500); the error text is now the real one.
+
+- **An ack whose message id can't be read is dropped instead of silently advancing nothing.** On a
+  WhatsApp Web build that renames the id field (#747), the id reached the status `UPDATE` as
+  `undefined`, which TypeORM sends as `waMessageId = NULL` — matching no row, since `x = NULL` is never
+  true. The ack advanced nothing, burned its one-shot retry, and left only a misleading "no status row
+  advanced" line behind. It is now dropped at the adapter boundary, where the reason is still visible.
+
+- **A send whose message can't be read back no longer crashes, and never claims a delivery it can't
+  prove.** `whatsapp-web.js`'s `Client.sendMessage()` can *resolve* with `undefined` instead of
+  throwing, while its typings declare `Promise<Message>` — so the adapter's `msg.id._serialized` reads
+  surfaced as an opaque `TypeError: Cannot read properties of undefined (reading 'id')` and a 500, at
+  seven send sites. All of them now route through one helper that distinguishes the two cases the
+  dependency collapses into that single `undefined`: no message at all is reported as a failed send
+  (it is genuinely ambiguous whether anything was dispatched, and a retryable false negative beats
+  claiming a delivery that never happened), whereas a message whose id is merely unreadable reports
+  the empty no-id sentinel `forwardMessage` already used — never a synthesised id. An empty id is now
+  normalized to NULL inside `saveOutgoingMessage`, so it can't collide on the non-partial
+  `(sessionId, waMessageId)` unique index and silently drop a bulk row. Refs #757.
+
+### Security
+
+
+## [0.8.18] - 2026-07-17
+
+### Added
+
+### Changed
+
+- **Send-response semantics clarified (docs only).** The send endpoints' Swagger response and `docs/06` now state explicitly that `201` means the gateway accepted the message for sending — not that the recipient received it — and that WhatsApp does not reject an unregistered recipient synchronously, so a message to a number that is not on WhatsApp still returns `201` with a `messageId` but never delivers. `GET /sessions/{id}/contacts/check/{number}` is cross-referenced as the way to pre-validate a new recipient, and the async message `status` lifecycle (`sent → delivered → read`, or `failed`) as the source of real delivery state. No behavior change. Refs #738.
+
+### Fixed
+
+- **Inbound media download, message ids, acks, and reply quoting restored**
+  (whatsapp-web.js `id._serialized` → `id.$1` rename). WhatsApp Web build 2.3000.x
+  (rolled out ~2026-07-14) renamed the internal serialized message-id property
+  from `id._serialized` to `id.$1`, which broke whatsapp-web.js 1.34.7's
+  `downloadMedia()`, message-id extraction, ack tracking, and quoted-message
+  resolution for every bot at once. The production Docker image now backports
+  upstream fix [#201832](https://github.com/wwebjs/whatsapp-web.js/pull/201832)
+  (`Base._normalizeId`) into the installed dependency at build time via
+  `scripts/patch-wwebjs-201832.js`. The patcher applies the real upstream diff
+  (with a loud-fail guard against version skew) and auto-disables the moment a
+  future whatsapp-web.js release ships the fix, so it is a stopgap, not a fork.
+  Fixes #747.
+
+- **Source installs get the whatsapp-web.js backport too, not just the Docker image.**
+  `npm install` now applies it from `postinstall`, so the local-development setup in
+  the README is no longer stuck with broken media downloads. It is best-effort
+  there: a machine without a `patch` binary (Windows outside WSL) or a
+  Baileys-only setup gets a warning rather than a failed install. The image build
+  still treats the same failure as fatal.
+
+- **Reactions stay attributable on the renamed-id builds too.** `Reaction` assigns
+  its keys straight through, so it is the one structure upstream's normalization
+  doesn't reach; the adapter now reads the renamed field directly and falls back to
+  the empty no-id sentinel instead of passing `undefined` on.
+
+- **A reaction with no message id no longer updates an arbitrary message.**
+  `applyReaction` looked the message up by an id that could be `undefined`, and
+  TypeORM drops an undefined condition from the where-clause rather than matching
+  nothing — so the lookup found an unrelated row and emitted its reactions under
+  the incoming event. The id is now checked before the query. Latent since
+  reactions were added; only reachable when an engine can't resolve the id.
+
+- **Engine start timeouts now return a diagnostic 504 instead of a bare 500.** Two
+  `POST /api/sessions/:id/start` failure modes previously escaped to NestJS's default handler as a
+  meaningless `500 Internal Server Error`: (1) the **auth-timeout** — whatsapp-web.js throws the
+  primitive string `'auth timeout'` when its login poll exhausts `authTimeoutMs` (default 30s), e.g.
+  an unreachable session proxy means the browser launches but no QR is ever delivered; and (2) the
+  **outer init-hang deadline** (`EngineInitTimeoutError`) — a wedged `initialize()` that never settles
+  within `max(60s, WWEBJS_AUTH_TIMEOUT_MS+30s)`, usually a container memory/resource limit or a stalled
+  Chromium. Both now map to `504 Gateway Timeout` with a diagnostic message (proxy/network vs resource
+  limits respectively) and the `WWEBJS_AUTH_TIMEOUT_MS` knob for slow first boots. Engine cleanup
+  (force-destroy + evict + status) still runs before mapping; generic non-timeout init rejections
+  (e.g. "chromium launch failed") still propagate untouched.
+
+- **S3 storage no longer falls back to local without an `endpoint`.** The S3 client init required an
+  `endpoint`, which only S3-compatible stores (MinIO, R2) need — standard AWS S3 (whose endpoint is
+  derived from region) silently initialized no client and served all media from local disk (#735).
+  `endpoint` and `forcePathStyle` are now applied only when an endpoint is configured, so AWS S3 uses
+  its default virtual-hosted addressing while MinIO-compatible stores keep path-style.
+
+- **`.env.example` no longer ships a default `S3_ENDPOINT`.** The template's pre-filled
+  `http://localhost:9000` silently re-routed a copy-paste AWS S3 config to MinIO/path-style mode and the
+  local fallback; it is now commented out so the default is AWS virtual-hosted mode (#735 follow-up).
+
+- **WhatsApp Engine selection on the Infrastructure page no longer reverts to the running engine.**
+  The engine radio was re-stamped from the live `/engines/current` value on every emission, so a late
+  first resolution (or a window-focus refetch) overwrote an operator's in-progress, unsaved selection
+  (#735). The selection now seeds once and freezes on the first user interaction, matching the
+  one-time hydration lock the other infrastructure fields already had.
+
+- **Message Tester supports uploading local media files.** Media messages could previously only be
+  sent from a URL; a file picker is now available alongside the URL field (mutually exclusive with
+  it), reading the file as base64 (#735). The backend already accepted `base64`; this adds the
+  dashboard UI for it. Uploads are client-capped at 18 MiB (the effective base64-over-JSON body
+  limit) so an oversized pick surfaces a clear error instead of freezing the tab, and switching the
+  message category after picking a file now clears it so stale bytes aren't routed to the wrong
+  endpoint.
+
+### Security
+
+- **Plugin archive extraction hardened against CVE-2026-39244 (adm-zip declared-size zip-bomb OOM).**
+  The `adm-zip` bump to `0.6.0` in #728 brings upstream's fix for CVE-2026-39244: a crafted archive
+  declaring a huge entry size could drive an unbounded `Buffer.alloc` and exhaust memory during
+  extraction. This closes the declared-size allocation vector on the plugin marketplace install path
+  (`src/modules/plugins/plugin-installer.ts`), complementing the project's own `readEntryData()` guard
+  that already caps *decompressed* bytes via zlib `maxOutputLength`. The two adm-zip 0.6.0 behavior
+  changes (`extractEntryTo` subdirectory preservation, non-fatal `utimes`) touch APIs this project does
+  not use. The now-redundant `@types/adm-zip` devDependency is dropped as well — adm-zip 0.6.0 ships its
+  own `types.d.ts`.
 
 ## [0.8.17] - 2026-07-13
 

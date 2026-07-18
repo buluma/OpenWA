@@ -22,7 +22,7 @@ DeliveryStatus = Literal["pending", "sent", "delivered", "read", "failed"]
 BulkMessageType = Literal["text", "image", "video", "audio", "document"]
 WebhookEvent = Literal[
     "message.received", "message.sent", "message.ack", "message.failed", "message.revoked",
-    "message.reaction", "session.status", "session.qr", "session.authenticated",
+    "message.reaction", "message.edited", "session.status", "session.qr", "session.authenticated",
     "session.disconnected",
     # Reserved: accepted on subscribe but not dispatched yet.
     "group.join", "group.leave", "group.update",
@@ -107,7 +107,20 @@ class SendMediaRequest(TypedDict, total=False):
     mimetype: str
     filename: str
     caption: str
+
+
+class SendAudioRequest(SendMediaRequest, total=False):
     ptt: bool  # audio only: send as a WhatsApp voice note (PTT)
+
+
+class BulkMediaRequest(TypedDict, total=False):
+    """Nested bulk media; chatId lives on the parent and caption on content."""
+
+    url: str
+    base64: str
+    mimetype: str
+    filename: str
+    ptt: bool
 
 
 class SendLocationRequest(TypedDict, total=False):
@@ -269,10 +282,10 @@ class ReactionRecord(TypedDict, total=False):
 
 class BulkMessageContent(TypedDict, total=False):
     text: str
-    image: SendMediaRequest
-    video: SendMediaRequest
-    audio: SendMediaRequest
-    document: SendMediaRequest
+    image: BulkMediaRequest
+    video: BulkMediaRequest
+    audio: BulkMediaRequest
+    document: BulkMediaRequest
     caption: str
 
 
@@ -493,12 +506,41 @@ class DeleteChatRequest(TypedDict):
 # ── Status / Stories ──────────────────────────────────────────────
 
 
+class StatusContact(TypedDict, total=False):
+    """Whose story a :class:`StatusRecord` belongs to."""
+
+    id: Jid
+    name: str
+    pushName: str
+
+
+# One status/story from the GET status endpoints (``list``/``from_contact``), which
+# answer a ``{"statuses": [...]}`` envelope. Mirrors the backend ``Status`` — the engine
+# payload is returned as-is, with no DTO in between. ``timestamp``/``expiresAt`` are
+# ISO 8601 strings (``Date`` on the server, serialized). ``mediaUrl``/``backgroundColor``/
+# ``font`` are declared by the backend but no engine populates them on a read yet
+# (whatsapp-web.js maps none of them; Baileys cannot read statuses at all).
 class StatusRecord(TypedDict, total=False):
     id: str
-    statusId: str
+    contact: StatusContact
     type: str
-    body: str | None
-    timestamp: str | int
+    caption: str
+    mediaUrl: str
+    backgroundColor: str
+    font: int
+    timestamp: str
+    expiresAt: str
+
+
+# Result of a status POST (``send-text``/``send-image``/``send-video``). Mirrors the backend
+# ``StatusResult``, which is deliberately NOT ``Status``: the acknowledgement carries the id and
+# timing only, with no contact or media. ``statusId`` is the handle ``delete()`` takes.
+class StatusResult(TypedDict, total=False):
+    statusId: str
+    # ISO 8601 timestamp of the post.
+    timestamp: str
+    # ISO 8601 expiry timestamp.
+    expiresAt: str
 
 
 class SendTextStatusRequest(TypedDict, total=False):
@@ -591,11 +633,12 @@ class UpdateTemplateRequest(TypedDict, total=False):
 # ── Label (WhatsApp Business) ─────────────────────────────────────
 
 
+# Mirrors the backend ``Label`` — returned by the engine as-is, with no DTO in between.
+# ``hexColor`` is the only colour field the wire shape carries, e.g. ``#25D366``.
 class LabelRecord(TypedDict, total=False):
     id: str
     name: str
-    color: str
-    colorHex: str
+    hexColor: str
 
 
 class AddLabelRequest(TypedDict):
@@ -605,13 +648,28 @@ class AddLabelRequest(TypedDict):
 # ── Channel / Newsletter ──────────────────────────────────────────
 
 
+# Mirrors the backend ``Channel`` — returned by the engine as-is, with no DTO in between.
+# ``picture``/``createdAt`` are populated by Baileys; whatsapp-web.js omits both.
 class ChannelRecord(TypedDict, total=False):
     id: Jid
     name: str
-    description: str | None
+    description: str
+    inviteCode: str
     subscriberCount: int
-    pictureUrl: str | None
-    role: str
+    picture: str
+    verified: bool
+    createdAt: int
+
+
+# A message read live from a channel by ``channels.messages()`` — the engine payload
+# (backend ``ChannelMessage``), NOT the persisted MessageRecord. ``timestamp`` is a Unix
+# timestamp in seconds.
+class ChannelMessageRecord(TypedDict, total=False):
+    id: str
+    body: str
+    timestamp: int
+    hasMedia: bool
+    mediaUrl: str
 
 
 class ChannelMessageQuery(TypedDict, total=False):

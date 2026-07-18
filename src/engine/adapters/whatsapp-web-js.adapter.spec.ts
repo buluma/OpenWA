@@ -15,11 +15,11 @@ import {
 import { getEffectiveWebVersionInfo, resolveWebVersionPin, __resetWebVersionCache } from '../wa-web-version';
 import * as fs from 'fs';
 import * as qrcode from 'qrcode';
-import { UnprocessableEntityException } from '@nestjs/common';
+import { InternalServerErrorException, UnprocessableEntityException } from '@nestjs/common';
 import { EngineNotReadyError } from '../../common/errors/engine-not-ready.error';
 import { ChannelNotFoundError } from '../../common/errors/channel-not-found.error';
 import { ChannelMediaNotSupportedError } from '../../common/errors/channel-media-not-supported.error';
-import { EngineStatus } from '../interfaces/whatsapp-engine.interface';
+import { EditedMessage, EngineStatus } from '../interfaces/whatsapp-engine.interface';
 import { SsrfBlockedError } from '../../common/security/ssrf-guard';
 import { fetch as undiciFetch } from 'undici';
 
@@ -708,9 +708,10 @@ describe('WhatsAppWebJsAdapter.forceDestroy (recover a wedged session, #351)', (
     expect(adapter.getStatus()).toBe(EngineStatus.DISCONNECTED);
   });
 
-  it('is a no-op when there is no client', async () => {
+  it('records teardown intent even when startup has not assigned a client yet', async () => {
     const adapter = newAdapter();
     await expect(adapter.forceDestroy()).resolves.toBeUndefined();
+    expect((adapter as unknown as { tearingDown: boolean }).tearingDown).toBe(true);
   });
 });
 
@@ -1339,6 +1340,38 @@ describe('WhatsAppWebJsAdapter status methods', () => {
     },
   );
 
+  it('postTextStatus reads a renamed `$1` id when the dependency has not normalized it', async () => {
+    // The id is right there — spending the "posted, id unknown" sentinel on it would hand the caller a
+    // statusId that deleteStatus can never revoke, for a status that really is live.
+    const sendMessage = jest.fn().mockResolvedValue({ id: { $1: 'STATUS_RENAMED' }, timestamp: 1700000012 });
+    const result = await readyAdapter({ sendMessage }).postTextStatus('hello', options);
+    expect(result.statusId).toBe('STATUS_RENAMED');
+  });
+
+  it('postTextStatus reports an unreadable id as posted-id-unknown rather than inventing one', async () => {
+    const sendMessage = jest.fn().mockResolvedValue({ id: { someFutureName: 'X' }, timestamp: 1700000013 });
+    const result = await readyAdapter({ sendMessage }).postTextStatus('hello', options);
+    // A Message came back, so the post itself is proven — only the id is unreadable.
+    expect(result.statusId).toBe('');
+  });
+
+  it.each([['postTextStatus'], ['postImageStatus'], ['postVideoStatus']] as const)(
+    '%s fails rather than claim a status that may never have been published',
+    async method => {
+      // whatsapp-web.js resolves undefined when the chat could not be resolved — nothing was posted.
+      // Returning a 201 with a fabricated timestamp here is unrecoverable; a visible failure is not.
+      const sendMessage = jest.fn().mockResolvedValue(undefined);
+      const adapter = readyAdapter({ sendMessage });
+      const call =
+        method === 'postTextStatus' ? adapter.postTextStatus('hello', options) : adapter[method](media, options);
+      // Assert the TYPE, not just the text: a bare Error is a 500 whose body says only "Internal server
+      // error" (no global filter — see message-not-found.error.spec.ts), which would silently discard
+      // the reason this throw exists to deliver.
+      await expect(call).rejects.toBeInstanceOf(InternalServerErrorException);
+      await expect(call).rejects.toThrow(/may not have been published/);
+    },
+  );
+
   it('deleteStatus revokes via client.revokeStatusMessage(statusId)', async () => {
     const revokeStatusMessage = jest.fn().mockResolvedValue(undefined);
     await readyAdapter({ sendMessage: jest.fn(), revokeStatusMessage }).deleteStatus('STATUS1');
@@ -1713,6 +1746,68 @@ describe('WhatsAppWebJsAdapter inbound media (MEDIA_DOWNLOAD_ENABLED=false)', ()
   });
 });
 
+describe('WhatsAppWebJsAdapter message_reaction (id resolution across WA Web builds)', () => {
+  const wireReactionHandler = (): { onMessageReaction: jest.Mock; client: EventEmitter } => {
+    const adapter = new WhatsAppWebJsAdapter({
+      sessionId: 'sess-reaction-test',
+      sessionDataPath: './data/sessions',
+      puppeteer: {},
+    });
+    const client = Object.assign(new EventEmitter(), {
+      info: { wid: { _serialized: 'me@c.us', user: '628123' }, pushname: 'Tester' },
+      getState: jest.fn().mockResolvedValue(WAState.CONNECTED),
+      pupPage: { evaluate: jest.fn().mockResolvedValue(true) },
+    });
+    (adapter as unknown as { client: unknown }).client = client;
+    const onMessageReaction = jest.fn();
+    (adapter as unknown as { callbacks: unknown }).callbacks = { onMessageReaction };
+    (adapter as unknown as { setupEventHandlers: () => void }).setupEventHandlers();
+    return { onMessageReaction, client };
+  };
+
+  const reactionArg = (mock: jest.Mock): { messageId: string; chatId: string } => {
+    const calls = mock.mock.calls as Array<[{ messageId: string; chatId: string }]>;
+    return calls[0][0];
+  };
+
+  const emitReaction = (client: EventEmitter, msgId: unknown): void => {
+    client.emit('message_reaction', {
+      msgId,
+      id: { remote: 'peer@c.us' },
+      reaction: '👍',
+      senderId: 'peer@c.us',
+    });
+  };
+
+  it('reads _serialized on a healthy WA Web build', () => {
+    const { onMessageReaction, client } = wireReactionHandler();
+
+    emitReaction(client, { _serialized: 'REACTED_MSG' });
+
+    expect(reactionArg(onMessageReaction).messageId).toBe('REACTED_MSG');
+  });
+
+  it('falls back to $1 on a build that renamed _serialized (#747)', () => {
+    const { onMessageReaction, client } = wireReactionHandler();
+
+    // `Reaction` passes its keys straight through, so upstream's id normalization never reaches it —
+    // this fallback is the only thing keeping reactions attributable on an affected build.
+    emitReaction(client, { $1: 'REACTED_MSG_RENAMED' });
+
+    expect(reactionArg(onMessageReaction).messageId).toBe('REACTED_MSG_RENAMED');
+  });
+
+  it('emits the empty no-id sentinel rather than undefined when neither field resolves', () => {
+    const { onMessageReaction, client } = wireReactionHandler();
+
+    emitReaction(client, {});
+
+    // Never undefined: downstream looks the message up by this id, and TypeORM drops an undefined
+    // condition from the where-clause — which would match an unrelated row.
+    expect(reactionArg(onMessageReaction).messageId).toBe('');
+  });
+});
+
 describe('WhatsAppWebJsAdapter message_revoke_everyone (forwards the original deleted id as revokedId)', () => {
   const wireRevokeHandler = (): { onMessageRevoked: jest.Mock; client: EventEmitter } => {
     const adapter = new WhatsAppWebJsAdapter({
@@ -1771,6 +1866,89 @@ describe('WhatsAppWebJsAdapter message_revoke_everyone (forwards the original de
     const revoked = onMessageRevoked.mock.calls[0][0] as { id: string; revokedId?: string };
     expect(revoked.id).toBe('REVOKE_NOTIF_2');
     expect(revoked.revokedId).toBeUndefined();
+  });
+
+  it('reads renamed `$1` ids on both sides (#747)', () => {
+    // `revokedId` needs this even on a patched tree: Client.js overwrites the normalized id with a raw
+    // spread of `protocolMessageKey`, which neither normalization layer touches. Losing it strands the
+    // revocation — the UPDATE matches no row and the deleted body stays in the DB.
+    const { onMessageRevoked, client } = wireRevokeHandler();
+
+    client.emit(
+      'message_revoke_everyone',
+      { id: { $1: 'REVOKE_NOTIF_RENAMED' }, from: 'peer@c.us', to: 'me@c.us', timestamp: 1700000072 },
+      { id: { $1: 'ORIGINAL_RENAMED' } },
+    );
+
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    const revoked = onMessageRevoked.mock.calls[0][0] as { id: string; revokedId?: string };
+    expect(revoked.id).toBe('REVOKE_NOTIF_RENAMED');
+    expect(revoked.revokedId).toBe('ORIGINAL_RENAMED');
+  });
+});
+
+describe('WhatsAppWebJsAdapter message_edit', () => {
+  const wireEditHandler = (): { onMessageEdited: jest.Mock; client: EventEmitter } => {
+    const adapter = new WhatsAppWebJsAdapter({
+      sessionId: 'sess-edit-test',
+      sessionDataPath: './data/sessions',
+      puppeteer: {},
+    });
+    const client = Object.assign(new EventEmitter(), {
+      info: { wid: { _serialized: 'me@c.us', user: '628123' }, pushname: 'Tester' },
+      getState: jest.fn().mockResolvedValue(WAState.CONNECTED),
+      pupPage: { evaluate: jest.fn().mockResolvedValue(true) },
+    });
+    (adapter as unknown as { client: unknown }).client = client;
+    const onMessageEdited = jest.fn();
+    (adapter as unknown as { callbacks: unknown }).callbacks = { onMessageEdited };
+    (adapter as unknown as { setupEventHandlers: () => void }).setupEventHandlers();
+    return { onMessageEdited, client };
+  };
+
+  it('emits onMessageEdited with the new body and mapped fields', () => {
+    const { onMessageEdited, client } = wireEditHandler();
+    const now = jest.spyOn(Date, 'now').mockReturnValue(1700000089123);
+
+    try {
+      client.emit(
+        'message_edit',
+        {
+          id: { _serialized: 'MSG_EDIT_1' },
+          from: 'peer@c.us',
+          to: 'me@c.us',
+          author: 'peer@c.us',
+          body: 'Old text',
+          type: 'chat',
+          fromMe: false,
+          hasMedia: false,
+          mentionedIds: ['mentioned@c.us'],
+          timestamp: 1700000080,
+        },
+        'Edited new text',
+        'Old text',
+      );
+    } finally {
+      now.mockRestore();
+    }
+
+    expect(onMessageEdited).toHaveBeenCalledTimes(1);
+    const calls = onMessageEdited.mock.calls as Array<[EditedMessage]>;
+    expect(calls[0][0]).toEqual({
+      messageId: 'MSG_EDIT_1',
+      chatId: 'peer@c.us',
+      body: 'Edited new text',
+      senderId: 'peer@c.us',
+      from: 'peer@c.us',
+      to: 'me@c.us',
+      fromMe: false,
+      isGroup: false,
+      type: 'text',
+      hasMedia: false,
+      author: 'peer@c.us',
+      mentionedIds: ['mentioned@c.us'],
+      timestamp: 1700000089,
+    });
   });
 });
 
@@ -2155,7 +2333,7 @@ describe('WhatsAppWebJsAdapter inbound media concurrency (slot held until the re
     // Time out BOTH callers' wall-clock deadline while the real download is still pending. With the old
     // coupling this freed the slot and admitted download2 (inFlight 2); the fix holds the slot.
     await jest.advanceTimersByTimeAsync(25);
-    expect(await r1).toBeUndefined(); // caller unblocked on the timeout race
+    expect(await r1).toEqual(expect.objectContaining({ mimetype: 'image/png', omitted: true, sizeBytes: 100 }));
     expect(downloads.length).toBe(1); // download2 still not started — slot held by the pending real download1
     expect(maxInFlight).toBe(1);
 
@@ -2167,7 +2345,7 @@ describe('WhatsAppWebJsAdapter inbound media concurrency (slot held until the re
 
     // Settle the rest so nothing dangles.
     await jest.advanceTimersByTimeAsync(25);
-    expect(await r2).toBeUndefined();
+    expect(await r2).toEqual(expect.objectContaining({ mimetype: 'image/png', omitted: true, sizeBytes: 100 }));
     downloads[1].resolve({ mimetype: 'image/png', data: Buffer.from('b').toString('base64') });
     await jest.advanceTimersByTimeAsync(0);
     expect(maxInFlight).toBe(1);
@@ -2200,5 +2378,151 @@ describe('WhatsAppWebJsAdapter inbound media concurrency (slot held until the re
     const media = (await cap(makeMsg('good', 'resolve'))) as { mimetype: string; data: string };
     expect(media.data).toBe(Buffer.from('ok').toString('base64'));
     expect(calls).toEqual(['bad', 'good']);
+  });
+});
+
+/**
+ * The send contract when whatsapp-web.js cannot hand back a usable message (#757).
+ *
+ * `Client.sendMessage` RESOLVES with `undefined` rather than throwing, collapsing two opposite outcomes
+ * into one value (`Client.js:1558`), and its typings claim `Promise<Message>` — so nothing upstream of
+ * these tests catches a regression here.
+ */
+describe('WhatsAppWebJsAdapter send-result contract', () => {
+  const readyAdapter = (client: unknown): WhatsAppWebJsAdapter => {
+    const adapter = new WhatsAppWebJsAdapter({ sessionId: 's', sessionDataPath: './data/sessions', puppeteer: {} });
+    (adapter as unknown as { status: EngineStatus }).status = EngineStatus.READY;
+    (adapter as unknown as { client: unknown }).client = client;
+    return adapter;
+  };
+
+  it('reports a send as failed when the engine resolves without a message', async () => {
+    // The dangerous case: `undefined` means EITHER the chat never resolved and nothing was sent, OR the
+    // message went out and only its id was unreadable. Indistinguishable here — so this must not be
+    // reported as success. A false negative is retryable; a 201 for a message that never left is not.
+    const sendMessage = jest.fn().mockResolvedValue(undefined);
+
+    await expect(readyAdapter({ sendMessage }).sendTextMessage('621@c.us', 'hi')).rejects.toThrow(
+      /may not have been delivered/,
+    );
+    // Regression guard: the old code dereferenced `msg.id` and surfaced an opaque TypeError instead.
+    await expect(readyAdapter({ sendMessage }).sendTextMessage('621@c.us', 'hi')).rejects.not.toThrow(TypeError);
+  });
+
+  it('returns the empty no-id sentinel when the message exists but its id is unreadable', async () => {
+    // A Message instance proves the send happened, so an unreadable id is unambiguously "sent, id
+    // unknown" — the shape a future WhatsApp Web re-mangle of `$1` would produce. Never fabricate one.
+    const sendMessage = jest.fn().mockResolvedValue({ id: { someFutureName: 'x' }, timestamp: 1700000000 });
+
+    const res = await readyAdapter({ sendMessage }).sendTextMessage('621@c.us', 'hi');
+
+    expect(res).toEqual({ id: '', timestamp: 1700000000 });
+  });
+
+  it('reads a renamed $1 id when the dependency has not normalized it', async () => {
+    const sendMessage = jest.fn().mockResolvedValue({ id: { $1: 'true_621@c.us_ABC' }, timestamp: 1700000001 });
+
+    const res = await readyAdapter({ sendMessage }).sendTextMessage('621@c.us', 'hi');
+
+    expect(res).toEqual({ id: 'true_621@c.us_ABC', timestamp: 1700000001 });
+  });
+
+  it('passes a healthy id straight through', async () => {
+    const sendMessage = jest
+      .fn()
+      .mockResolvedValue({ id: { _serialized: 'true_621@c.us_XYZ' }, timestamp: 1700000002 });
+
+    const res = await readyAdapter({ sendMessage }).sendTextMessage('621@c.us', 'hi');
+
+    expect(res).toEqual({ id: 'true_621@c.us_XYZ', timestamp: 1700000002 });
+  });
+});
+
+describe('WhatsAppWebJsAdapter message_ack (unreadable id)', () => {
+  const wireAckHandler = (): { onMessageAck: jest.Mock; client: EventEmitter } => {
+    const adapter = new WhatsAppWebJsAdapter({
+      sessionId: 'sess-ack-test',
+      sessionDataPath: './data/sessions',
+      puppeteer: {},
+    });
+    const client = Object.assign(new EventEmitter(), {
+      info: { wid: { _serialized: 'me@c.us', user: '628123' }, pushname: 'Tester' },
+      getState: jest.fn().mockResolvedValue(WAState.CONNECTED),
+      pupPage: { evaluate: jest.fn().mockResolvedValue(true) },
+    });
+    (adapter as unknown as { client: unknown }).client = client;
+    const onMessageAck = jest.fn();
+    (adapter as unknown as { callbacks: unknown }).callbacks = { onMessageAck };
+    (adapter as unknown as { setupEventHandlers: () => void }).setupEventHandlers();
+    return { onMessageAck, client };
+  };
+
+  it('forwards the ack on a healthy build', () => {
+    const { onMessageAck, client } = wireAckHandler();
+
+    client.emit('message_ack', { id: { _serialized: 'ACKED_MSG' } }, 3);
+
+    expect(onMessageAck).toHaveBeenCalledWith('ACKED_MSG', expect.any(String));
+  });
+
+  it('reads a renamed `$1` id when the dependency has not normalized it', () => {
+    // The send path recovers from the rename; the ack path must too, or a message sent on an unpatched
+    // build can never leave SENT — including via `ack < 0`, the one signal that it failed outright.
+    const { onMessageAck, client } = wireAckHandler();
+
+    client.emit('message_ack', { id: { $1: 'ACKED_RENAMED' } }, 3);
+
+    expect(onMessageAck).toHaveBeenCalledWith('ACKED_RENAMED', expect.any(String));
+  });
+
+  it('drops an ack whose id cannot be read instead of passing undefined on', () => {
+    // An undefined id reaches the ack UPDATE as `waMessageId = NULL`, which matches nothing (`x = NULL`
+    // is never true in SQL). The ack would advance no row and still burn its one-shot retry, leaving the
+    // message at SENT with only a misleading "no status row advanced" in the log.
+    const { onMessageAck, client } = wireAckHandler();
+
+    client.emit('message_ack', { id: { someFutureName: 'x' } }, 3);
+
+    expect(onMessageAck).not.toHaveBeenCalled();
+  });
+});
+
+describe('WhatsAppWebJsAdapter createGroup (failure shapes)', () => {
+  const readyAdapter = (client: unknown): WhatsAppWebJsAdapter => {
+    const adapter = new WhatsAppWebJsAdapter({ sessionId: 's', sessionDataPath: './data/sessions', puppeteer: {} });
+    (adapter as unknown as { status: EngineStatus }).status = EngineStatus.READY;
+    (adapter as unknown as { client: unknown }).client = client;
+    return adapter;
+  };
+
+  it("surfaces the engine's reason when creation fails", async () => {
+    // whatsapp-web.js RESOLVES with a plain string on failure rather than throwing (Client.js:2376).
+    // Reading `.gid` off it produced an opaque TypeError and threw the actual reason away.
+    const createGroup = jest
+      .fn()
+      .mockResolvedValue('CreateGroupError: An unknown error occupied while creating a group');
+
+    await expect(readyAdapter({ createGroup }).createGroup('team', ['628123@c.us'])).rejects.toThrow(
+      /CreateGroupError/,
+    );
+  });
+
+  it('never returns a placeholder when the group id cannot be read', async () => {
+    // The old `String(gid._serialized)` coerced an unreadable id into the literal string "undefined"
+    // and handed it back as a real, addressable group id.
+    const createGroup = jest.fn().mockResolvedValue({ gid: { someFutureName: 'x' } });
+
+    const call = readyAdapter({ createGroup }).createGroup('team', ['628123@c.us']);
+
+    await expect(call).rejects.toThrow(/id could not be read/);
+    await expect(call).rejects.not.toThrow(/undefined/);
+  });
+
+  it('returns the group on success', async () => {
+    const createGroup = jest.fn().mockResolvedValue({ gid: { _serialized: '120363000@g.us' } });
+
+    const res = await readyAdapter({ createGroup }).createGroup('team', ['628123@c.us', '628124@c.us']);
+
+    expect(res).toEqual({ id: '120363000@g.us', name: 'team', participantsCount: 2 });
   });
 });

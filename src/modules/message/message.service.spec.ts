@@ -876,6 +876,30 @@ describe('MessageService', () => {
         expect.objectContaining({ data: 'https://example.com/img.jpg' }),
       );
     });
+
+    it('strips a data-URI prefix before passing base64 bytes to the engine', async () => {
+      await service.sendImage('sess-1', {
+        chatId: '628123456789@c.us',
+        base64: 'data:image/png;base64,QUJD',
+        mimetype: 'image/png',
+      });
+
+      expect(mockEngine.sendImageMessage).toHaveBeenCalledWith(
+        '628123456789@c.us',
+        expect.objectContaining({ data: 'QUJD' }),
+      );
+    });
+
+    it('rejects a data URI with no encoded payload', async () => {
+      await expect(
+        service.sendImage('sess-1', {
+          chatId: '628123456789@c.us',
+          base64: 'data:image/png;base64,',
+          mimetype: 'image/png',
+        }),
+      ).rejects.toThrow('Either url or base64 must be provided');
+      expect(mockEngine.sendImageMessage).not.toHaveBeenCalled();
+    });
   });
 
   // ── reactToMessage / deleteMessage ────────────────────────────────
@@ -967,6 +991,30 @@ describe('MessageService', () => {
       });
 
       expect(mockEngine.deleteMessage).toHaveBeenCalledWith('test@c.us', 'wa-msg-1', false);
+    });
+  });
+
+  /**
+   * The empty id is the engine's "sent, but I couldn't read the id back" signal (#757). It has to reach
+   * the DB as NULL: UQ_messages_sessionId_waMessageId is NOT partial, so '' collides with the next
+   * id-less send in the same session, while NULLs stay exempt. In the bulk path that violation is
+   * swallowed into a warning, so the row would vanish with nothing surfacing.
+   */
+  describe('saveOutgoingMessage id normalization (#757)', () => {
+    it('stores an empty engine id as NULL rather than an empty string', async () => {
+      await service.saveOutgoingMessage('sess-1', { waMessageId: '', chatId: '621@c.us', type: 'text' });
+
+      expect(repository.create).toHaveBeenCalledWith(expect.objectContaining({ waMessageId: undefined }));
+    });
+
+    it('leaves a real id untouched', async () => {
+      await service.saveOutgoingMessage('sess-1', {
+        waMessageId: 'true_621@c.us_ABC',
+        chatId: '621@c.us',
+        type: 'text',
+      });
+
+      expect(repository.create).toHaveBeenCalledWith(expect.objectContaining({ waMessageId: 'true_621@c.us_ABC' }));
     });
   });
 });

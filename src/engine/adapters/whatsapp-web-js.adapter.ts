@@ -1,4 +1,5 @@
 import { EventEmitter } from 'events';
+import { InternalServerErrorException } from '@nestjs/common';
 import { Client, LocalAuth, MessageMedia, MessageTypes, WAState, type Message } from 'whatsapp-web.js';
 import * as qrcode from 'qrcode';
 import * as path from 'path';
@@ -32,6 +33,7 @@ import {
   ChatState,
   DeliveryStatus,
   RevokedMessage,
+  EditedMessage,
   ReactionEvent,
 } from '../interfaces/whatsapp-engine.interface';
 import { resolveWebVersionPin } from '../wa-web-version';
@@ -52,8 +54,9 @@ import {
   BusinessClient,
   WwjsChannelData,
   GroupCreateResult,
+  SerializedWid,
 } from '../types/whatsapp-web-js.types';
-import { buildIncomingMessageBase, mapContactFields } from './message-mapper';
+import { buildEditedMessage, buildIncomingMessageBase, mapContactFields } from './message-mapper';
 import { buildVCard } from './vcard';
 import {
   capInboundMedia,
@@ -349,7 +352,14 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
       resolveBounded(null);
     });
     const media = await boundedReady;
-    if (!media) return undefined;
+    if (!media) {
+      return {
+        mimetype: data?.mimetype ?? '',
+        filename: data?.filename || undefined,
+        omitted: true,
+        sizeBytes: declared,
+      };
+    }
     const capped = capInboundMedia({
       mimetype: media.mimetype,
       filename: media.filename || undefined,
@@ -406,6 +416,10 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
       // Pin the WA-Web version when configured (fixes the 1.34.x "stuck at authenticating"
       // hang on some setups, #251). Opt-in: unset leaves whatsapp-web.js to auto-select.
       const versionPin = await resolveWebVersionPin();
+      if (this.tearingDown) {
+        this.setStatus(EngineStatus.DISCONNECTED);
+        return;
+      }
       if (versionPin) {
         this.logger.log(`Pinning WhatsApp Web version ${versionPin.webVersion}`);
       }
@@ -443,6 +457,11 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
       });
 
       this.setupEventHandlers();
+      if (this.tearingDown) {
+        this.client = null;
+        this.setStatus(EngineStatus.DISCONNECTED);
+        return;
+      }
       await this.client.initialize();
     } catch (error) {
       this.setStatus(EngineStatus.FAILED);
@@ -639,9 +658,24 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
     });
 
     this.client.on('message_ack', (msg, ack) => {
+      // An unreadable id (a WhatsApp Web build renaming the field, as in #747) would reach the ack
+      // UPDATE as undefined, which TypeORM sends as `waMessageId = NULL` — matching nothing, since
+      // `x = NULL` is never true. The ack then silently advances no row AND burns its one-shot retry,
+      // so the message stays at SENT with only a misleading "no status row advanced" in the log. Drop
+      // it here, where the reason is still visible. (Note this differs from the reaction path below,
+      // where `findOne` DROPS an undefined key instead of nulling it and matches an arbitrary row.)
+      // Read `$1` before giving up, as the send path does (#747): a build that renamed the field still
+      // has a perfectly good id here, and dropping it strands the message at SENT — including the
+      // `ack < 0` that is the only signal a send failed.
+      const rawId = msg.id as unknown as SerializedWid | undefined;
+      const ackId = rawId?._serialized ?? rawId?.$1;
+      if (!ackId) {
+        this.logger.warn('Dropping an ack whose message id could not be read', { ack });
+        return;
+      }
       // Map the whatsapp-web.js MessageAck integer to the neutral DeliveryStatus here, at the
       // adapter boundary, so no downstream consumer ever sees engine-specific ack codes.
-      this.callbacks.onMessageAck?.(msg.id._serialized, wwebjsAckToDeliveryStatus(ack));
+      this.callbacks.onMessageAck?.(ackId, wwebjsAckToDeliveryStatus(ack));
     });
 
     this.client.on('message_revoke_everyone', (after, before) => {
@@ -654,9 +688,17 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
         // ORIGINAL deleted message (when whatsapp-web.js has it in the local store).
         // We forward `before.id` as `revokedId` so consumers can reconcile the
         // deleted message in their own storage.
+        // Both ids read `$1` before giving up (#747). `revokedId` needs it even on a patched tree:
+        // `Client.js` overwrites the normalized id with a raw spread of `protocolMessageKey`
+        // (`revoked_msg.id = { ...message.protocolMessageKey }`), and that key is normalized by
+        // neither the structure constructor nor the injected serializer — so this is the one place a
+        // patched build still hands us a raw MsgKey. Losing it strands the revocation: the UPDATE
+        // falls back to the notification's own id, matches no row, and the deleted body stays put.
+        const afterId = after.id as unknown as SerializedWid | undefined;
+        const beforeId = before?.id as unknown as SerializedWid | undefined;
         const payload: RevokedMessage = {
-          id: after.id._serialized,
-          revokedId: before?.id?._serialized,
+          id: afterId?._serialized ?? afterId?.$1 ?? '',
+          revokedId: beforeId?._serialized ?? beforeId?.$1,
           chatId: after.from === selfWid ? after.to : after.from,
           from: after.from,
           to: after.to,
@@ -672,8 +714,18 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
 
     this.client.on('message_reaction', reaction => {
       try {
+        // `Reaction` assigns its keys straight through (`this.msgId = data.parentMsgKey`), which
+        // upstream's id normalization doesn't reach: it covers structure constructors and `msg.id`,
+        // not keys assigned straight through (`Message.protocolMessageKey` and `Reaction.id` are the
+        // same pattern). On a WA Web build that renamed `_serialized` to `$1` (#747),
+        // `msgId._serialized` is undefined even with the backport applied.
+        // Read `$1` as a fallback, and fall back again to `''` (the same no-id sentinel Baileys uses)
+        // rather than pass undefined on: `applyReaction` looks the message up by this id, and TypeORM
+        // DROPS an undefined condition from the where-clause — which would match an arbitrary row and
+        // emit another message's reactions. Empty string finds nothing and returns cleanly.
+        const msgId = reaction.msgId as unknown as SerializedWid;
         const event: ReactionEvent = {
-          messageId: reaction.msgId._serialized,
+          messageId: msgId?._serialized ?? msgId?.$1 ?? '',
           chatId: reaction.id.remote,
           reaction: reaction.reaction,
           senderId: reaction.senderId,
@@ -681,6 +733,30 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
         this.callbacks.onMessageReaction?.(event);
       } catch (error) {
         this.logger.error('Error processing message_reaction', String(error));
+      }
+    });
+
+    this.client.on('message_edit', (message, newBody) => {
+      try {
+        // whatsapp-web.js keeps `message.timestamp` at the ORIGINAL creation time. Consumers need
+        // occurrence time for ordering multiple edits, so stamp the edit at receipt and project the
+        // otherwise-normal message fields through the same adapter mapper used by inbound messages.
+        const editTimestamp = Math.floor(Date.now() / 1000);
+        const base = buildIncomingMessageBase({
+          id: message.id,
+          from: message.from,
+          to: message.to,
+          body: String(newBody),
+          type: message.type,
+          timestamp: editTimestamp,
+          fromMe: message.fromMe,
+          author: message.author,
+          mentionedIds: message.mentionedIds,
+        });
+        const payload: EditedMessage = buildEditedMessage(base, Boolean(message.hasMedia));
+        this.callbacks.onMessageEdited?.(payload);
+      } catch (error) {
+        this.logger.error('Error processing message_edit', String(error));
       }
     });
 
@@ -836,10 +912,10 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
   }
 
   private beginClientTeardown(): Client | null {
+    this.tearingDown = true;
     const client = this.client;
     if (!client) return null;
 
-    this.tearingDown = true;
     this.clearReadyReconcile();
     if (this.status !== EngineStatus.DISCONNECTED) {
       this.setStatus(EngineStatus.DISCONNECTED);
@@ -1052,10 +1128,7 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
     const msg = await this.sendResolved(chatId, to =>
       mentions?.length ? this.client!.sendMessage(to, text, { mentions }) : this.client!.sendMessage(to, text),
     );
-    return {
-      id: msg.id._serialized,
-      timestamp: msg.timestamp,
-    };
+    return this.toMessageResult(msg);
   }
 
   async sendImageMessage(chatId: string, media: MediaInput): Promise<MessageResult> {
@@ -1107,10 +1180,7 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
       }),
     );
 
-    return {
-      id: msg.id._serialized,
-      timestamp: msg.timestamp,
-    };
+    return this.toMessageResult(msg);
   }
 
   async getContacts(): Promise<Contact[]> {
@@ -1211,10 +1281,7 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
       address: location.address || '',
     });
     const msg = await this.sendResolved(chatId, to => this.client!.sendMessage(to, loc));
-    return {
-      id: msg.id._serialized,
-      timestamp: msg.timestamp,
-    };
+    return this.toMessageResult(msg);
   }
 
   async sendContactMessage(chatId: string, contact: ContactCard): Promise<MessageResult> {
@@ -1228,10 +1295,7 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
         parseVCards: true,
       }),
     );
-    return {
-      id: msg.id._serialized,
-      timestamp: msg.timestamp,
-    };
+    return this.toMessageResult(msg);
   }
 
   async sendStickerMessage(chatId: string, media: MediaInput): Promise<MessageResult> {
@@ -1257,10 +1321,7 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
         sendMediaAsSticker: true,
       }),
     );
-    return {
-      id: msg.id._serialized,
-      timestamp: msg.timestamp,
-    };
+    return this.toMessageResult(msg);
   }
 
   async sendPollMessage(chatId: string, poll: PollInput): Promise<MessageResult> {
@@ -1279,10 +1340,7 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
     const msg = await this.sendResolved(chatId, to =>
       this.client!.sendMessage(to, new Poll(poll.name, poll.options, pollOptions)),
     );
-    return {
-      id: msg.id._serialized,
-      timestamp: msg.timestamp,
-    };
+    return this.toMessageResult(msg);
   }
 
   async replyToMessage(chatId: string, quotedMsgId: string, text: string): Promise<MessageResult> {
@@ -1300,10 +1358,7 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
     // so route it through sendResolved (resolve @c.us->@lid, cache, self-heal). reply(content, chatId)
     // accepts an explicit target (#583 R1).
     const msg = await this.sendResolved(chatId, to => quotedMsg.reply(text, to));
-    return {
-      id: msg.id._serialized,
-      timestamp: msg.timestamp,
-    };
+    return this.toMessageResult(msg);
   }
 
   async forwardMessage(fromChatId: string, toChatId: string, messageId: string): Promise<MessageResult> {
@@ -1343,7 +1398,7 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
         }
       }
       if (sent) {
-        return { id: sent.id._serialized, timestamp: sent.timestamp };
+        return this.toMessageResult(sent);
       }
     } catch (error) {
       this.logger.warn(`Forward succeeded but recovering the sent message id failed: ${String(error)}`);
@@ -1392,7 +1447,20 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
     const participantIds = participants.map(p => (p.includes('@') ? p : `${p}@c.us`));
     const result = await this.client!.createGroup(name, participantIds);
 
-    const groupId = String((result as unknown as GroupCreateResult).gid._serialized);
+    // whatsapp-web.js reports a failed creation by RESOLVING with a plain string
+    // ('CreateGroupError: …', Client.js:2376) rather than throwing, and its own typings say so
+    // (`Promise<CreateGroupResult | string>`). Reading `.gid` straight off that string threw an opaque
+    // TypeError and discarded the reason upstream actually gave us; surface it instead.
+    if (typeof result === 'string') {
+      throw new Error(result);
+    }
+    const gid = (result as unknown as GroupCreateResult).gid as SerializedWid | undefined;
+    const groupId = gid?._serialized ?? gid?.$1;
+    // A group id is not ack-safe the way a message id is: there is no empty-sentinel equivalent, and any
+    // placeholder would be handed back as a real, addressable group. Fail instead of inventing one.
+    if (!groupId) {
+      throw new Error('the group was created but its id could not be read');
+    }
     return {
       id: groupId,
       name: name,
@@ -1661,7 +1729,11 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
     }
     const messages = await channel.fetchMessages({ limit });
     return (messages ?? []).map(msg => ({
-      id: String(typeof msg.id === 'object' ? msg.id._serialized : msg.id),
+      // Read `$1` before the sentinel (#747), and don't `String()` the object branch: that turned an
+      // unreadable id into the literal "undefined" rather than the empty sentinel every other path
+      // uses. Read-only endpoint — never persisted, never ack-matched — so `''` carries no collision
+      // risk here; it just means "id unreadable".
+      id: (typeof msg.id === 'object' ? (msg.id?._serialized ?? msg.id?.$1) : msg.id) || '',
       body: String(msg.body || ''),
       timestamp: Number(msg.timestamp),
       hasMedia: Boolean(msg.hasMedia),
@@ -1883,7 +1955,9 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
       for (const msg of broadcast.msgs) {
         const ts = new Date(msg.timestamp * 1000);
         statuses.push({
-          id: msg.id._serialized,
+          // `deleteStatus` takes this id as its revoke handle, so losing it to the rename makes a
+          // listed status unactionable (#747). The contact id above is a Wid and is unaffected.
+          id: ((msg.id as unknown as SerializedWid)?._serialized ?? (msg.id as unknown as SerializedWid)?.$1) || '',
           contact: contactSummary,
           type: msg.type === MessageTypes.IMAGE ? 'image' : msg.type === MessageTypes.VIDEO ? 'video' : 'text',
           ...(msg.body ? { caption: msg.body } : {}),
@@ -1939,10 +2013,61 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
     return new MessageMedia(media.mimetype, media.data.toString('base64'), media.filename);
   }
 
+  /**
+   * Build the `MessageResult` for a send from whatever whatsapp-web.js hands back.
+   *
+   * `client.sendMessage()` can RESOLVE with `undefined` instead of throwing, and it collapses two
+   * opposite outcomes into that one value (`Client.js:1558`): the chat could not be resolved so nothing
+   * was sent (`if (!chat) return null`, `Client.js:1539`), or the message went out and only its id could
+   * not be read back (`Msg.get` miss, `Injected/Utils.js:585`). Nothing here can tell those apart, so an
+   * absent message is reported as a failed send: a false negative is visible and retryable, while
+   * claiming delivery for a message that never left is not recoverable. wwebjs's own typings hide the
+   * case entirely — `index.d.ts` declares `Promise<Message>`, so `strict` never flagged these reads.
+   *
+   * A `Message` instance is different: wwebjs only builds one from a real message model, so its presence
+   * proves the send happened. An id it cannot read there means "sent, id unknown" and carries the empty
+   * sentinel `forwardMessage` already returns — which `saveOutgoingMessage` stores as NULL rather than a
+   * fabricated id that a later ack could mis-match.
+   */
+  private toMessageResult(msg: Message | undefined): MessageResult {
+    if (!msg) {
+      throw new Error(
+        'the engine returned no message for this send, so it may not have been delivered — check the chat before retrying',
+      );
+    }
+    const id = msg.id as unknown as SerializedWid | undefined;
+    return { id: id?._serialized ?? id?.$1 ?? '', timestamp: msg.timestamp };
+  }
+
+  /**
+   * The status-post counterpart of `toMessageResult`, but its absent-message case is *narrower* than a
+   * send's. `Injected/Utils.js` builds the status model and returns it from the `isStatus` branch before
+   * ever reaching the `Msg.get` miss that makes an ordinary send ambiguous — so the only way back with no
+   * message is `Client.js`'s `if (!chat) return null`, i.e. nothing was posted at all. Not an ambiguity:
+   * a plain failure, which was previously dressed up as a `201` carrying a `new Date()` invented for a
+   * status that never existed.
+   *
+   * Thrown as an `InternalServerErrorException` rather than a bare `Error` because there is no global
+   * exception filter (see `message-not-found.error.spec.ts`), so a bare `Error` reaches the caller as
+   * `{"statusCode":500,"message":"Internal server error"}` — and unlike a send, which routes its message
+   * into the `message:failed` hook, HTTP is the only consumer a status post has. The same 500, with the
+   * reason surviving.
+   *
+   * A present `Message` proves the post happened, so an id it cannot read there carries the same empty
+   * sentinel `toMessageResult` uses. Read `$1` before falling back to it (#747): the sentinel means
+   * "posted, id unknown", and `deleteStatus` takes this id as the revoke handle — spending it on an id
+   * that was readable all along leaves a status nothing can revoke.
+   */
   private toStatusResult(msg: Message | undefined): StatusResult {
-    const ts = msg?.timestamp ? new Date(msg.timestamp * 1000) : new Date();
+    if (!msg) {
+      throw new InternalServerErrorException(
+        'the engine returned no message for this status post, so it may not have been published — check your status before retrying',
+      );
+    }
+    const id = msg.id as unknown as SerializedWid | undefined;
+    const ts = msg.timestamp ? new Date(msg.timestamp * 1000) : new Date();
     return {
-      statusId: msg?.id?._serialized ?? '',
+      statusId: id?._serialized ?? id?.$1 ?? '',
       timestamp: ts,
       expiresAt: new Date(ts.getTime() + 24 * 3_600_000),
     };

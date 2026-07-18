@@ -24,16 +24,16 @@ function hashData(data: Record<string, unknown>): string {
  * Same event with same data will produce the same key (deterministic).
  *
  * @remarks
- * Message keys are content-based (keyed on the unique message id), so two deliveries of the same
- * logical message dedupe. Lifecycle events (session.status/authenticated/disconnected) recur with
- * identical content — the same phone on every reconnect, a constant disconnect reason — so they are
- * salted with `occurredAt` (captured ONCE per dispatch and reused across retries): distinct
- * occurrences get distinct keys while retries of the same occurrence stay stable.
+ * Stable message keys are content-based (keyed on the unique message id), so two deliveries of the
+ * same logical message dedupe. Recurring events (message edits/reactions and session lifecycle
+ * transitions) can repeat with identical content, so they are salted with `occurredAt` (captured ONCE
+ * per dispatch and reused across retries): distinct occurrences get distinct keys while retries of
+ * the same occurrence stay stable.
  *
- * @param occurredAt - ISO timestamp captured once per dispatch; salts recurring lifecycle keys.
+ * @param occurredAt - ISO timestamp captured once per dispatch; salts recurring occurrence keys.
  */
 export function generateIdempotencyKey(event: string, data: Record<string, unknown>, occurredAt?: string): string {
-  // Salt applied only to the recurring lifecycle keys below; message/qr keys ignore it.
+  // Only recurring occurrence keys consume this salt; stable message and QR keys ignore it.
   const occurrence = occurredAt ? `_${occurredAt}` : '';
   switch (event) {
     case 'message.received':
@@ -55,6 +55,12 @@ export function generateIdempotencyKey(event: string, data: Record<string, unkno
 
     case 'message.revoked':
       return `rev_${toStr(data.sessionId)}_${toStr(data.id ?? data.messageId)}`;
+
+    case 'message.edited':
+      // Editing the same message multiple times should produce different idempotency keys.
+      // Salt with occurredAt (captured once per dispatch, reused across retries) so distinct occurrences
+      // get distinct keys, while retries of the same delivery stay stable.
+      return `edit_${toStr(data.sessionId)}_${toStr(data.messageId)}${occurrence}`;
 
     case 'message.reaction':
       // A reaction carries no unique id and is a read-modify-write of the message's reactions map; the

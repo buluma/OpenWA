@@ -130,6 +130,18 @@ export class BaileysSessionStore {
   }
 
   /**
+   * Refresh the chat preview when (and only when) the edited message is still the latest message in
+   * that chat. Editing an older message must not replace the preview or reorder the conversation.
+   */
+  recordMessageEdit(chatId: string, messageId: string, text: string): void {
+    if (!messageId) return;
+    const rawChatId = this.lastMessages.has(chatId) ? chatId : this.toEngineJid(chatId);
+    const existing = this.lastMessages.get(rawChatId);
+    if (!existing || existing.key.id !== messageId) return;
+    this.lastMessages.set(rawChatId, { ...existing, text });
+  }
+
+  /**
    * Cache a positive disappearing-messages timer learned from an inbound message under both the raw chat
    * JID and its neutral form, so {@link getEphemeralExpiration} hits regardless of which dialect the caller
    * sends to. A non-positive/absent value means "no live timer on this message" and is left untouched (a

@@ -1,9 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken, getDataSourceToken } from '@nestjs/typeorm';
 import { Repository, DataSource, In, IsNull } from 'typeorm';
-import { NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
+import { NotFoundException, ConflictException, BadRequestException, HttpException, HttpStatus } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { SessionService, ACK_RECONCILE_DELAY_MS, EngineInitTimeoutError } from './session.service';
+import { SessionService, ACK_RECONCILE_DELAY_MS } from './session.service';
 import { Session, SessionStatus } from './entities/session.entity';
 import { Message, MessageDirection, MessageStatus } from '../message/entities/message.entity';
 import { MessageBatch } from '../message/entities/message-batch.entity';
@@ -119,6 +119,7 @@ describe('SessionService', () => {
       emitMessageAck: jest.fn(),
       emitMessageRevoked: jest.fn(),
       emitMessageReaction: jest.fn(),
+      emitMessageEdited: jest.fn(),
       emitQRCode: jest.fn(),
     };
 
@@ -420,6 +421,26 @@ describe('SessionService', () => {
       expect(mockEngine.destroy).not.toHaveBeenCalled();
     });
 
+    it('maps a whatsapp-web.js auth timeout (bare string) to HTTP 504, not a bare 500 (#733)', async () => {
+      (repository.findOne as jest.Mock).mockResolvedValue(createMockSession());
+      (repository.update as jest.Mock).mockResolvedValue({ affected: 1 });
+      (engineFactory.create as jest.Mock).mockClear().mockReturnValue(mockEngine);
+      // whatsapp-web.js throws the PRIMITIVE STRING 'auth timeout' (not an Error) when its inject poll
+      // for WA Web's login bootstrap times out — e.g. a dead/unreachable proxy (the proxy.example.com
+      // placeholder) blocks the WebSocket so no QR is ever delivered. This must surface as a diagnostic
+      // 504, not escape as a meaningless bare 500.
+      mockEngine.initialize.mockRejectedValueOnce('auth timeout');
+
+      let caught: unknown;
+      try {
+        await service.start('sess-uuid-1');
+      } catch (err) {
+        caught = err;
+      }
+      expect(caught).toBeInstanceOf(HttpException);
+      expect((caught as HttpException).getStatus()).toBe(HttpStatus.GATEWAY_TIMEOUT);
+    });
+
     it('allows a fresh start after the previous one completed (reservation is cleared)', async () => {
       (repository.findOne as jest.Mock).mockResolvedValue(createMockSession());
       (repository.update as jest.Mock).mockResolvedValue({ affected: 1 });
@@ -706,8 +727,12 @@ describe('SessionService', () => {
         await jest.advanceTimersByTimeAsync(60_000);
         await settled;
 
-        expect(caught).toBeInstanceOf(EngineInitTimeoutError);
-        expect(String(caught)).toMatch(/timed out after 60000ms/i);
+        // The outer init-hang deadline now maps to a diagnostic 504 (like the auth-timeout) instead of
+        // escaping as a bare 500 (#733 follow-up). Cleanup (force-destroy + evict + DISCONNECTED) still
+        // runs inside initializeEngine before the mapped error is thrown — asserted below.
+        expect(caught).toBeInstanceOf(HttpException);
+        expect((caught as HttpException).getStatus()).toBe(HttpStatus.GATEWAY_TIMEOUT);
+        expect((caught as HttpException).getResponse() as string).toMatch(/timed out after 60000ms/i);
         expect(mockEngine.forceDestroy).toHaveBeenCalled(); // wedged browser reaped
         expect(intern().engines.has('sess-uuid-1')).toBe(false); // slot freed for retry
         expect(repository.update).toHaveBeenCalledWith('sess-uuid-1', { status: SessionStatus.DISCONNECTED });
@@ -743,8 +768,9 @@ describe('SessionService', () => {
         // Past the derived 150s deadline the race finally fires.
         await jest.advanceTimersByTimeAsync(90_000); // 60s + 90s = 150s
         await settled;
-        expect(caught).toBeInstanceOf(EngineInitTimeoutError);
-        expect(String(caught)).toMatch(/timed out after 150000ms/i);
+        expect(caught).toBeInstanceOf(HttpException);
+        expect((caught as HttpException).getStatus()).toBe(HttpStatus.GATEWAY_TIMEOUT);
+        expect((caught as HttpException).getResponse() as string).toMatch(/timed out after 150000ms/i);
       } finally {
         jest.useRealTimers();
         delete process.env.WWEBJS_AUTH_TIMEOUT_MS;
@@ -1462,6 +1488,21 @@ describe('SessionService', () => {
       expect(stored.metadata?.reactions).toEqual({ alice: '👍', bob: '🎉' });
     });
 
+    it('drops a reaction with no message id instead of letting it match an arbitrary row', async () => {
+      const callbacks = await startAndCaptureCallbacks();
+      // An engine that can't resolve the reacted message's id passes `''` (the no-id sentinel). It must
+      // never reach findOne: TypeORM drops an empty/undefined condition from the where-clause, so the
+      // lookup would match some other message and emit ITS reactions under this event.
+      (messageRepository.findOne as jest.Mock).mockClear();
+      (messageRepository.update as jest.Mock).mockClear();
+
+      callbacks.onMessageReaction!({ messageId: '', chatId: 'c', senderId: 'alice', reaction: '👍' });
+      for (let i = 0; i < 3; i++) await flush();
+
+      expect(messageRepository.findOne).not.toHaveBeenCalled();
+      expect(messageRepository.update).not.toHaveBeenCalled();
+    });
+
     it('persists a reaction via a scoped metadata update, never a full-row save (protects ack status)', async () => {
       const callbacks = await startAndCaptureCallbacks();
       // The row was already advanced to DELIVERED by a concurrent ack. A full-row save(msg) would
@@ -1529,7 +1570,7 @@ describe('SessionService', () => {
 
       for (let i = 0; i < 3; i++) await flush();
 
-      const chains = (service as unknown as { reactionChains: Map<string, unknown> }).reactionChains;
+      const chains = (service as unknown as { messageMutationChains: Map<string, unknown> }).messageMutationChains;
       expect(chains.size).toBe(0);
     });
 
@@ -2611,6 +2652,127 @@ describe('SessionService', () => {
       const revokedCall = (eventsGateway.emitMessageRevoked as jest.Mock).mock.calls[0] as unknown[];
       const emittedPayload = revokedCall[1] as { body: string };
       expect(emittedPayload.body).toBe('');
+    });
+  });
+
+  // ── onMessageEdited ───────────────────────────────────────────────
+
+  describe('onMessageEdited callback', () => {
+    const startAndCaptureEditCallback = async (): Promise<NonNullable<EngineEventCallbacks['onMessageEdited']>> => {
+      const session = createMockSession();
+      (repository.findOne as jest.Mock).mockResolvedValue(session);
+      (repository.update as jest.Mock).mockResolvedValue({ affected: 1 });
+      await service.start('sess-uuid-1');
+      const initializeCall = mockEngine.initialize.mock.calls[0] as unknown[];
+      const callbacks = initializeCall[0] as EngineEventCallbacks;
+      return callbacks.onMessageEdited!;
+    };
+
+    const edited = (body = 'New edited text') => ({
+      messageId: 'WA_MSG_EDIT_1',
+      chatId: '123@c.us',
+      body,
+      senderId: '123@c.us',
+      from: '123@c.us',
+      to: '456@c.us',
+      fromMe: false,
+      isGroup: false,
+      type: 'text' as const,
+      hasMedia: false,
+      timestamp: 1700000005,
+    });
+
+    it('persists the body before emitting the WebSocket and webhook event', async () => {
+      let releaseUpdate!: () => void;
+      (messageRepository.update as jest.Mock).mockImplementationOnce(
+        () =>
+          new Promise(resolve => {
+            releaseUpdate = () => resolve({ affected: 1 });
+          }),
+      );
+      const onMessageEdited = await startAndCaptureEditCallback();
+
+      onMessageEdited(edited());
+      await new Promise(resolve => setImmediate(resolve));
+
+      expect(messageRepository.update).toHaveBeenCalledWith(
+        { sessionId: 'sess-uuid-1', waMessageId: 'WA_MSG_EDIT_1' },
+        { body: 'New edited text' },
+      );
+      expect(eventsGateway.emitMessageEdited).not.toHaveBeenCalled();
+      expect(webhookService.dispatch).not.toHaveBeenCalledWith('sess-uuid-1', 'message.edited', expect.anything());
+
+      releaseUpdate();
+      await new Promise(resolve => setImmediate(resolve));
+
+      expect(webhookService.dispatch).toHaveBeenCalledWith(
+        'sess-uuid-1',
+        'message.edited',
+        expect.objectContaining({
+          messageId: 'WA_MSG_EDIT_1',
+          body: 'New edited text',
+        }),
+      );
+
+      expect(eventsGateway.emitMessageEdited).toHaveBeenCalledWith(
+        'sess-uuid-1',
+        expect.objectContaining({
+          messageId: 'WA_MSG_EDIT_1',
+          body: 'New edited text',
+        }),
+      );
+    });
+
+    it('serializes rapid edits so the latest body cannot be overwritten by an older slow update', async () => {
+      const releases: Array<() => void> = [];
+      (messageRepository.update as jest.Mock).mockImplementation(
+        () =>
+          new Promise(resolve => {
+            releases.push(() => resolve({ affected: 1 }));
+          }),
+      );
+      const onMessageEdited = await startAndCaptureEditCallback();
+
+      onMessageEdited(edited('first edit'));
+      onMessageEdited(edited('second edit'));
+      await new Promise(resolve => setImmediate(resolve));
+
+      expect(messageRepository.update).toHaveBeenCalledTimes(1);
+      expect(eventsGateway.emitMessageEdited).not.toHaveBeenCalled();
+
+      releases[0]();
+      await new Promise(resolve => setImmediate(resolve));
+      expect(messageRepository.update).toHaveBeenCalledTimes(2);
+      expect(eventsGateway.emitMessageEdited).toHaveBeenCalledTimes(1);
+
+      releases[1]();
+      await new Promise(resolve => setImmediate(resolve));
+      const payloads = (eventsGateway.emitMessageEdited as jest.Mock).mock.calls.map(
+        call => (call as [string, { body: string }])[1].body,
+      );
+      expect(payloads).toEqual(['first edit', 'second edit']);
+    });
+
+    it('drops an edit with no target id before any persistence or notification', async () => {
+      const onMessageEdited = await startAndCaptureEditCallback();
+
+      onMessageEdited({ ...edited(), messageId: '' });
+      await new Promise(resolve => setImmediate(resolve));
+
+      expect(messageRepository.update).not.toHaveBeenCalled();
+      expect(eventsGateway.emitMessageEdited).not.toHaveBeenCalled();
+      expect(webhookService.dispatch).not.toHaveBeenCalledWith('sess-uuid-1', 'message.edited', expect.anything());
+    });
+
+    it('still reports a real edit occurrence when the best-effort database update fails', async () => {
+      (messageRepository.update as jest.Mock).mockRejectedValueOnce(new Error('database unavailable'));
+      const onMessageEdited = await startAndCaptureEditCallback();
+
+      onMessageEdited(edited());
+      await new Promise(resolve => setImmediate(resolve));
+
+      expect(eventsGateway.emitMessageEdited).toHaveBeenCalledTimes(1);
+      expect(webhookService.dispatch).toHaveBeenCalledWith('sess-uuid-1', 'message.edited', edited());
     });
   });
 

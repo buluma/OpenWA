@@ -106,6 +106,7 @@ export class SessionController {
 
   @Post(':id/start')
   @RequireRole(ApiKeyRole.OPERATOR)
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Start a session and initialize WhatsApp connection',
   })
@@ -128,6 +129,7 @@ export class SessionController {
 
   @Post(':id/stop')
   @RequireRole(ApiKeyRole.OPERATOR)
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Stop a session and disconnect WhatsApp' })
   @ApiParam({ name: 'id', description: 'Session ID' })
   @ApiResponse({
@@ -147,6 +149,7 @@ export class SessionController {
 
   @Post(':id/force-kill')
   @RequireRole(ApiKeyRole.OPERATOR)
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Force-kill a stuck session (SIGKILL its wedged engine, then tear it down)' })
   @ApiParam({ name: 'id', description: 'Session ID' })
   @ApiResponse({
@@ -245,6 +248,7 @@ export class SessionController {
 
   @Post(':id/chats/read')
   @RequireRole(ApiKeyRole.OPERATOR)
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Mark a chat as read/seen' })
   @ApiParam({ name: 'id', description: 'Session ID' })
   @ApiResponse({ status: 200, description: 'Chat marked as read successfully' })
@@ -260,6 +264,7 @@ export class SessionController {
 
   @Post(':id/chats/unread')
   @RequireRole(ApiKeyRole.OPERATOR)
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Mark a chat as unread' })
   @ApiParam({ name: 'id', description: 'Session ID' })
   @ApiResponse({ status: 200, description: 'Chat marked as unread successfully' })
@@ -275,6 +280,7 @@ export class SessionController {
 
   @Post(':id/chats/delete')
   @RequireRole(ApiKeyRole.OPERATOR)
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Delete a chat from the chat list (e.g. a group you have left)' })
   @ApiParam({ name: 'id', description: 'Session ID' })
   @ApiResponse({ status: 200, description: 'Chat deleted successfully' })
@@ -287,6 +293,7 @@ export class SessionController {
 
   @Post(':id/chats/typing')
   @RequireRole(ApiKeyRole.OPERATOR)
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: "Send a typing/recording presence indicator to a chat (or clear it with 'paused')" })
   @ApiParam({ name: 'id', description: 'Session ID' })
   @ApiResponse({ status: 200, description: 'Presence sent' })

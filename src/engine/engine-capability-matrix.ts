@@ -21,20 +21,20 @@
  * `evidence` (present only when at least one adapter is `not-available`) cites the library symbol(s)
  * that were inspected, so an engineer can open the exact file and start wiring immediately.
  *
- * This is a SNAPSHOT. `engine-parity.spec.ts` regenerates the supported/not-available *classification*
- * from the live adapter method bodies (a method is "not-available" if it throws
- * EngineNotSupportedError / ChannelMediaNotSupportedError) and fails on drift, so a parity change
- * cannot land without deliberately updating this matrix (and docs/engine-capability-matrix.md). The
- * `rootCause`/`evidence` fields are hand-curated, source-traced annotations; they are NOT regenerated
- * by the spec and are updated by hand as adapters are wired or libraries change.
+ * This is a SNAPSHOT. `engine-parity.spec.ts` enforces exact matrix-key↔interface-method correspondence
+ * and the throw-invariants it can observe in live adapter method bodies. It does not read the operator
+ * documentation and cannot classify non-throwing phantom stubs. The `status`, `rootCause`, and
+ * `evidence` fields therefore remain hand-curated, source-traced annotations that must be reviewed as
+ * adapters are wired or libraries change.
  *
  * NOTE on phantom support: the drift gate's throw-heuristic cannot see adapter methods that silently
- * stub (return null/[] + a warn log) without throwing. The matrix BELOW is the source-of-truth: five
- * wwjs entries (getCatalog/getProducts/getProduct/getContactStatus/getContactStatuses) are marked
- * `not-available` here even though their adapter bodies do not throw — because the underlying library
- * either has no API (catalog) or the adapter stubs instead of calling the available symbol (status
- * read). If the drift gate is extended to assert against this matrix, it must consult `status`, not
- * just the throw pattern, for these rows (or the adapter stubs must start throwing).
+ * stub (return null/[] + a warn log) without throwing. The matrix BELOW is the source-of-truth: three
+ * wwjs entries (getCatalog/getProducts/getProduct) are marked `not-available` here even though their
+ * adapter bodies do not throw — the library has no API for them, so the adapter stubs. If the drift
+ * gate is extended to assert against this matrix, it must consult `status`, not just the throw
+ * pattern, for these rows (or the adapter stubs must start throwing). getContactStatus/
+ * getContactStatuses were on this list until #714 wired them on whatsapp-web.js; their rows say
+ * `supported` and the adapter really does read stories, so they no longer belong here.
  */
 export type CapabilityStatus = 'supported' | 'not-available';
 export type RootCause = 'adapter-gap' | 'library-limitation' | 'uncertain';
@@ -70,7 +70,7 @@ export const ENGINE_CAPABILITY_MATRIX: Record<string, MethodCapability> = {
     wwjs: { status: 'not-available', rootCause: 'library-limitation' },
     baileys: { status: 'not-available', rootCause: 'adapter-gap' },
     evidence:
-      'baileys Socket/business.d.ts:7 getCatalog({jid,limit,cursor}) + getCollections (business.d.ts:11) — adapter unwired (returns Product[]+cursor, not Catalog metadata; medium-confidence shape synthesis); wwjs index.d.ts has NO Client.getCatalog (0 hits), adapter stubs to null @whatsapp-web-js.adapter.ts:1770',
+      'baileys Socket/business.d.ts:7 getCatalog({jid,limit,cursor}) + getCollections (business.d.ts:11) — adapter unwired (returns Product[]+cursor, not Catalog metadata; medium-confidence shape synthesis); wwjs index.d.ts has NO Client.getCatalog (0 hits), adapter stubs to null @WhatsAppWebJsAdapter.getCatalog',
   },
   getChannelById: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
   getChannelMessages: {
@@ -132,13 +132,13 @@ export const ENGINE_CAPABILITY_MATRIX: Record<string, MethodCapability> = {
     wwjs: { status: 'not-available', rootCause: 'library-limitation' },
     baileys: { status: 'not-available', rootCause: 'adapter-gap' },
     evidence:
-      'baileys only getCatalog (Socket/business.d.ts:7); getProduct = getCatalog then find-by-id (compose-and-filter, loads whole page; medium-confidence); wwjs no Client.getProduct — only page-internal getProductMetadata (Utils.js:1253), not a public Client fn; adapter stubs to null @whatsapp-web-js.adapter.ts:1786',
+      'baileys only getCatalog (Socket/business.d.ts:7); getProduct = getCatalog then find-by-id (compose-and-filter, loads whole page; medium-confidence); wwjs no Client.getProduct — only page-internal getProductMetadata (Utils.js:1253), not a public Client fn; adapter stubs to null @WhatsAppWebJsAdapter.getProduct',
   },
   getProducts: {
     wwjs: { status: 'not-available', rootCause: 'library-limitation' },
     baileys: { status: 'not-available', rootCause: 'adapter-gap' },
     evidence:
-      'baileys Socket/business.d.ts:7 getCatalog({jid,limit,cursor}) → {products, nextPageCursor} — adapter unwired; wwjs no Client.getProducts in index.d.ts (0 hits); adapter stubs to empty @whatsapp-web-js.adapter.ts:1777',
+      'baileys Socket/business.d.ts:7 getCatalog({jid,limit,cursor}) → {products, nextPageCursor} — adapter unwired; wwjs no Client.getProducts in index.d.ts (0 hits); adapter stubs to empty @WhatsAppWebJsAdapter.getProducts',
   },
   getProfilePicture: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
   getPushName: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },

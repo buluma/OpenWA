@@ -91,6 +91,8 @@ import {
   replaceMessageById,
   updateMessageById,
   removeMessageById,
+  findRevokedIndex,
+  applyMessageEdit,
   type ChatMessageView,
 } from './chatMessages.ts';
 
@@ -159,7 +161,7 @@ test('mergeOrAppend does not mutate the input array', () => {
 });
 
 test('replaceMessageById swaps the entry with matching id', () => {
-  const before = [msg({ id: 'temp-1', status: 'sending' }), msg({ id: 'm-2' })];
+  const before = [msg({ id: 'temp-1', status: 'pending' }), msg({ id: 'm-2' })];
   const after = replaceMessageById(before, 'temp-1', msg({ id: 'real-1', status: 'sent' }));
   assert.equal(after.length, 2);
   assert.equal(after[0].id, 'real-1');
@@ -173,7 +175,7 @@ test('replaceMessageById is a no-op when oldId is not present', () => {
 });
 
 test('updateMessageById applies a partial patch by id', () => {
-  const before = [msg({ id: 'm-1', status: 'sending' })];
+  const before = [msg({ id: 'm-1', status: 'pending' })];
   const after = updateMessageById(before, 'm-1', { status: 'failed' });
   assert.equal(after[0].status, 'failed');
   assert.equal(after[0].body, 'hello');  // other fields unchanged
@@ -196,4 +198,60 @@ test('removeMessageById is a no-op when id is not present', () => {
   const before = [msg({ id: 'm-1' })];
   const after = removeMessageById(before, 'missing');
   assert.deepEqual(after, before);
+});
+
+// message.revoked carries TWO candidate ids: `id` and `revokedId` (the original deleted message,
+// when the engine could resolve it). Match on either — see findRevokedIndex for why not `?? `.
+
+test('findRevokedIndex matches the original via revokedId when it differs from id (wwebjs)', () => {
+  const list = [msg({ id: 'row-1', waMessageId: 'ORIGINAL' })];
+  assert.equal(findRevokedIndex(list, { id: 'REVOKE_NOTIF', revokedId: 'ORIGINAL' }), 0);
+});
+
+test('findRevokedIndex still matches when id === revokedId (Baileys — guards the working path)', () => {
+  const list = [msg({ id: 'row-1', waMessageId: 'ORIGINAL' })];
+  assert.equal(findRevokedIndex(list, { id: 'ORIGINAL', revokedId: 'ORIGINAL' }), 0);
+});
+
+test('findRevokedIndex matches on id when revokedId is absent (original not in the engine store)', () => {
+  const list = [msg({ id: 'row-1', waMessageId: 'ORIGINAL' })];
+  assert.equal(findRevokedIndex(list, { id: 'ORIGINAL' }), 0);
+});
+
+test('findRevokedIndex matches the DB row id, not just waMessageId', () => {
+  const list = [msg({ id: 'row-1', waMessageId: 'ORIGINAL' })];
+  assert.equal(findRevokedIndex(list, { id: 'row-1' }), 0);
+});
+
+test('findRevokedIndex returns -1 when neither id matches', () => {
+  const list = [msg({ id: 'row-1', waMessageId: 'ORIGINAL' })];
+  assert.equal(findRevokedIndex(list, { id: 'REVOKE_NOTIF', revokedId: 'OTHER' }), -1);
+});
+
+test('findRevokedIndex ignores an undefined revokedId rather than matching a row with no waMessageId', () => {
+  // A row whose waMessageId is undefined must not be matched by an absent revokedId (undefined ===
+  // undefined would otherwise revoke an arbitrary bubble).
+  const list = [msg({ id: 'row-1', waMessageId: undefined })];
+  assert.equal(findRevokedIndex(list, { id: 'REVOKE_NOTIF' }), -1);
+});
+
+test('applyMessageEdit updates a persisted row by waMessageId without mutating the input', () => {
+  const before = [msg({ id: 'row-uuid', waMessageId: 'WA_EDIT_1', body: 'old' })];
+  const after = applyMessageEdit(before, { messageId: 'WA_EDIT_1', body: 'new' });
+
+  assert.notEqual(after, before);
+  assert.equal(after[0].body, 'new');
+  assert.equal(before[0].body, 'old');
+});
+
+test('applyMessageEdit updates a live row by id', () => {
+  const before = [msg({ id: 'WA_EDIT_1', waMessageId: undefined, body: 'old' })];
+  const after = applyMessageEdit(before, { messageId: 'WA_EDIT_1', body: '' });
+  assert.equal(after[0].body, '');
+});
+
+test('applyMessageEdit is a referential no-op for an empty or unknown target id', () => {
+  const before = [msg({ id: 'm-1', body: 'old' })];
+  assert.equal(applyMessageEdit(before, { messageId: '', body: 'new' }), before);
+  assert.equal(applyMessageEdit(before, { messageId: 'missing', body: 'new' }), before);
 });

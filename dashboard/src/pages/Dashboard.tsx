@@ -88,11 +88,13 @@ export function Dashboard() {
 
   const statsCards = [
     {
+      // `stats.active` counts running engines — which includes initializing/qr_ready/connecting — so
+      // it overstates what an operator reads as "connected". READY is the only status where the
+      // session can actually send and receive.
       label: t('dashboard.stats.activeSessions'),
-      value: stats?.active ?? 0,
+      value: stats?.ready ?? 0,
       icon: MessageSquare,
-      trend: `+${stats?.ready ?? 0}`,
-      trendUp: true,
+      detail: stats ? t('dashboard.stats.sessionsDetail', { running: stats.active, total: stats.total }) : undefined,
     },
     { label: t('dashboard.stats.messagesToday'), value: messagesToday, icon: Send, trend: '0', trendUp: null },
     { label: t('dashboard.stats.failedMessages'), value: failedMessages, icon: AlertTriangle, trend: '0', trendUp: null },
@@ -155,19 +157,14 @@ export function Dashboard() {
       />
 
       <div className="stats-grid">
-        {statsCards.map(({ label, value, icon: Icon, trend, trendUp }) => (
+        {statsCards.map(({ label, value, icon: Icon, detail }) => (
           <div key={label} className="stat-card">
             <div className="stat-header">
               <span className="stat-label">{label}</span>
               <Icon size={20} className="stat-icon" />
             </div>
             <div className="stat-value">{typeof value === 'number' ? value.toLocaleString() : value}</div>
-            {trend !== '0' && (
-              <div className={`stat-trend ${trendUp ? 'up' : 'down'}`}>
-                {trendUp ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
-                {trend}
-              </div>
-            )}
+            {detail && <div className="stat-detail">{detail}</div>}
           </div>
         ))}
       </div>

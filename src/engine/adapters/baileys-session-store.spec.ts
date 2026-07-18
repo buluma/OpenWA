@@ -67,6 +67,21 @@ describe('BaileysSessionStore', () => {
     expect(store.lastMessage('c@s.whatsapp.net')?.key.id).toBe('NEW');
   });
 
+  it('updates the chat preview only when the edited message is the current last message', () => {
+    store.upsertChats([{ id: '628111@s.whatsapp.net', name: 'Alice' }]);
+    store.recordMessage({
+      key: { remoteJid: '628111@s.whatsapp.net', id: 'LATEST' },
+      message: { conversation: 'before edit' },
+      messageTimestamp: 200,
+    });
+
+    store.recordMessageEdit('628111@c.us', 'OLDER', 'must not replace preview');
+    expect(store.listChats()[0]).toEqual(expect.objectContaining({ lastMessage: 'before edit', timestamp: 200 }));
+
+    store.recordMessageEdit('628111@c.us', 'LATEST', 'after edit');
+    expect(store.listChats()[0]).toEqual(expect.objectContaining({ lastMessage: 'after edit', timestamp: 200 }));
+  });
+
   it('flags a group chat by jid', () => {
     store.upsertChats([{ id: '123-456@g.us', name: 'Grp' }]);
     expect(store.listChats()[0].isGroup).toBe(true);

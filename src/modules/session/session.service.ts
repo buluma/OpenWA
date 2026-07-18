@@ -3,6 +3,8 @@ import {
   NotFoundException,
   ConflictException,
   BadRequestException,
+  HttpException,
+  HttpStatus,
   OnModuleDestroy,
   OnModuleInit,
   OnApplicationBootstrap,
@@ -34,6 +36,7 @@ import {
   DeliveryStatus,
   IncomingMessage,
   ReactionEvent,
+  EditedMessage,
 } from '../../engine/interfaces/whatsapp-engine.interface';
 import { createLogger } from '../../common/services/logger.service';
 import { ShutdownService } from '../../common/services/shutdown.service';
@@ -112,6 +115,26 @@ export class EngineInitTimeoutError extends Error {
   }
 }
 
+/**
+ * whatsapp-web.js throws this primitive STRING (not an Error) from its inject() auth poll when WA Web's
+ * login bootstrap doesn't complete within authTimeoutMs (default 30s). Match it defensively as both the
+ * bare string and an Error carrying the same message, since the library's throw shape isn't contracted.
+ */
+const ENGINE_AUTH_TIMEOUT = 'auth timeout';
+
+/**
+ * Diagnostic surfaced when the engine's internal auth-timeout fires (#733): points at the usual cause
+ * (the session proxy / network egress / firewall blocking WhatsApp so no QR is ever delivered) and the
+ * WWEBJS_AUTH_TIMEOUT_MS knob for legitimately slow first boots.
+ */
+const ENGINE_AUTH_TIMEOUT_MESSAGE =
+  'WhatsApp Web authentication timed out. Verify the session proxy URL and network egress can reach ' +
+  'WhatsApp; for slow first boots, raise WWEBJS_AUTH_TIMEOUT_MS.';
+
+function isAuthTimeoutRejection(err: unknown): boolean {
+  return err === ENGINE_AUTH_TIMEOUT || (err instanceof Error && err.message === ENGINE_AUTH_TIMEOUT);
+}
+
 @Injectable()
 export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicationBootstrap {
   private readonly logger = createLogger('SessionService');
@@ -147,10 +170,10 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
   // awaited hook and orphan an engine the lifecycle could never destroy.
   private initializingSessions: Set<string> = new Set();
 
-  // Serializes the read-modify-write of a message's reactions map per `${sessionId}:${waMessageId}`,
-  // so two concurrent reaction events on the same message don't clobber each other (both read the
-  // same snapshot, both full-row save, last writer wins). Entries are deleted once their chain drains.
-  private reactionChains: Map<string, Promise<void>> = new Map();
+  // Serializes stored-message mutations per `${sessionId}:${waMessageId}`. Reactions perform a
+  // read-modify-write and rapid edits must remain latest-write-wins; sharing one chain also preserves
+  // order when different mutation kinds for the same message arrive together.
+  private messageMutationChains: Map<string, Promise<void>> = new Map();
 
   constructor(
     @InjectRepository(Session, 'data')
@@ -403,7 +426,7 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
       const engine = this.engines.get(id);
       if (engine) {
         await this.teardownEngineSafely(id, engine, e => e.forceDestroy(), 'force-destroy');
-        this.engines.delete(id);
+        if (this.isLiveEngine(id, engine)) this.engines.delete(id);
       }
 
       // Execute hook BEFORE delete so plugins can access session data
@@ -540,7 +563,7 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
         const resurrected = this.engines.get(id);
         if (resurrected) {
           await this.teardownEngineSafely(id, resurrected, e => e.destroy(), 'destroy');
-          this.engines.delete(id);
+          if (this.isLiveEngine(id, resurrected)) this.engines.delete(id);
         }
       }
       return this.findOne(id);
@@ -849,7 +872,11 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
 
             const dbMessage = this.messageRepository.create({
               sessionId: id,
-              waMessageId: incoming.id,
+              // Mirror saveOutgoingMessage's chokepoint: an engine that received a message but could
+              // not read its id back reports the empty sentinel, and NULL is what the non-partial
+              // (sessionId, waMessageId) unique index exempts — `''` would collide the second such
+              // message and lose the row.
+              waMessageId: incoming.id || undefined,
               chatId: incoming.chatId,
               chatName,
               from: incoming.from,
@@ -1158,24 +1185,37 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
       },
       onMessageReaction: (event): void => {
         if (!this.isLiveEngine(id, engine)) return;
+        if (!event.messageId) {
+          this.logger.warn('Ignoring message reaction without a target message id', {
+            sessionId: id,
+            action: 'message_reaction_ignored',
+          });
+          return;
+        }
         this.logger.debug(`Message reaction received: ${event.messageId} -> ${event.reaction}`, {
           sessionId: id,
           messageId: event.messageId,
           action: 'message_reaction_received',
         });
 
-        // Serialize per message so two concurrent reactions don't read the same snapshot and clobber
-        // each other on the full-row save. A prior chain's failure must not block later reactions.
-        const key = `${id}:${event.messageId}`;
-        const prior = this.reactionChains.get(key) ?? Promise.resolve();
-        const next = prior.catch(() => undefined).then(() => this.applyReaction(id, event));
-        this.reactionChains.set(key, next);
-        void next.finally(() => {
-          // Clean up only if no newer reaction chained after us, so the map can't leak per message.
-          if (this.reactionChains.get(key) === next) {
-            this.reactionChains.delete(key);
-          }
+        this.enqueueMessageMutation(id, event.messageId, () => this.applyReaction(id, event));
+      },
+      onMessageEdited: (message): void => {
+        if (!this.isLiveEngine(id, engine)) return;
+        if (!message.messageId) {
+          this.logger.warn('Ignoring message edit without a target message id', {
+            sessionId: id,
+            action: 'message_edit_ignored',
+          });
+          return;
+        }
+        this.logger.debug(`Message edited: ${message.messageId}`, {
+          sessionId: id,
+          messageId: message.messageId,
+          action: 'message_edited',
         });
+
+        this.enqueueMessageMutation(id, message.messageId, () => this.applyMessageEdit(id, message));
       },
       onDisconnected: (reason: string): void => {
         if (!this.isLiveEngine(id, engine)) return;
@@ -1304,6 +1344,23 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
         // teardownEngineSafely is itself time-bound, so this can't wedge a second time.
         await this.teardownEngineSafely(id, engine, e => e.forceDestroy(), 'force-destroy');
         await this.updateStatus(id, SessionStatus.DISCONNECTED);
+        // Map to a diagnostic 504 like the auth-timeout branch below, so a wedged init doesn't escape as a
+        // bare 500 (#733 follow-up). The browser stalled mid-startup — usually a container memory/resource
+        // limit or a wedged Chromium, not a network/proxy issue (that's the auth-timeout's signature).
+        throw new HttpException(
+          `Engine initialization timed out after ${err.timeoutMs}ms — the browser process did not complete ` +
+            'startup in time (often a container memory/resource limit or a stalled Chromium, not a network ' +
+            'issue). Retry the session; for chronically slow first boots, raise WWEBJS_AUTH_TIMEOUT_MS.',
+          HttpStatus.GATEWAY_TIMEOUT,
+        );
+      } else if (isAuthTimeoutRejection(err)) {
+        // The engine's INTERNAL auth-timeout: whatsapp-web.js throws the primitive string 'auth timeout'
+        // (see ENGINE_AUTH_TIMEOUT) when its inject poll exhausts authTimeoutMs (default 30s) — the common
+        // pre-QR failure when the browser launched but couldn't reach WhatsApp, e.g. a dead/unreachable
+        // session proxy (#733). onError already evicted the engine + wrote FAILED before this catch ran, so
+        // only the HTTP mapping remains: surface a diagnostic 504 instead of letting the bare string escape
+        // to NestJS's default handler as a meaningless 500.
+        throw new HttpException(ENGINE_AUTH_TIMEOUT_MESSAGE, HttpStatus.GATEWAY_TIMEOUT);
       }
       throw err;
     } finally {
@@ -1318,6 +1375,12 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
    */
   private async applyReaction(id: string, event: ReactionEvent): Promise<void> {
     try {
+      // Guard the lookup key before it reaches TypeORM: `findOne` DROPS an undefined condition from
+      // the where-clause rather than matching nothing, so an engine that couldn't resolve the reacted
+      // message's id would silently match an arbitrary row and clobber/emit its reactions. `!msg` is
+      // no protection against that — the row it finds is real, just the wrong one.
+      if (!event.messageId) return;
+
       const msg = await this.messageRepository.findOne({ where: { sessionId: id, waMessageId: event.messageId } });
       if (!msg) return;
 
@@ -1331,7 +1394,7 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
       metadata.reactions = reactions;
       // Scoped update of ONLY the metadata column. A full-row save(msg) would re-persist the `status`
       // read at findOne time, clobbering a concurrent ack UPDATE (SENT→DELIVERED/READ) that committed in
-      // the window between this findOne and the write — reactionChains serializes reaction-vs-reaction
+      // the window between this findOne and the write — the mutation chain serializes reaction-vs-reaction
       // but NOT reaction-vs-ack, so scoping the write to metadata is what keeps delivery state monotonic
       // (#220). Other metadata fields are carried through untouched (they were read into `metadata`).
       await this.messageRepository.update({ sessionId: id, waMessageId: event.messageId }, {
@@ -1345,6 +1408,40 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
     } catch (err) {
       this.logger.error(`Failed to update message reaction: ${event.messageId}`, String(err));
     }
+  }
+
+  /** Queue a message-scoped mutation. A failed operation is isolated so later events still run. */
+  private enqueueMessageMutation(id: string, messageId: string, work: () => Promise<void>): void {
+    const key = `${id}:${messageId}`;
+    const prior = this.messageMutationChains.get(key) ?? Promise.resolve();
+    const next = prior
+      .catch(() => undefined)
+      .then(work)
+      .catch(err => {
+        // Both current mutation implementations contain their own contextual error handling. Keep a
+        // final guard here so a future implementation cannot leak a rejected fire-and-forget promise
+        // or permanently block the message's later mutations.
+        this.logger.error(`Unexpected failure applying message mutation: ${messageId}`, String(err));
+      });
+    this.messageMutationChains.set(key, next);
+    void next.finally(() => {
+      if (this.messageMutationChains.get(key) === next) {
+        this.messageMutationChains.delete(key);
+      }
+    });
+  }
+
+  /** Persist an edit before notifying consumers, while still surfacing the occurrence if storage fails. */
+  private async applyMessageEdit(id: string, message: EditedMessage): Promise<void> {
+    try {
+      await this.messageRepository.update({ sessionId: id, waMessageId: message.messageId }, { body: message.body });
+    } catch (err) {
+      this.logger.error(`Failed to update edited message: ${message.messageId}`, String(err));
+    }
+
+    const editedPayload = message as unknown as Record<string, unknown>;
+    this.eventsGateway.emitMessageEdited(id, editedPayload);
+    void this.webhookService.dispatch(id, 'message.edited', editedPayload);
   }
 
   private scheduleReconnect(id: string, session: Session): void {
@@ -1433,7 +1530,7 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
       const oldEngine = this.engines.get(id);
       if (oldEngine) {
         await this.teardownEngineSafely(id, oldEngine, e => e.destroy(), 'destroy');
-        this.engines.delete(id);
+        if (this.isLiveEngine(id, oldEngine)) this.engines.delete(id);
       }
 
       // Re-initialize
@@ -1456,7 +1553,7 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
         const resurrected = this.engines.get(id);
         if (resurrected) {
           await this.teardownEngineSafely(id, resurrected, e => e.destroy(), 'destroy');
-          this.engines.delete(id);
+          if (this.isLiveEngine(id, resurrected)) this.engines.delete(id);
         }
         return;
       }
@@ -1502,7 +1599,7 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
     const engine = this.engines.get(id);
     if (engine) {
       await this.teardownEngineSafely(id, engine, e => e.disconnect(), 'disconnect');
-      this.engines.delete(id);
+      if (this.isLiveEngine(id, engine)) this.engines.delete(id);
     }
 
     this.logger.log(`Session stopped: ${session.name}`, {
@@ -1529,7 +1626,7 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
     const engine = this.engines.get(id);
     if (engine) {
       await this.teardownEngineSafely(id, engine, e => e.forceDestroy(), 'force-destroy');
-      this.engines.delete(id);
+      if (this.isLiveEngine(id, engine)) this.engines.delete(id);
     }
 
     this.logger.warn(`Session force-killed: ${session.name}`, {
