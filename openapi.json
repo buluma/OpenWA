@@ -2016,6 +2016,44 @@
         ]
       }
     },
+    "/api/sessions/{sessionId}/messages/star": {
+      "post": {
+        "operationId": "MessageController_starMessage",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": true,
+            "in": "path",
+            "description": "Session ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StarMessageDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Message starred/unstarred"
+          },
+          "400": {
+            "description": "Session not active or message not found"
+          }
+        },
+        "summary": "Star or unstar a message",
+        "tags": [
+          "messages"
+        ]
+      }
+    },
     "/api/sessions/{sessionId}/messages/send-bulk": {
       "post": {
         "operationId": "MessageController_sendBulk",
@@ -6463,6 +6501,26 @@
         "required": [
           "chatId",
           "messageId"
+        ]
+      },
+      "StarMessageDto": {
+        "type": "object",
+        "properties": {
+          "chatId": {
+            "type": "string"
+          },
+          "messageId": {
+            "type": "string"
+          },
+          "star": {
+            "type": "boolean",
+            "description": "true to star the message, false to unstar it"
+          }
+        },
+        "required": [
+          "chatId",
+          "messageId",
+          "star"
         ]
       },
       "BulkMediaDto": {

@@ -1551,6 +1551,17 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
     this.logger.log(`Reacted to message ${messageId} with ${emoji || '(removed)'}`);
   }
 
+  async starMessage(chatId: string, messageId: string, star: boolean): Promise<void> {
+    this.ensureReady();
+    const chat = await this.client!.getChatById(chatId);
+    const messages = await chat.fetchMessages({ limit: 100 });
+    const message = messages.find(m => m.id._serialized === messageId);
+    if (!message) {
+      throw new MessageNotFoundError(messageId, chatId);
+    }
+    await (star ? message.star() : message.unstar());
+  }
+
   async getMessageReactions(chatId: string, messageId: string): Promise<MessageReaction[]> {
     this.ensureReady();
     const chat = await this.client!.getChatById(chatId);

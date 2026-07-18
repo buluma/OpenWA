@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `POST /api/sessions/{id}/messages/star` — star or unstar a message on both engines (`starMessage` on
+  `IWhatsAppEngine`). WhatsApp-side state only; not reflected in the local database.
+
 ### Fixed
 
 - whatsapp-web.js engine: `GET /api/sessions/{id}/chats` no longer 500s for the whole list when a single

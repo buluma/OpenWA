@@ -518,6 +518,7 @@ export interface IWhatsAppEngine {
 
   // Message Operations
   deleteMessage(chatId: string, messageId: string, forEveryone?: boolean): Promise<void>;
+  starMessage(chatId: string, messageId: string, star: boolean): Promise<void>;
   getChatHistory(chatId: string, limit?: number, includeMedia?: boolean): Promise<IncomingMessage[]>;
 
   // Contact Extended Operations

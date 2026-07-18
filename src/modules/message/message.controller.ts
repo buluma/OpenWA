@@ -13,6 +13,7 @@ import {
   ForwardMessageDto,
   ReactMessageDto,
   DeleteMessageDto,
+  StarMessageDto,
 } from './dto/message-actions.dto';
 import { RequireRole } from '../auth/decorators/auth.decorators';
 import { ApiKeyRole } from '../auth/entities/api-key.entity';
@@ -359,6 +360,26 @@ export class MessageController {
     @Body() dto: DeleteMessageDto,
   ): Promise<{ success: boolean }> {
     await this.messageService.deleteMessage(sessionId, dto);
+    return { success: true };
+  }
+
+  // ========== Star Message ==========
+
+  @Post('star')
+  @HttpCode(HttpStatus.OK)
+  @RequireRole(ApiKeyRole.OPERATOR)
+  @ApiOperation({ summary: 'Star or unstar a message' })
+  @ApiParam({ name: 'sessionId', description: 'Session ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Message starred/unstarred',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Session not active or message not found',
+  })
+  async starMessage(@Param('sessionId') sessionId: string, @Body() dto: StarMessageDto): Promise<{ success: boolean }> {
+    await this.messageService.starMessage(sessionId, dto);
     return { success: true };
   }
 

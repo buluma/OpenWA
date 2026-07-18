@@ -29,6 +29,7 @@ function createMockEngine() {
     reactToMessage: jest.fn().mockResolvedValue(undefined),
     getMessageReactions: jest.fn().mockResolvedValue([]),
     deleteMessage: jest.fn().mockResolvedValue(undefined),
+    starMessage: jest.fn().mockResolvedValue(undefined),
     getChatHistory: jest.fn().mockResolvedValue([]),
     sendChatState: jest.fn().mockResolvedValue(undefined),
   };
@@ -991,6 +992,28 @@ describe('MessageService', () => {
       });
 
       expect(mockEngine.deleteMessage).toHaveBeenCalledWith('test@c.us', 'wa-msg-1', false);
+    });
+  });
+
+  describe('starMessage', () => {
+    it('should call engine.starMessage with star=true', async () => {
+      await service.starMessage('sess-1', {
+        chatId: 'test@c.us',
+        messageId: 'wa-msg-1',
+        star: true,
+      });
+
+      expect(mockEngine.starMessage).toHaveBeenCalledWith('test@c.us', 'wa-msg-1', true);
+    });
+
+    it('should call engine.starMessage with star=false', async () => {
+      await service.starMessage('sess-1', {
+        chatId: 'test@c.us',
+        messageId: 'wa-msg-1',
+        star: false,
+      });
+
+      expect(mockEngine.starMessage).toHaveBeenCalledWith('test@c.us', 'wa-msg-1', false);
     });
   });
 

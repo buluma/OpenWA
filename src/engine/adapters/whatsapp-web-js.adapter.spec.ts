@@ -427,6 +427,46 @@ describe('WhatsAppWebJsAdapter.forwardMessage (returns the real sent id, not a s
   });
 });
 
+describe('WhatsAppWebJsAdapter.starMessage', () => {
+  const readyAdapter = (client: unknown): WhatsAppWebJsAdapter => {
+    const adapter = new WhatsAppWebJsAdapter({ sessionId: 's', sessionDataPath: './data/sessions', puppeteer: {} });
+    (adapter as unknown as { status: EngineStatus }).status = EngineStatus.READY;
+    (adapter as unknown as { client: unknown }).client = client;
+    return adapter;
+  };
+
+  it('calls .star() on the found message when star=true', async () => {
+    const star = jest.fn().mockResolvedValue(undefined);
+    const unstar = jest.fn().mockResolvedValue(undefined);
+    const chat = { fetchMessages: jest.fn().mockResolvedValue([{ id: { _serialized: 'TARGET' }, star, unstar }]) };
+    const client = { getChatById: jest.fn().mockResolvedValue(chat) };
+
+    await readyAdapter(client).starMessage('628111@c.us', 'TARGET', true);
+
+    expect(star).toHaveBeenCalledTimes(1);
+    expect(unstar).not.toHaveBeenCalled();
+  });
+
+  it('calls .unstar() on the found message when star=false', async () => {
+    const star = jest.fn().mockResolvedValue(undefined);
+    const unstar = jest.fn().mockResolvedValue(undefined);
+    const chat = { fetchMessages: jest.fn().mockResolvedValue([{ id: { _serialized: 'TARGET' }, star, unstar }]) };
+    const client = { getChatById: jest.fn().mockResolvedValue(chat) };
+
+    await readyAdapter(client).starMessage('628111@c.us', 'TARGET', false);
+
+    expect(unstar).toHaveBeenCalledTimes(1);
+    expect(star).not.toHaveBeenCalled();
+  });
+
+  it('throws MessageNotFoundError when the message is not in the fetched window', async () => {
+    const chat = { fetchMessages: jest.fn().mockResolvedValue([]) };
+    const client = { getChatById: jest.fn().mockResolvedValue(chat) };
+
+    await expect(readyAdapter(client).starMessage('628111@c.us', 'GONE', true)).rejects.toThrow(/not found/i);
+  });
+});
+
 describe('WhatsAppWebJsAdapter channels (#625 — wwebjs Client has no getChannelById)', () => {
   const CHANNEL = '120363401234567890@newsletter';
 

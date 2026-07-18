@@ -673,6 +673,15 @@ export class BaileysAdapter implements IWhatsAppEngine {
     );
   }
 
+  async starMessage(chatId: string, messageId: string, star: boolean): Promise<void> {
+    this.ensureReady();
+    const target = await this.requireStored(messageId);
+    await this.sock!.chatModify(
+      { star: { messages: [{ id: target.key.id!, fromMe: target.key.fromMe ?? undefined }], star } },
+      chatId,
+    );
+  }
+
   // ----- Groups -----
 
   async getGroups(): Promise<Group[]> {

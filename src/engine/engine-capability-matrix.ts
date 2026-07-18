@@ -190,6 +190,7 @@ export const ENGINE_CAPABILITY_MATRIX: Record<string, MethodCapability> = {
   sendVideoMessage: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
   setGroupDescription: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
   setGroupSubject: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
+  starMessage: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
   subscribeToChannel: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
   unblockContact: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
   unsubscribeFromChannel: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },

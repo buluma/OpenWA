@@ -1336,6 +1336,40 @@ After the engine delete, the stored message body is cleared and its `type` set t
 
 **Errors:** `400` session not active / message not found / unknown body field · `401` missing/invalid API key · `403` key role below OPERATOR · `500` engine error
 
+#### POST /api/sessions/:sessionId/messages/star
+
+Star or unstar a message. Not reflected in the local database — this only changes WhatsApp's own starred state for the message, visible in the WhatsApp app itself.
+
+**Auth:** API key (OPERATOR)
+
+**Path parameters**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| sessionId | string | Session ID |
+
+**Request body** — `StarMessageDto`
+
+| Field | Type | Required | Constraints | Description |
+| --- | --- | --- | --- | --- |
+| chatId | string | Yes | non-empty | Target chat |
+| messageId | string | Yes | non-empty | Message to star/unstar |
+| star | boolean | Yes | boolean | `true` to star, `false` to unstar |
+
+```json
+{ "chatId": "628123456789@c.us", "messageId": "true_628123456789@c.us_3EB0ABCD", "star": true }
+```
+
+**Response** `200`
+
+Note the `200` status (via `@HttpCode`), not `201`.
+
+```json
+{ "success": true }
+```
+
+**Errors:** `400` session not active / message not found / unknown body field · `401` missing/invalid API key · `403` key role below OPERATOR · `500` engine error
+
 #### POST /api/sessions/:sessionId/messages/send-bulk
 
 Send messages to multiple recipients as an async batch — returns immediately and processes in the background.

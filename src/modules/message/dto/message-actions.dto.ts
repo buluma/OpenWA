@@ -166,3 +166,19 @@ export class DeleteMessageDto {
   @IsBoolean()
   forEveryone?: boolean;
 }
+
+export class StarMessageDto {
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  chatId: string;
+
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  messageId: string;
+
+  @ApiProperty({ description: 'true to star the message, false to unstar it' })
+  @IsBoolean()
+  star: boolean;
+}

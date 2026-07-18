@@ -640,6 +640,13 @@ export class MessageService {
     }
   }
 
+  // ========== Star Message ==========
+
+  async starMessage(sessionId: string, dto: { chatId: string; messageId: string; star: boolean }): Promise<void> {
+    const engine = this.getEngine(sessionId);
+    await engine.starMessage(dto.chatId, dto.messageId, dto.star);
+  }
+
   private getEngine(sessionId: string) {
     const engine = this.sessionService.getEngine(sessionId);
     if (!engine) {

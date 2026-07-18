@@ -1959,6 +1959,32 @@ describe('BaileysAdapter store-backed ops', () => {
     expect(fakeSock.sendMessage).not.toHaveBeenCalled();
   });
 
+  it("starMessage stars via chatModify({ star }) with the stored key's id/fromMe", async () => {
+    fakeStore.getMessage.mockResolvedValue(stored);
+    const adapter = await ready();
+    await adapter.starMessage('628111@s.whatsapp.net', 'TARGET', true);
+    expect(fakeSock.chatModify).toHaveBeenCalledWith(
+      { star: { messages: [{ id: 'TARGET', fromMe: false }], star: true } },
+      '628111@s.whatsapp.net',
+    );
+  });
+
+  it('starMessage(star=false) unstars via the same chatModify shape', async () => {
+    fakeStore.getMessage.mockResolvedValue(stored);
+    const adapter = await ready();
+    await adapter.starMessage('628111@s.whatsapp.net', 'TARGET', false);
+    expect(fakeSock.chatModify).toHaveBeenCalledWith(
+      { star: { messages: [{ id: 'TARGET', fromMe: false }], star: false } },
+      '628111@s.whatsapp.net',
+    );
+  });
+
+  it('starMessage throws when the referenced message is not in the store', async () => {
+    fakeStore.getMessage.mockResolvedValue(null);
+    const adapter = await ready();
+    await expect(adapter.starMessage('628111@s.whatsapp.net', 'GONE', true)).rejects.toThrow(/not found/i);
+  });
+
   it('addLabelToChat wires 1:1 to sock.addChatLabel(chatId, labelId)', async () => {
     const adapter = await ready();
     await adapter.addLabelToChat('628111@s.whatsapp.net', 'LABEL8');
