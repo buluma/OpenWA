@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { CornerUpLeft, Smile, Trash2 } from 'lucide-react';
+import { CornerUpLeft, Smile, Trash2, Star } from 'lucide-react';
 import MessageBody from './MessageBody';
 import type { ChatMessageView } from '../../utils/chatMessages';
 import type { LightboxItem } from './MediaLightbox';
@@ -25,9 +25,11 @@ interface MessageBubbleProps {
   isMe: boolean;
   formattedTime: string;
   imageMedia: LightboxItem[];
+  isStarred: boolean;
   onReply: (msg: ChatMessageView) => void;
   onReact: (msg: ChatMessageView, emoji: string) => void;
   onDelete: (msg: ChatMessageView) => void;
+  onStar: (msg: ChatMessageView, star: boolean) => void;
   onImageClick: (index: number) => void;
 }
 
@@ -36,9 +38,11 @@ export function MessageBubble({
   isMe,
   formattedTime,
   imageMedia,
+  isStarred,
   onReply,
   onReact,
   onDelete,
+  onStar,
   onImageClick,
 }: MessageBubbleProps) {
   const { t } = useTranslation();
@@ -197,6 +201,15 @@ export function MessageBubble({
                 ))}
               </div>
             </div>
+
+            <button
+              type="button"
+              className={`action-btn star-btn ${isStarred ? 'starred' : ''}`}
+              onClick={() => onStar(msg, !isStarred)}
+              title={isStarred ? t('chats.actions.unstar') : t('chats.actions.star')}
+            >
+              <Star size={14} fill={isStarred ? 'currentColor' : 'none'} />
+            </button>
 
             {isMe && msg.status !== 'pending' && (
               <button

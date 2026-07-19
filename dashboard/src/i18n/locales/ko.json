@@ -97,7 +97,10 @@
     "messageTester": "메시지 테스터",
     "infrastructure": "인프라",
     "plugins": "플러그인",
-    "logs": "로그"
+    "logs": "로그",
+    "contacts": "Contacts",
+    "quickReplies": "Quick Replies",
+    "privacy": "Privacy"
   },
   "chats": {
     "media": {
@@ -124,7 +127,9 @@
     "actions": {
       "reply": "답장",
       "react": "반응",
-      "delete": "메시지 삭제"
+      "delete": "메시지 삭제",
+      "star": "Star message",
+      "unstar": "Unstar message"
     },
     "replyingTo": "{{name}}님에게 답장",
     "you": "나",
@@ -148,7 +153,8 @@
       "markRead": "채팅을 읽음으로 표시하지 못했습니다",
       "send": "메시지를 보내지 못했습니다",
       "react": "메시지에 반응하지 못했습니다",
-      "delete": "메시지를 삭제하지 못했습니다"
+      "delete": "메시지를 삭제하지 못했습니다",
+      "star": "Failed to star message"
     },
     "loadMessagesError": "메시지를 불러올 수 없습니다. 서버 로그를 확인하세요."
   },
@@ -861,7 +867,9 @@
         "confirm": "{{id}}의 서명 시크릿을 재생성할까요? 기존 시크릿은 즉시 작동하지 않게 됩니다.",
         "action": "재생성"
       },
-      "edit": { "title": "{{id}} 편집" },
+      "edit": {
+        "title": "{{id}} 편집"
+      },
       "delete": {
         "title": "인스턴스 삭제",
         "confirm": "{{id}} 인스턴스를 삭제할까요? 인그레스 URL과 시크릿이 즉시 작동하지 않게 됩니다.",
@@ -897,7 +905,108 @@
     "empty": "메시지를 찾을 수 없습니다.",
     "error": "검색에 실패했습니다. 다시 시도하세요.",
     "unavailable": "검색이 설정되어 있지 않습니다.",
-    "scope": { "current": "현재 세션" },
+    "scope": {
+      "current": "현재 세션"
+    },
     "loading": "검색하는 중…"
+  },
+  "contacts": {
+    "title": "Contacts",
+    "subtitle": "View and manage your WhatsApp contact book",
+    "addContact": "Add Contact",
+    "editTitle": "Edit Contact",
+    "addTitle": "Add Contact",
+    "removeTitle": "Remove Contact",
+    "removeConfirm": "Remove \"{{name}}\" from your contact book?",
+    "searchPlaceholder": "Search contacts...",
+    "contactId": "Contact ID",
+    "fullName": "Full name",
+    "firstName": "First name",
+    "blocked": "Blocked",
+    "saved": "Saved",
+    "notSupported": "Not supported on the active engine (whatsapp-web.js has no contact-book write API). Switch to Baileys to use this.",
+    "notSupportedHint": "Only supported on the Baileys engine.",
+    "actions": {
+      "edit": "Edit",
+      "remove": "Remove"
+    },
+    "empty": {
+      "title": "No contacts found",
+      "description": "Contacts will appear here once the session has synced them"
+    },
+    "toasts": {
+      "saved": "Contact saved",
+      "saveFailed": "Failed to save contact",
+      "removed": "Contact removed",
+      "removeFailed": "Failed to remove contact"
+    }
+  },
+  "quickReplies": {
+    "title": "Quick Replies",
+    "subtitle": "WhatsApp Business canned responses",
+    "addQuickReply": "Add Quick Reply",
+    "createTitle": "Create Quick Reply",
+    "editTitle": "Edit Quick Reply",
+    "removeTitle": "Remove Quick Reply",
+    "removeConfirm": "Remove the \"{{shortcut}}\" quick reply?",
+    "shortcut": "Shortcut",
+    "message": "Message",
+    "keywords": "Keywords (optional)",
+    "keywordsPlaceholder": "comma, separated, keywords",
+    "notSupported": "Not supported on the active engine (whatsapp-web.js has no quick-reply API). Switch to Baileys to use this.",
+    "localTrackingNotice": "Baileys has no API to list existing quick replies, so this page only shows the ones created in this browser. Quick replies created elsewhere won't appear here.",
+    "actions": {
+      "edit": "Edit",
+      "remove": "Remove"
+    },
+    "empty": {
+      "title": "No quick replies yet",
+      "description": "Create a quick reply to use as a WhatsApp Business canned response"
+    },
+    "toasts": {
+      "saved": "Quick reply saved",
+      "saveFailed": "Failed to save quick reply",
+      "removed": "Quick reply removed",
+      "removeFailed": "Failed to remove quick reply"
+    }
+  },
+  "privacy": {
+    "title": "Privacy",
+    "subtitle": "Manage WhatsApp privacy settings and your blocklist",
+    "settingsTitle": "Privacy Settings",
+    "blocklistTitle": "Blocked Contacts",
+    "blocklistEmpty": "No blocked contacts",
+    "noChange": "No change",
+    "notSupported": "Not supported on the active engine (whatsapp-web.js has no privacy-settings API). Switch to Baileys to use this.",
+    "fields": {
+      "lastSeen": "Last seen",
+      "online": "Online status",
+      "profilePicture": "Profile picture",
+      "status": "Status/about",
+      "readReceipts": "Read receipts",
+      "groupsAdd": "Who can add you to groups",
+      "call": "Who can call you",
+      "messages": "Who can message you",
+      "disableLinkPreviews": "Disable link previews for messages you send",
+      "defaultDisappearingMode": "Default disappearing messages"
+    },
+    "options": {
+      "all": "Everyone",
+      "contacts": "My contacts",
+      "contact_blacklist": "My contacts, except...",
+      "none": "Nobody",
+      "match_last_seen": "Same as last seen",
+      "known": "People I call"
+    },
+    "disappearing": {
+      "0": "Off",
+      "86400": "24 hours",
+      "604800": "7 days",
+      "7776000": "90 days"
+    },
+    "toasts": {
+      "saved": "Privacy settings saved",
+      "saveFailed": "Failed to save privacy settings"
+    }
   }
 }

@@ -97,7 +97,10 @@
     "messageTester": "మెసేజ్ టెస్టర్",
     "infrastructure": "ఇన్‌ఫ్రాస్ట్రక్చర్",
     "plugins": "ప్లగిన్స్",
-    "logs": "లాగ్స్"
+    "logs": "లాగ్స్",
+    "contacts": "Contacts",
+    "quickReplies": "Quick Replies",
+    "privacy": "Privacy"
   },
   "chats": {
     "media": {
@@ -124,7 +127,9 @@
     "actions": {
       "reply": "ప్రత్యుత్తరం",
       "react": "ప్రతిస్పందించు",
-      "delete": "సందేశాన్ని తొలగించు"
+      "delete": "సందేశాన్ని తొలగించు",
+      "star": "Star message",
+      "unstar": "Unstar message"
     },
     "replyingTo": "{{name}} కు ప్రత్యుత్తరం ఇస్తోంది",
     "you": "మీరు",
@@ -148,7 +153,8 @@
       "markRead": "చాట్‌ను చదివినట్లుగా గుర్తించడం విఫలమైంది",
       "send": "సందేశాన్ని పంపడం విఫలమైంది",
       "react": "సందేశానికి ప్రతిస్పందించడం విఫలమైంది",
-      "delete": "సందేశాన్ని తొలగించడం విఫలమైంది"
+      "delete": "సందేశాన్ని తొలగించడం విఫలమైంది",
+      "star": "Failed to star message"
     },
     "loadMessagesError": "సందేశాలను లోడ్ చేయడం సాధ్యం కాలేదు. సర్వర్ లాగ్‌లను తనిఖీ చేయండి."
   },
@@ -898,7 +904,108 @@
     "empty": "ఏ సందేశాలు కనుగొనబడలేదు.",
     "error": "శోధన విఫలమైంది. మళ్ళీ ప్రయత్నించండి.",
     "unavailable": "శోధన ఆకృతీకరించబడలేదు.",
-    "scope": { "current": "ఈ సెషన్" },
+    "scope": {
+      "current": "ఈ సెషన్"
+    },
     "loading": "శోధిస్తోంది…"
+  },
+  "contacts": {
+    "title": "Contacts",
+    "subtitle": "View and manage your WhatsApp contact book",
+    "addContact": "Add Contact",
+    "editTitle": "Edit Contact",
+    "addTitle": "Add Contact",
+    "removeTitle": "Remove Contact",
+    "removeConfirm": "Remove \"{{name}}\" from your contact book?",
+    "searchPlaceholder": "Search contacts...",
+    "contactId": "Contact ID",
+    "fullName": "Full name",
+    "firstName": "First name",
+    "blocked": "Blocked",
+    "saved": "Saved",
+    "notSupported": "Not supported on the active engine (whatsapp-web.js has no contact-book write API). Switch to Baileys to use this.",
+    "notSupportedHint": "Only supported on the Baileys engine.",
+    "actions": {
+      "edit": "Edit",
+      "remove": "Remove"
+    },
+    "empty": {
+      "title": "No contacts found",
+      "description": "Contacts will appear here once the session has synced them"
+    },
+    "toasts": {
+      "saved": "Contact saved",
+      "saveFailed": "Failed to save contact",
+      "removed": "Contact removed",
+      "removeFailed": "Failed to remove contact"
+    }
+  },
+  "quickReplies": {
+    "title": "Quick Replies",
+    "subtitle": "WhatsApp Business canned responses",
+    "addQuickReply": "Add Quick Reply",
+    "createTitle": "Create Quick Reply",
+    "editTitle": "Edit Quick Reply",
+    "removeTitle": "Remove Quick Reply",
+    "removeConfirm": "Remove the \"{{shortcut}}\" quick reply?",
+    "shortcut": "Shortcut",
+    "message": "Message",
+    "keywords": "Keywords (optional)",
+    "keywordsPlaceholder": "comma, separated, keywords",
+    "notSupported": "Not supported on the active engine (whatsapp-web.js has no quick-reply API). Switch to Baileys to use this.",
+    "localTrackingNotice": "Baileys has no API to list existing quick replies, so this page only shows the ones created in this browser. Quick replies created elsewhere won't appear here.",
+    "actions": {
+      "edit": "Edit",
+      "remove": "Remove"
+    },
+    "empty": {
+      "title": "No quick replies yet",
+      "description": "Create a quick reply to use as a WhatsApp Business canned response"
+    },
+    "toasts": {
+      "saved": "Quick reply saved",
+      "saveFailed": "Failed to save quick reply",
+      "removed": "Quick reply removed",
+      "removeFailed": "Failed to remove quick reply"
+    }
+  },
+  "privacy": {
+    "title": "Privacy",
+    "subtitle": "Manage WhatsApp privacy settings and your blocklist",
+    "settingsTitle": "Privacy Settings",
+    "blocklistTitle": "Blocked Contacts",
+    "blocklistEmpty": "No blocked contacts",
+    "noChange": "No change",
+    "notSupported": "Not supported on the active engine (whatsapp-web.js has no privacy-settings API). Switch to Baileys to use this.",
+    "fields": {
+      "lastSeen": "Last seen",
+      "online": "Online status",
+      "profilePicture": "Profile picture",
+      "status": "Status/about",
+      "readReceipts": "Read receipts",
+      "groupsAdd": "Who can add you to groups",
+      "call": "Who can call you",
+      "messages": "Who can message you",
+      "disableLinkPreviews": "Disable link previews for messages you send",
+      "defaultDisappearingMode": "Default disappearing messages"
+    },
+    "options": {
+      "all": "Everyone",
+      "contacts": "My contacts",
+      "contact_blacklist": "My contacts, except...",
+      "none": "Nobody",
+      "match_last_seen": "Same as last seen",
+      "known": "People I call"
+    },
+    "disappearing": {
+      "0": "Off",
+      "86400": "24 hours",
+      "604800": "7 days",
+      "7776000": "90 days"
+    },
+    "toasts": {
+      "saved": "Privacy settings saved",
+      "saveFailed": "Failed to save privacy settings"
+    }
   }
 }

@@ -503,6 +503,28 @@ export function Chats() {
     }
   };
 
+  // Star state has no backing field anywhere (WhatsApp-side only, not persisted in our DB — see
+  // SHA-83) — tracked client-side only, so it resets on reload. That's an accepted limitation, not a
+  // bug: there is no "get starred messages" API on either engine to reconcile against.
+  const [starredIds, setStarredIds] = useState<Set<string>>(new Set());
+
+  const handleStarMessage = async (msg: ChatMessageView, star: boolean) => {
+    if (!selectedSessionId || !activeChat) return;
+    const msgId = msg.waMessageId || msg.id;
+
+    try {
+      await messageApi.star(selectedSessionId, { chatId: activeChat.id, messageId: msgId, star });
+      setStarredIds(prev => {
+        const next = new Set(prev);
+        if (star) next.add(msg.id);
+        else next.delete(msg.id);
+        return next;
+      });
+    } catch (err) {
+      showErrorToast(t('chats.errors.star'), err instanceof Error ? err.message : undefined);
+    }
+  };
+
   // Side effects when the active chat changes: mark-as-read on the gateway + clear sidebar unread badge.
   // The message-history fetch is driven by useChatMessages; scroll restoration is driven by
   // useChatScrollPosition (both keyed off activeChat?.id). Deliberately keying off `activeChat?.id`
@@ -949,9 +971,11 @@ export function Chats() {
                           isMe={isMe}
                           formattedTime={formattedTime}
                           imageMedia={imageMedia}
+                          isStarred={starredIds.has(msg.id)}
                           onReply={setReplyingTo}
                           onReact={handleReactMessage}
                           onDelete={handleDeleteMessage}
+                          onStar={handleStarMessage}
                           onImageClick={setLightboxIndex}
                         />
                       );

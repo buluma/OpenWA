@@ -16,6 +16,9 @@ const Sessions = lazy(() => import('./pages/Sessions').then(m => ({ default: m.S
 const Chats = lazy(() => import('./pages/Chats').then(m => ({ default: m.Chats })));
 const Webhooks = lazy(() => import('./pages/Webhooks').then(m => ({ default: m.Webhooks })));
 const Templates = lazy(() => import('./pages/Templates').then(m => ({ default: m.Templates })));
+const Contacts = lazy(() => import('./pages/Contacts').then(m => ({ default: m.Contacts })));
+const QuickReplies = lazy(() => import('./pages/QuickReplies').then(m => ({ default: m.QuickReplies })));
+const Privacy = lazy(() => import('./pages/Privacy').then(m => ({ default: m.Privacy })));
 const Logs = lazy(() => import('./pages/Logs').then(m => ({ default: m.Logs })));
 const ApiKeys = lazy(() => import('./pages/ApiKeys').then(m => ({ default: m.ApiKeys })));
 const MessageTester = lazy(() => import('./pages/MessageTester').then(m => ({ default: m.MessageTester })));
@@ -108,6 +111,9 @@ function AppContent() {
             <Route path="chats" element={<Chats />} />
             <Route path="webhooks" element={<Webhooks />} />
             <Route path="templates" element={<Templates />} />
+            <Route path="contacts" element={<Contacts />} />
+            <Route path="quick-replies" element={<QuickReplies />} />
+            <Route path="privacy" element={<Privacy />} />
             {role === 'admin' && <Route path="api-keys" element={<ApiKeys />} />}
             <Route path="logs" element={<Logs />} />
             <Route path="message-tester" element={<MessageTester />} />

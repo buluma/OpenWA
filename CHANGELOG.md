@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   online, profile picture, status, read receipts, groups-add, calls, messages, link previews, default
   disappearing-messages timer). The blocklist read works on both engines; every other route is Baileys
   only and returns `501` on whatsapp-web.js, which has no privacy-settings API at all.
+- Dashboard: new Contacts, Quick Replies, and Privacy pages, and a star/unstar button on message bubbles
+  in Chats, wiring up the four API areas above. Quick Replies has no list endpoint on Baileys, so the
+  dashboard tracks the ones it creates in browser `localStorage` per session rather than claiming a
+  server-side list that doesn't exist.
 
 ### Fixed
 

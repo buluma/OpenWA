@@ -9,12 +9,17 @@ import {
   pluginsApi,
   pluginInstancesApi,
   statsApi,
+  contactApi,
+  privacyApi,
+  quickReplyApi,
   type Webhook,
   type WebhookFilters,
   type TemplatePayload,
   type StatsPeriod,
   type CreateInstanceInput,
   type UpdateInstanceInput,
+  type UpdatePrivacySettingsInput,
+  type QuickReplyInput,
 } from '../services/api';
 
 // ── Query Keys ────────────────────────────────────────────────────────
@@ -36,6 +41,9 @@ export const queryKeys = {
   currentEngine: ['engines', 'current'] as const,
   statsOverview: ['stats', 'overview'] as const,
   statsMessages: (period: string) => ['stats', 'messages', period] as const,
+  contacts: (sessionId: string) => ['sessions', sessionId, 'contacts'] as const,
+  privacySettings: (sessionId: string) => ['sessions', sessionId, 'privacy', 'settings'] as const,
+  privacyBlocklist: (sessionId: string) => ['sessions', sessionId, 'privacy', 'blocklist'] as const,
 };
 
 // ── Session Queries ───────────────────────────────────────────────────
@@ -343,5 +351,85 @@ export function useStatsMessagesQuery(period: StatsPeriod) {
     queryFn: () => statsApi.getMessages(period),
     staleTime: 30_000,
     retry: false,
+  });
+}
+
+// ── Contact Queries ───────────────────────────────────────────────────
+
+export function useContactsQuery(sessionId: string, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.contacts(sessionId),
+    queryFn: () => contactApi.list(sessionId),
+    enabled: enabled && !!sessionId,
+    staleTime: 30_000,
+  });
+}
+
+export function useUpsertContactMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (params: { sessionId: string; contactId: string; data: { fullName?: string; firstName?: string } }) =>
+      contactApi.upsert(params.sessionId, params.contactId, params.data),
+    onSuccess: (_data, params) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.contacts(params.sessionId) });
+    },
+  });
+}
+
+export function useRemoveContactMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (params: { sessionId: string; contactId: string }) =>
+      contactApi.remove(params.sessionId, params.contactId),
+    onSuccess: (_data, params) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.contacts(params.sessionId) });
+    },
+  });
+}
+
+// ── Quick Reply Mutations (no list query — see QuickReplyInput comment: no backend list API) ──
+
+export function useUpsertQuickReplyMutation() {
+  return useMutation({
+    mutationFn: (params: { sessionId: string; data: QuickReplyInput }) =>
+      quickReplyApi.upsert(params.sessionId, params.data),
+  });
+}
+
+export function useRemoveQuickReplyMutation() {
+  return useMutation({
+    mutationFn: (params: { sessionId: string; id: string }) => quickReplyApi.remove(params.sessionId, params.id),
+  });
+}
+
+// ── Privacy Queries ───────────────────────────────────────────────────
+
+export function usePrivacySettingsQuery(sessionId: string, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.privacySettings(sessionId),
+    queryFn: () => privacyApi.getSettings(sessionId),
+    enabled: enabled && !!sessionId,
+    staleTime: 30_000,
+    retry: false,
+  });
+}
+
+export function usePrivacyBlocklistQuery(sessionId: string, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.privacyBlocklist(sessionId),
+    queryFn: () => privacyApi.getBlocklist(sessionId),
+    enabled: enabled && !!sessionId,
+    staleTime: 30_000,
+  });
+}
+
+export function useUpdatePrivacySettingsMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (params: { sessionId: string; data: UpdatePrivacySettingsInput }) =>
+      privacyApi.updateSettings(params.sessionId, params.data),
+    onSuccess: (_data, params) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.privacySettings(params.sessionId) });
+    },
   });
 }

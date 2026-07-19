@@ -1,0 +1,205 @@
+.quick-replies-page{
+  padding: 2rem;
+  width: 100%;
+  box-sizing: border-box;
+  overflow-x: hidden;
+}
+
+.quick-replies-page .btn-primary{
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  background: var(--primary);
+  color: white;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.quick-replies-page .btn-primary:hover{
+  background: var(--primary-hover);
+}
+
+.quick-replies-page .btn-primary:disabled{
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.quick-replies-page .btn-secondary{
+  padding: 0.75rem 1.25rem;
+  background: var(--bg-light);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.quick-replies-page .btn-danger{
+  padding: 0.75rem 1.25rem;
+  background: var(--error);
+  color: white;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.quick-replies-page .quick-replies-toolbar{
+  margin-bottom: 1rem;
+}
+
+.quick-replies-page .quick-replies-toolbar select{
+  min-width: 200px;
+  padding: 0.625rem 0.875rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg-white);
+  color: var(--text-primary);
+}
+
+.quick-replies-page .quick-replies-info-banner{
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1.5rem;
+  background: var(--bg-light);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.quick-replies-page .quick-replies-list{
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.quick-replies-page .quick-reply-card{
+  background: var(--bg-white);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+}
+
+.quick-replies-page .quick-reply-header{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.quick-replies-page .quick-reply-shortcut{
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--primary);
+  background: rgba(37, 211, 102, 0.1);
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+}
+
+.quick-replies-page .quick-reply-actions{
+  display: flex;
+  gap: 0.375rem;
+}
+
+.quick-replies-page .icon-btn{
+  padding: 0.4rem;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+
+.quick-replies-page .icon-btn:hover{
+  background: var(--bg-light);
+  color: var(--text-primary);
+}
+
+.quick-replies-page .icon-btn.danger:hover{
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: var(--error);
+}
+
+.quick-replies-page .quick-reply-message{
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  margin: 0 0 0.5rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.quick-replies-page .quick-reply-keywords{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+
+.quick-replies-page .keyword-tag{
+  font-size: 0.7rem;
+  padding: 0.2rem 0.5rem;
+  background: var(--bg-light);
+  color: var(--text-secondary);
+  border-radius: 6px;
+}
+
+.quick-replies-page .empty-table-state{
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem 2rem;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.quick-replies-page .empty-table-state svg{
+  margin-bottom: 1rem;
+  opacity: 0.4;
+}
+
+.quick-replies-page .empty-table-state h3{
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin: 0 0 0.5rem;
+}
+
+.quick-replies-page .empty-table-state p{
+  margin: 0;
+  font-size: 0.875rem;
+  max-width: 300px;
+}
+
+.quick-replies-page .modal-body textarea{
+  width: 100%;
+  padding: 0.625rem 0.875rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg-white);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.9375rem;
+  resize: vertical;
+  margin-bottom: 0.75rem;
+  box-sizing: border-box;
+}
+
+@media (max-width: 768px) {
+  .quick-replies-page{
+    padding: 1rem;
+  }
+
+  .quick-replies-page .quick-replies-list{
+    grid-template-columns: 1fr;
+  }
+}

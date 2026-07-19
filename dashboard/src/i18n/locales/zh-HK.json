@@ -97,7 +97,10 @@
     "messageTester": "訊息測試器",
     "infrastructure": "基礎架構",
     "plugins": "外掛",
-    "logs": "記錄"
+    "logs": "記錄",
+    "contacts": "Contacts",
+    "quickReplies": "Quick Replies",
+    "privacy": "Privacy"
   },
   "chats": {
     "media": {
@@ -124,7 +127,9 @@
     "actions": {
       "reply": "回覆",
       "react": "回應",
-      "delete": "刪除訊息"
+      "delete": "刪除訊息",
+      "star": "Star message",
+      "unstar": "Unstar message"
     },
     "replyingTo": "正在回覆 {{name}}",
     "you": "你",
@@ -148,7 +153,8 @@
       "markRead": "將聊天標記為已讀失敗",
       "send": "傳送訊息失敗",
       "react": "回應訊息失敗",
-      "delete": "刪除訊息失敗"
+      "delete": "刪除訊息失敗",
+      "star": "Failed to star message"
     },
     "loadMessagesError": "無法載入訊息。請檢查伺服器日誌。"
   },
@@ -898,7 +904,108 @@
     "empty": "未找到訊息。",
     "error": "搜尋失敗。請重試。",
     "unavailable": "搜尋未設定。",
-    "scope": { "current": "目前工作階段" },
+    "scope": {
+      "current": "目前工作階段"
+    },
     "loading": "搜尋中…"
+  },
+  "contacts": {
+    "title": "Contacts",
+    "subtitle": "View and manage your WhatsApp contact book",
+    "addContact": "Add Contact",
+    "editTitle": "Edit Contact",
+    "addTitle": "Add Contact",
+    "removeTitle": "Remove Contact",
+    "removeConfirm": "Remove \"{{name}}\" from your contact book?",
+    "searchPlaceholder": "Search contacts...",
+    "contactId": "Contact ID",
+    "fullName": "Full name",
+    "firstName": "First name",
+    "blocked": "Blocked",
+    "saved": "Saved",
+    "notSupported": "Not supported on the active engine (whatsapp-web.js has no contact-book write API). Switch to Baileys to use this.",
+    "notSupportedHint": "Only supported on the Baileys engine.",
+    "actions": {
+      "edit": "Edit",
+      "remove": "Remove"
+    },
+    "empty": {
+      "title": "No contacts found",
+      "description": "Contacts will appear here once the session has synced them"
+    },
+    "toasts": {
+      "saved": "Contact saved",
+      "saveFailed": "Failed to save contact",
+      "removed": "Contact removed",
+      "removeFailed": "Failed to remove contact"
+    }
+  },
+  "quickReplies": {
+    "title": "Quick Replies",
+    "subtitle": "WhatsApp Business canned responses",
+    "addQuickReply": "Add Quick Reply",
+    "createTitle": "Create Quick Reply",
+    "editTitle": "Edit Quick Reply",
+    "removeTitle": "Remove Quick Reply",
+    "removeConfirm": "Remove the \"{{shortcut}}\" quick reply?",
+    "shortcut": "Shortcut",
+    "message": "Message",
+    "keywords": "Keywords (optional)",
+    "keywordsPlaceholder": "comma, separated, keywords",
+    "notSupported": "Not supported on the active engine (whatsapp-web.js has no quick-reply API). Switch to Baileys to use this.",
+    "localTrackingNotice": "Baileys has no API to list existing quick replies, so this page only shows the ones created in this browser. Quick replies created elsewhere won't appear here.",
+    "actions": {
+      "edit": "Edit",
+      "remove": "Remove"
+    },
+    "empty": {
+      "title": "No quick replies yet",
+      "description": "Create a quick reply to use as a WhatsApp Business canned response"
+    },
+    "toasts": {
+      "saved": "Quick reply saved",
+      "saveFailed": "Failed to save quick reply",
+      "removed": "Quick reply removed",
+      "removeFailed": "Failed to remove quick reply"
+    }
+  },
+  "privacy": {
+    "title": "Privacy",
+    "subtitle": "Manage WhatsApp privacy settings and your blocklist",
+    "settingsTitle": "Privacy Settings",
+    "blocklistTitle": "Blocked Contacts",
+    "blocklistEmpty": "No blocked contacts",
+    "noChange": "No change",
+    "notSupported": "Not supported on the active engine (whatsapp-web.js has no privacy-settings API). Switch to Baileys to use this.",
+    "fields": {
+      "lastSeen": "Last seen",
+      "online": "Online status",
+      "profilePicture": "Profile picture",
+      "status": "Status/about",
+      "readReceipts": "Read receipts",
+      "groupsAdd": "Who can add you to groups",
+      "call": "Who can call you",
+      "messages": "Who can message you",
+      "disableLinkPreviews": "Disable link previews for messages you send",
+      "defaultDisappearingMode": "Default disappearing messages"
+    },
+    "options": {
+      "all": "Everyone",
+      "contacts": "My contacts",
+      "contact_blacklist": "My contacts, except...",
+      "none": "Nobody",
+      "match_last_seen": "Same as last seen",
+      "known": "People I call"
+    },
+    "disappearing": {
+      "0": "Off",
+      "86400": "24 hours",
+      "604800": "7 days",
+      "7776000": "90 days"
+    },
+    "toasts": {
+      "saved": "Privacy settings saved",
+      "saveFailed": "Failed to save privacy settings"
+    }
   }
 }

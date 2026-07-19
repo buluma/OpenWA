@@ -907,6 +907,14 @@
   background: rgba(239, 68, 68, 0.12);
 }
 
+.chats-page .action-btn.star-btn.starred{
+  color: #f5b400;
+}
+
+.chats-page .action-btn.star-btn:hover{
+  color: #f5b400;
+}
+
 /* Reaction Quick Popover */
 .chats-page .reaction-trigger-wrapper{
   position: relative;

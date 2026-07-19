@@ -1,0 +1,238 @@
+.contacts-page{
+  padding: 2rem;
+  width: 100%;
+  box-sizing: border-box;
+  overflow-x: hidden;
+}
+
+.contacts-page .btn-primary{
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  background: var(--primary);
+  color: white;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.contacts-page .btn-primary:hover{
+  background: var(--primary-hover);
+}
+
+.contacts-page .btn-primary:disabled{
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.contacts-page .btn-secondary{
+  padding: 0.75rem 1.25rem;
+  background: var(--bg-light);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.contacts-page .btn-danger{
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  background: var(--error);
+  color: white;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.contacts-page .contacts-toolbar{
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.contacts-page .contacts-toolbar select{
+  min-width: 200px;
+  padding: 0.625rem 0.875rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg-white);
+  color: var(--text-primary);
+}
+
+.contacts-page .contacts-search{
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 0.875rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg-white);
+  color: var(--text-secondary);
+}
+
+.contacts-page .contacts-search input{
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 0.9375rem;
+}
+
+.contacts-page .contacts-list{
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.contacts-page .contact-row{
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.875rem 1.25rem;
+  background: var(--bg-white);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.contacts-page .contact-info{
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.contacts-page .contact-name{
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 0.9375rem;
+}
+
+.contacts-page .contact-id{
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.contacts-page .contact-badges{
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.contacts-page .status-badge{
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.625rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.contacts-page .status-badge.blocked{
+  background: rgba(239, 68, 68, 0.12);
+  color: var(--error);
+}
+
+.contacts-page .status-badge.saved{
+  background: rgba(37, 211, 102, 0.15);
+  color: var(--primary);
+}
+
+.contacts-page .contact-actions{
+  display: flex;
+  gap: 0.375rem;
+  flex-shrink: 0;
+}
+
+.contacts-page .icon-btn{
+  padding: 0.5rem;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: all 0.2s;
+}
+
+.contacts-page .icon-btn:hover{
+  background: var(--bg-light);
+  color: var(--text-primary);
+}
+
+.contacts-page .icon-btn.danger:hover{
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: var(--error);
+}
+
+.contacts-page .empty-table-state{
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem 2rem;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.contacts-page .empty-table-state svg{
+  margin-bottom: 1rem;
+  opacity: 0.4;
+}
+
+.contacts-page .empty-table-state h3{
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin: 0 0 0.5rem;
+}
+
+.contacts-page .empty-table-state p{
+  margin: 0;
+  font-size: 0.875rem;
+  max-width: 300px;
+}
+
+.contacts-page .contacts-hint{
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  margin-top: 0.5rem;
+}
+
+.contacts-page .animate-spin{
+  animation: contacts-spin 1s linear infinite;
+}
+
+@keyframes contacts-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 768px) {
+  .contacts-page{
+    padding: 1rem;
+  }
+
+  .contacts-page .contacts-toolbar{
+    flex-direction: column;
+  }
+
+  .contacts-page .contact-row{
+    flex-wrap: wrap;
+  }
+}
