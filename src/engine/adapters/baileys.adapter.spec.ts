@@ -2438,6 +2438,115 @@ describe('BaileysAdapter contact + chat reads', () => {
   });
 });
 
+describe('BaileysAdapter session state persistence (SHA-85)', () => {
+  const fakeStateStore = () => ({
+    saveChats: jest.fn().mockResolvedValue(undefined),
+    saveContacts: jest.fn().mockResolvedValue(undefined),
+    loadChats: jest.fn().mockResolvedValue([]),
+    loadContacts: jest.fn().mockResolvedValue([]),
+    clearSession: jest.fn().mockResolvedValue(undefined),
+  });
+
+  const newAdapterWithStateStore = (sessionStateStore: ReturnType<typeof fakeStateStore>): BaileysAdapter =>
+    new BaileysAdapter({
+      sessionId: 'sess-1',
+      dbSessionId: 'db-uuid-1',
+      authDir: './data/baileys',
+      messageStore: fakeStore,
+      sessionStateStore,
+    });
+
+  beforeEach(() => {
+    fakeSock.user = { id: '628999:1@s.whatsapp.net', name: 'Me' };
+    fakeSock.resetEmitter();
+    jest.clearAllMocks();
+    fakeSock.groupFetchAllParticipating.mockResolvedValue({});
+  });
+
+  const ready = async (sessionStateStore: ReturnType<typeof fakeStateStore>): Promise<BaileysAdapter> => {
+    const adapter = newAdapterWithStateStore(sessionStateStore);
+    await adapter.initialize({});
+    fakeSock.fire('connection.update', { connection: 'open' });
+    return adapter;
+  };
+
+  it('loads persisted chats/contacts before connecting, so they are visible immediately', async () => {
+    const store = fakeStateStore();
+    store.loadChats.mockResolvedValue([{ id: '628111@s.whatsapp.net', name: 'Alice', unreadCount: 2 }]);
+    store.loadContacts.mockResolvedValue([{ id: '628222@s.whatsapp.net', notify: 'Bob' }]);
+
+    const adapter = await ready(store);
+
+    expect(store.loadChats).toHaveBeenCalledWith('db-uuid-1');
+    expect(store.loadContacts).toHaveBeenCalledWith('db-uuid-1');
+    expect(await adapter.getChats()).toEqual([
+      expect.objectContaining({ id: '628111@c.us', name: 'Alice', unreadCount: 2 }),
+    ]);
+    expect(await adapter.getContactById('628222@s.whatsapp.net')).toMatchObject({ pushName: 'Bob' });
+  });
+
+  it('a failed load is non-fatal — initialize() still succeeds', async () => {
+    const store = fakeStateStore();
+    store.loadChats.mockRejectedValue(new Error('db down'));
+    await expect(ready(store)).resolves.toBeInstanceOf(BaileysAdapter);
+  });
+
+  it('persists a chats.upsert batch', async () => {
+    const store = fakeStateStore();
+    const adapter = await ready(store);
+    fakeSock.fire('chats.upsert', [{ id: '628111@s.whatsapp.net', name: 'Alice' }]);
+    await new Promise(r => setImmediate(r));
+    expect(store.saveChats).toHaveBeenCalledWith('db-uuid-1', [{ id: '628111@s.whatsapp.net', name: 'Alice' }]);
+    void adapter;
+  });
+
+  it('persists a contacts.upsert batch', async () => {
+    const store = fakeStateStore();
+    await ready(store);
+    fakeSock.fire('contacts.upsert', [{ id: '628111@s.whatsapp.net', notify: 'Al' }]);
+    await new Promise(r => setImmediate(r));
+    expect(store.saveContacts).toHaveBeenCalledWith('db-uuid-1', [{ id: '628111@s.whatsapp.net', notify: 'Al' }]);
+  });
+
+  it('persists both chats and contacts from messaging-history.set', async () => {
+    const store = fakeStateStore();
+    await ready(store);
+    fakeSock.fire('messaging-history.set', {
+      contacts: [{ id: '628222@s.whatsapp.net', name: 'Bob' }],
+      chats: [{ id: '628222@s.whatsapp.net', name: 'Bob' }],
+      messages: [],
+    });
+    await new Promise(r => setImmediate(r));
+    expect(store.saveContacts).toHaveBeenCalledWith('db-uuid-1', [{ id: '628222@s.whatsapp.net', name: 'Bob' }]);
+    expect(store.saveChats).toHaveBeenCalledWith('db-uuid-1', [{ id: '628222@s.whatsapp.net', name: 'Bob' }]);
+  });
+
+  it('does not persist an empty batch', async () => {
+    const store = fakeStateStore();
+    await ready(store);
+    fakeSock.fire('chats.upsert', []);
+    fakeSock.fire('contacts.upsert', []);
+    await new Promise(r => setImmediate(r));
+    expect(store.saveChats).not.toHaveBeenCalled();
+    expect(store.saveContacts).not.toHaveBeenCalled();
+  });
+
+  it('a persistence failure does not throw or break the live event handler', async () => {
+    const store = fakeStateStore();
+    store.saveChats.mockRejectedValue(new Error('disk full'));
+    await ready(store);
+    expect(() => fakeSock.fire('chats.upsert', [{ id: '628111@s.whatsapp.net' }])).not.toThrow();
+    await new Promise(r => setImmediate(r));
+  });
+
+  it('logout() clears the persisted session state', async () => {
+    const store = fakeStateStore();
+    const adapter = await ready(store);
+    await adapter.logout();
+    expect(store.clearSession).toHaveBeenCalledWith('db-uuid-1');
+  });
+});
+
 describe('BaileysAdapter sendSeen + markUnread + deleteChat', () => {
   beforeEach(() => {
     fakeSock.user = { id: '628999:1@s.whatsapp.net', name: 'Me' };

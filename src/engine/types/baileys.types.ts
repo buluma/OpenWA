@@ -1,4 +1,4 @@
-import type { WAMessage } from '@whiskeysockets/baileys';
+import type { Chat, Contact, WAMessage } from '@whiskeysockets/baileys';
 import type { LidMappingStore } from '../identity/lid-mapping-store.service';
 
 /**
@@ -11,6 +11,25 @@ export interface BaileysMessageStore {
   /** Look up a previously-seen message by its id, or null. */
   getMessage(sessionId: string, messageId: string): Promise<WAMessage | null>;
   /** Remove all stored messages for a session (called on logout). */
+  clearSession(sessionId: string): Promise<void>;
+}
+
+/**
+ * Persistence boundary for the Baileys engine's chat/contact snapshot (SHA-85). Baileys has no
+ * fetch-all for either — both arrive only via the live event stream into an in-memory map, wiped by
+ * every process restart. The adapter depends on this narrow interface (not the concrete Nest
+ * service) so it stays unit-testable with a fake, mirroring {@link BaileysMessageStore}.
+ */
+export interface BaileysSessionStateStore {
+  /** Persist/merge a batch of chats (idempotent per `id`). No-ops on an empty array. */
+  saveChats(sessionId: string, chats: Partial<Chat>[]): Promise<void>;
+  /** Persist/merge a batch of contacts (idempotent per `id`). No-ops on an empty array. */
+  saveContacts(sessionId: string, contacts: Partial<Contact>[]): Promise<void>;
+  /** Load every previously-persisted chat for a session, to seed the in-memory store on reconnect. */
+  loadChats(sessionId: string): Promise<Partial<Chat>[]>;
+  /** Load every previously-persisted contact for a session, to seed the in-memory store on reconnect. */
+  loadContacts(sessionId: string): Promise<Partial<Contact>[]>;
+  /** Remove all stored chats/contacts for a session (called on logout). */
   clearSession(sessionId: string): Promise<void>;
 }
 
@@ -31,6 +50,8 @@ export interface BaileysAdapterConfig {
   messageStore?: BaileysMessageStore;
   /** Persisted, cross-session lid->phone resolution table. Backs lid resolution beyond the in-memory map. */
   lidMappingStore?: LidMappingStore;
+  /** Persisted chat/contact snapshot (SHA-85), reloaded on connect so restarts don't lose them. */
+  sessionStateStore?: BaileysSessionStateStore;
   /** Directory to cache profile pictures (default: ./data/profiles/<sessionId>). */
   profilesDir?: string;
 }

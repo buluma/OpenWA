@@ -26,6 +26,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   codebase — whose default keep-alive socket could later be closed by the remote and raise an unhandled
   error with no listener, well after the original request had already settled. It now goes through the
   same guarded, connection-managed `loadRemoteMediaBuffer()` helper every other external fetch uses.
+- Baileys engine: personal chats and contacts no longer disappear after a process restart. They
+  previously lived only in an in-memory snapshot fed by WhatsApp's live event stream, wiped on every
+  restart with no way to rebuild it short of one chat at a time as new activity arrived — unlike groups,
+  which already had a live re-fetch on every connect. Chats/contacts are now also persisted to the DB
+  (new `baileys_stored_chats` / `baileys_stored_contacts` tables) and reloaded on connect.
 
 ## [0.9.0] - 2026-07-18
 

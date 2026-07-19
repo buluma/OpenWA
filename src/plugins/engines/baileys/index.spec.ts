@@ -65,6 +65,21 @@ describe('BaileysPlugin.createEngine (opaque config)', () => {
     expect(BaileysAdapter).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 'sess-1', messageStore: store }));
   });
 
+  it('passes the session state store to the adapter', () => {
+    const stateStore = {
+      saveChats: jest.fn(),
+      saveContacts: jest.fn(),
+      loadChats: jest.fn(),
+      loadContacts: jest.fn(),
+      clearSession: jest.fn(),
+    };
+    const plugin = new BaileysPlugin(undefined, undefined, undefined, stateStore);
+    plugin.createEngine({ sessionId: 'sess-1' });
+    expect(BaileysAdapter).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: 'sess-1', sessionStateStore: stateStore }),
+    );
+  });
+
   it('Uses the constructor-supplied engine config when onLoad never ran (enable-failure path)', () => {
     const plugin = new BaileysPlugin(undefined, { baileys: { authDir: '/op/baileys' } });
     plugin.createEngine({ sessionId: 'sess-3' });

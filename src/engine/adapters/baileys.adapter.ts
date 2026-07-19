@@ -2,7 +2,14 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as qrcode from 'qrcode';
 import type * as BaileysLib from '@whiskeysockets/baileys';
-import type { AnyMessageContent, MiscMessageGenerationOptions, WAMessage, WASocket } from '@whiskeysockets/baileys';
+import type {
+  AnyMessageContent,
+  Chat,
+  Contact as BaileysContact,
+  MiscMessageGenerationOptions,
+  WAMessage,
+  WASocket,
+} from '@whiskeysockets/baileys';
 import { buildIncomingMessageFromBaileys, extractBaileysBody, mapBaileysStatus } from './baileys-message-mapper';
 import { buildEditedMessage } from './message-mapper';
 import { mapBaileysGroup, mapBaileysGroupInfo } from './baileys-group-mapper';
@@ -166,12 +173,45 @@ export class BaileysAdapter implements IWhatsAppEngine {
   async initialize(callbacks: EngineEventCallbacks): Promise<void> {
     this.callbacks = callbacks;
     this.intentionalClose = false;
+    // Fire the persisted-state load concurrently with connect() rather than awaiting it first: the
+    // live event stream merges over whatever loads via upsert semantics regardless of arrival order,
+    // and connect()'s own synchronous prefix (through to its first real await) must still run in this
+    // same tick for callers that race disconnect() against an in-flight connect().
+    const stateLoaded = this.loadPersistedState();
     try {
       await this.connect();
     } catch (err) {
       this.setStatus(EngineStatus.FAILED);
       this.callbacks.onError?.(err instanceof Error ? err.message : String(err));
       throw err;
+    }
+    await stateLoaded;
+  }
+
+  /**
+   * Seed the in-memory `BaileysSessionStore` from the persisted chat/contact snapshot (SHA-85),
+   * before the live event stream attaches — so a restarted process shows every previously-known
+   * chat/contact immediately instead of one at a time as new activity trickles in. Best-effort: a
+   * failure here must not block startup, since the live stream will still populate what it can.
+   */
+  private async loadPersistedState(): Promise<void> {
+    if (!this.config.sessionStateStore) return;
+    try {
+      const [chats, contacts] = await Promise.all([
+        this.config.sessionStateStore.loadChats(this.config.dbSessionId),
+        this.config.sessionStateStore.loadContacts(this.config.dbSessionId),
+      ]);
+      this.sessionStore.upsertChats(chats);
+      this.sessionStore.upsertContacts(contacts);
+      this.logger.debug('Loaded persisted chat/contact state', {
+        action: 'baileys_load_persisted_state',
+        chats: chats.length,
+        contacts: contacts.length,
+      });
+    } catch (err) {
+      this.logger.warn('Failed to load persisted chat/contact state', {
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 
@@ -276,14 +316,17 @@ export class BaileysAdapter implements IWhatsAppEngine {
     sock.ev.on('contacts.upsert', contacts => {
       this.logContactEvent('contacts.upsert', contacts);
       this.sessionStore.upsertContacts(contacts);
+      this.persistContacts(contacts);
     });
     sock.ev.on('contacts.update', updates => {
       this.logContactEvent('contacts.update', updates);
       this.sessionStore.upsertContacts(updates);
+      this.persistContacts(updates);
     });
     sock.ev.on('chats.upsert', chats => {
       this.logger.debug('Baileys chats event', { action: 'baileys_chats', event: 'upsert', count: chats?.length ?? 0 });
       this.sessionStore.upsertChats(chats);
+      this.persistChats(chats);
     });
     sock.ev.on('chats.update', updates => {
       this.logger.debug('Baileys chats event', {
@@ -292,11 +335,14 @@ export class BaileysAdapter implements IWhatsAppEngine {
         count: updates?.length ?? 0,
       });
       this.sessionStore.upsertChats(updates);
+      this.persistChats(updates);
     });
     sock.ev.on('messaging-history.set', history => {
       this.sessionStore.upsertContacts(history.contacts);
       this.sessionStore.upsertChats(history.chats);
       this.sessionStore.addLidMappings(history.lidPnMappings ?? []);
+      this.persistContacts(history.contacts ?? []);
+      this.persistChats(history.chats ?? []);
       void this.captureHistoryMessages(history.messages ?? []);
       this.logger.debug('History sync received', {
         action: 'baileys_history_set',
@@ -440,6 +486,7 @@ export class BaileysAdapter implements IWhatsAppEngine {
     this.sock = null;
     this.setStatus(EngineStatus.DISCONNECTED);
     await this.config.messageStore?.clearSession(this.config.dbSessionId).catch(() => undefined);
+    await this.config.sessionStateStore?.clearSession(this.config.dbSessionId).catch(() => undefined);
     // Wipe the multi-file auth dir so a fresh link starts clean — stale creds would otherwise be
     // reloaded on the next connect() and block re-linking (Baileys retries them, no QR emitted).
     await this.clearAuthState();
@@ -1119,6 +1166,29 @@ export class BaileysAdapter implements IWhatsAppEngine {
     }
   }
 
+  /**
+   * Fire-and-forget persistence for a batch of chats/contacts (SHA-85), so the in-memory
+   * `BaileysSessionStore` — wiped on every process restart — can be reloaded from the DB on the
+   * next connect instead of waiting for WhatsApp to resend them one at a time. Never blocks the
+   * live event handler and never throws: a persistence failure here must not affect the in-memory
+   * store, which already has the data from the caller's own `upsertChats`/`upsertContacts` call.
+   */
+  private persistChats(chats: Partial<Chat>[]): void {
+    if (!chats.length) return;
+    void this.config.sessionStateStore?.saveChats(this.config.dbSessionId, chats).catch(err => {
+      this.logger.warn('Failed to persist chat batch', { error: err instanceof Error ? err.message : String(err) });
+    });
+  }
+
+  private persistContacts(contacts: Partial<BaileysContact>[]): void {
+    if (!contacts.length) return;
+    void this.config.sessionStateStore?.saveContacts(this.config.dbSessionId, contacts).catch(err => {
+      this.logger.warn('Failed to persist contact batch', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+  }
+
   /** Diagnostic: log a contacts event's size + whether records carry names/lids (and a small sample). */
   private logContactEvent(
     event: string,
@@ -1550,6 +1620,7 @@ export class BaileysAdapter implements IWhatsAppEngine {
         .map(g => ({ id: g.id, name: g.subject }));
       if (named.length) {
         this.sessionStore.upsertChats(named);
+        this.persistChats(named);
         this.logger.debug('Hydrated group names', { action: 'baileys_hydrate_groups', count: named.length });
       }
     } catch (err) {
