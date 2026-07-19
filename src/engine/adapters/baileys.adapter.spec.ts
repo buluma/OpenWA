@@ -2239,8 +2239,9 @@ describe('BaileysAdapter profile + block', () => {
     // fs.existsSync/mkdir/writeFile aren't mocked here — jest.spyOn can't redefine fs.existsSync in
     // this environment (it's non-configurable on the `import * as fs` namespace object), and real
     // I/O against an isolated per-test tmpdir (via profilesDir) is simpler and just as fast anyway.
+    // The CDN download itself goes through loadRemoteMediaBuffer (mocked module-wide at the top of
+    // this file), not a raw fetch() — see Linear SHA-84 for why a raw fetch() was unsafe here.
     let profilesDir: string;
-    let fetchSpy: jest.SpyInstance;
 
     const readyWithProfilesDir = async (): Promise<BaileysAdapter> => {
       const adapter = new BaileysAdapter({
@@ -2257,14 +2258,13 @@ describe('BaileysAdapter profile + block', () => {
 
     beforeEach(() => {
       profilesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openwa-profile-pics-'));
-      fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue({
-        ok: true,
-        arrayBuffer: () => Promise.resolve(new ArrayBuffer(4)),
-      } as Response);
+      (loadRemoteMediaBuffer as jest.Mock).mockResolvedValue({
+        data: Buffer.from([1, 2, 3, 4]),
+        mimetype: 'image/jpeg',
+      });
     });
 
     afterEach(() => {
-      fetchSpy.mockRestore();
       fs.rmSync(profilesDir, { recursive: true, force: true });
     });
 
@@ -2275,7 +2275,7 @@ describe('BaileysAdapter profile + block', () => {
       const key = await adapter.getProfilePicture('628111@s.whatsapp.net');
 
       expect(fakeSock.profilePictureUrl).toHaveBeenCalledWith('628111@s.whatsapp.net', 'image');
-      expect(fetchSpy).toHaveBeenCalledWith('https://pps/x.jpg');
+      expect(loadRemoteMediaBuffer).toHaveBeenCalledWith('https://pps/x.jpg');
       expect(key).toBe('profiles/sess-1/628111_s.whatsapp.net.jpg');
       expect(fs.existsSync(path.join(profilesDir, '628111_s.whatsapp.net.jpg'))).toBe(true);
     });
@@ -2285,7 +2285,7 @@ describe('BaileysAdapter profile + block', () => {
       const adapter = await readyWithProfilesDir();
       await adapter.getProfilePicture('628111@s.whatsapp.net'); // first call: downloads + writes to disk
       fakeSock.profilePictureUrl.mockClear();
-      fetchSpy.mockClear();
+      (loadRemoteMediaBuffer as jest.Mock).mockClear();
 
       // A second adapter instance (fresh in-memory cache) against the SAME profilesDir proves this is
       // the on-disk cache branch, not just the in-memory Map from the first call.
@@ -2293,7 +2293,7 @@ describe('BaileysAdapter profile + block', () => {
       const key = await secondAdapter.getProfilePicture('628111@s.whatsapp.net');
 
       expect(fakeSock.profilePictureUrl).not.toHaveBeenCalled();
-      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(loadRemoteMediaBuffer).not.toHaveBeenCalled();
       expect(key).toBe('profiles/sess-1/628111_s.whatsapp.net.jpg');
     });
 
@@ -2305,7 +2305,7 @@ describe('BaileysAdapter profile + block', () => {
 
     it('returns null when the CDN fetch itself fails', async () => {
       fakeSock.profilePictureUrl.mockResolvedValueOnce('https://pps/x.jpg');
-      fetchSpy.mockResolvedValueOnce({ ok: false });
+      (loadRemoteMediaBuffer as jest.Mock).mockRejectedValueOnce(new Error('Media fetch failed with status 404'));
       const adapter = await readyWithProfilesDir();
       expect(await adapter.getProfilePicture('628111@s.whatsapp.net')).toBeNull();
       expect(fs.existsSync(path.join(profilesDir, '628111_s.whatsapp.net.jpg'))).toBe(false);

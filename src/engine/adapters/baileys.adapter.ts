@@ -803,9 +803,10 @@ export class BaileysAdapter implements IWhatsAppEngine {
       const url = await this.sock!.profilePictureUrl(contactId, 'image');
       if (!url) return null;
 
-      const response = await fetch(url);
-      if (!response.ok) return null;
-      const buffer = Buffer.from(await response.arrayBuffer());
+      // Guarded + managed connection lifecycle, unlike a raw global fetch() (which left an idle
+      // keep-alive socket that could crash the whole process with an unhandled error long after
+      // this call returned, when WhatsApp's CDN closed it — see Linear SHA-84.
+      const { data: buffer } = await loadRemoteMediaBuffer(url);
 
       await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
       await fs.promises.writeFile(filePath, buffer);

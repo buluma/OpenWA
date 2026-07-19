@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - whatsapp-web.js engine: `GET /api/sessions/{id}/chats` no longer 500s for the whole list when a single
   chat (commonly a `@lid`-migrated contact) fails to serialize inside WhatsApp Web's own Store code —
   the poisoned chat is now skipped and logged, and the rest of the list loads normally.
+- Baileys engine: `getProfilePicture` no longer risks crashing the whole process. It used a raw,
+  unguarded `fetch()` to download a contact's picture from WhatsApp's CDN — the only such call in the
+  codebase — whose default keep-alive socket could later be closed by the remote and raise an unhandled
+  error with no listener, well after the original request had already settled. It now goes through the
+  same guarded, connection-managed `loadRemoteMediaBuffer()` helper every other external fetch uses.
 
 ## [0.9.0] - 2026-07-18
 
