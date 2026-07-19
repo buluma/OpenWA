@@ -17,6 +17,12 @@ import {
   GroupParticipant,
   LocationInput,
   PollInput,
+  PrivacyCallVisibility,
+  PrivacyGroupAddVisibility,
+  PrivacyMessagesVisibility,
+  PrivacyOnlineVisibility,
+  PrivacyReadReceipts,
+  PrivacyVisibility,
   ContactCard,
   MessageReaction,
   Label,
@@ -1897,6 +1903,14 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
     this.logger.log(`Unblocked contact ${contactId}`);
   }
 
+  /** The one point of real parity with Baileys' privacy surface: whatsapp-web.js has no privacy
+   * settings API otherwise, but its blocked-contact list maps 1:1 to the neutral shape. */
+  async getBlocklist(): Promise<string[]> {
+    this.ensureReady();
+    const blocked = await this.client!.getBlockedContacts();
+    return blocked.map(c => c.id._serialized);
+  }
+
   // Get Group Invite Code
   async getGroupInviteCode(groupId: string): Promise<string> {
     this.ensureReady();
@@ -2160,6 +2174,63 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
   async removeQuickReply(_id: string): Promise<void> {
     this.ensureReady();
     throw new EngineNotSupportedError('removeQuickReply');
+  }
+
+  // ========== Privacy Settings (no library primitive beyond getBlocklist) ==========
+
+  async getPrivacySettings(): Promise<Record<string, string>> {
+    this.ensureReady();
+    throw new EngineNotSupportedError('getPrivacySettings');
+  }
+
+  async updateLastSeenPrivacy(_value: PrivacyVisibility): Promise<void> {
+    this.ensureReady();
+    throw new EngineNotSupportedError('updateLastSeenPrivacy');
+  }
+
+  async updateOnlinePrivacy(_value: PrivacyOnlineVisibility): Promise<void> {
+    this.ensureReady();
+    throw new EngineNotSupportedError('updateOnlinePrivacy');
+  }
+
+  async updateProfilePicturePrivacy(_value: PrivacyVisibility): Promise<void> {
+    this.ensureReady();
+    throw new EngineNotSupportedError('updateProfilePicturePrivacy');
+  }
+
+  async updateStatusPrivacy(_value: PrivacyVisibility): Promise<void> {
+    this.ensureReady();
+    throw new EngineNotSupportedError('updateStatusPrivacy');
+  }
+
+  async updateReadReceiptsPrivacy(_value: PrivacyReadReceipts): Promise<void> {
+    this.ensureReady();
+    throw new EngineNotSupportedError('updateReadReceiptsPrivacy');
+  }
+
+  async updateGroupsAddPrivacy(_value: PrivacyGroupAddVisibility): Promise<void> {
+    this.ensureReady();
+    throw new EngineNotSupportedError('updateGroupsAddPrivacy');
+  }
+
+  async updateCallPrivacy(_value: PrivacyCallVisibility): Promise<void> {
+    this.ensureReady();
+    throw new EngineNotSupportedError('updateCallPrivacy');
+  }
+
+  async updateMessagesPrivacy(_value: PrivacyMessagesVisibility): Promise<void> {
+    this.ensureReady();
+    throw new EngineNotSupportedError('updateMessagesPrivacy');
+  }
+
+  async updateDisableLinkPreviewsPrivacy(_disabled: boolean): Promise<void> {
+    this.ensureReady();
+    throw new EngineNotSupportedError('updateDisableLinkPreviewsPrivacy');
+  }
+
+  async updateDefaultDisappearingMode(_durationSeconds: number): Promise<void> {
+    this.ensureReady();
+    throw new EngineNotSupportedError('updateDefaultDisappearingMode');
   }
 
   /* eslint-enable @typescript-eslint/require-await, @typescript-eslint/no-unused-vars */

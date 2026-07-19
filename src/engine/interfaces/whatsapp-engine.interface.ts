@@ -245,6 +245,15 @@ export interface QuickReply {
   keywords?: string[];
 }
 
+// Privacy settings (SHA-81) — value unions match WhatsApp's own protocol values 1:1, so an adapter
+// passes them straight through with no translation.
+export type PrivacyVisibility = 'all' | 'contacts' | 'contact_blacklist' | 'none';
+export type PrivacyOnlineVisibility = 'all' | 'match_last_seen';
+export type PrivacyGroupAddVisibility = 'all' | 'contacts' | 'contact_blacklist';
+export type PrivacyMessagesVisibility = 'all' | 'contacts';
+export type PrivacyCallVisibility = 'all' | 'known';
+export type PrivacyReadReceipts = 'all' | 'none';
+
 // Phase 3: Status/Stories
 export interface Status {
   id: string;
@@ -538,6 +547,23 @@ export interface IWhatsAppEngine {
   upsertContact(contactId: string, details: { fullName?: string; firstName?: string }): Promise<void>;
   /** Remove a contact from the account's own WhatsApp contact book. */
   removeContact(contactId: string): Promise<void>;
+
+  // Privacy settings (SHA-81)
+  /** Raw privacy settings as WhatsApp's own protocol reports them (undocumented, engine-specific keys). */
+  getPrivacySettings(): Promise<Record<string, string>>;
+  /** Ids of contacts blocked on this account. */
+  getBlocklist(): Promise<string[]>;
+  updateLastSeenPrivacy(value: PrivacyVisibility): Promise<void>;
+  updateOnlinePrivacy(value: PrivacyOnlineVisibility): Promise<void>;
+  updateProfilePicturePrivacy(value: PrivacyVisibility): Promise<void>;
+  updateStatusPrivacy(value: PrivacyVisibility): Promise<void>;
+  updateReadReceiptsPrivacy(value: PrivacyReadReceipts): Promise<void>;
+  updateGroupsAddPrivacy(value: PrivacyGroupAddVisibility): Promise<void>;
+  updateCallPrivacy(value: PrivacyCallVisibility): Promise<void>;
+  updateMessagesPrivacy(value: PrivacyMessagesVisibility): Promise<void>;
+  updateDisableLinkPreviewsPrivacy(disabled: boolean): Promise<void>;
+  /** Default disappearing-messages timer (seconds) applied to new chats; `0` disables it. */
+  updateDefaultDisappearingMode(durationSeconds: number): Promise<void>;
 
   // Labels (Phase 3) - WhatsApp Business only
   getLabels(): Promise<Label[]>;

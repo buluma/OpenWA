@@ -66,6 +66,7 @@ export const ENGINE_CAPABILITY_MATRIX: Record<string, MethodCapability> = {
   disconnect: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
   forceDestroy: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
   forwardMessage: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
+  getBlocklist: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
   getCatalog: {
     wwjs: { status: 'not-available', rootCause: 'library-limitation' },
     baileys: { status: 'not-available', rootCause: 'adapter-gap' },
@@ -128,6 +129,12 @@ export const ENGINE_CAPABILITY_MATRIX: Record<string, MethodCapability> = {
   },
   getNumberId: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
   getPhoneNumber: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
+  getPrivacySettings: {
+    wwjs: { status: 'not-available', rootCause: 'library-limitation' },
+    baileys: { status: 'supported' },
+    evidence:
+      'wwjs index.d.ts has no privacy-settings symbol on Client at all; baileys Socket/chats.d.ts:33 fetchPrivacySettings(force?)',
+  },
   getProduct: {
     wwjs: { status: 'not-available', rootCause: 'library-limitation' },
     baileys: { status: 'not-available', rootCause: 'adapter-gap' },
@@ -206,6 +213,63 @@ export const ENGINE_CAPABILITY_MATRIX: Record<string, MethodCapability> = {
   subscribeToChannel: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
   unblockContact: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
   unsubscribeFromChannel: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
+  updateCallPrivacy: {
+    wwjs: { status: 'not-available', rootCause: 'library-limitation' },
+    baileys: { status: 'supported' },
+    evidence: 'wwjs has no privacy-settings symbol on Client; baileys Socket/chats.d.ts:53 updateCallPrivacy(value)',
+  },
+  updateDefaultDisappearingMode: {
+    wwjs: { status: 'not-available', rootCause: 'library-limitation' },
+    baileys: { status: 'supported' },
+    evidence:
+      'wwjs has no privacy-settings symbol on Client; baileys Socket/chats.d.ts:61 updateDefaultDisappearingMode(duration)',
+  },
+  updateDisableLinkPreviewsPrivacy: {
+    wwjs: { status: 'not-available', rootCause: 'library-limitation' },
+    baileys: { status: 'supported' },
+    evidence:
+      'wwjs has no privacy-settings symbol on Client; baileys Socket/chats.d.ts:52 updateDisableLinkPreviewsPrivacy(disabled)',
+  },
+  updateGroupsAddPrivacy: {
+    wwjs: { status: 'not-available', rootCause: 'library-limitation' },
+    baileys: { status: 'supported' },
+    evidence:
+      'wwjs has no privacy-settings symbol on Client; baileys Socket/chats.d.ts:60 updateGroupsAddPrivacy(value)',
+  },
+  updateLastSeenPrivacy: {
+    wwjs: { status: 'not-available', rootCause: 'library-limitation' },
+    baileys: { status: 'supported' },
+    evidence:
+      'wwjs has no privacy-settings symbol on Client; baileys Socket/chats.d.ts:55 updateLastSeenPrivacy(value)',
+  },
+  updateMessagesPrivacy: {
+    wwjs: { status: 'not-available', rootCause: 'library-limitation' },
+    baileys: { status: 'supported' },
+    evidence:
+      'wwjs has no privacy-settings symbol on Client; baileys Socket/chats.d.ts:54 updateMessagesPrivacy(value)',
+  },
+  updateOnlinePrivacy: {
+    wwjs: { status: 'not-available', rootCause: 'library-limitation' },
+    baileys: { status: 'supported' },
+    evidence: 'wwjs has no privacy-settings symbol on Client; baileys Socket/chats.d.ts:56 updateOnlinePrivacy(value)',
+  },
+  updateProfilePicturePrivacy: {
+    wwjs: { status: 'not-available', rootCause: 'library-limitation' },
+    baileys: { status: 'supported' },
+    evidence:
+      'wwjs has no privacy-settings symbol on Client; baileys Socket/chats.d.ts:57 updateProfilePicturePrivacy(value)',
+  },
+  updateReadReceiptsPrivacy: {
+    wwjs: { status: 'not-available', rootCause: 'library-limitation' },
+    baileys: { status: 'supported' },
+    evidence:
+      'wwjs has no privacy-settings symbol on Client; baileys Socket/chats.d.ts:59 updateReadReceiptsPrivacy(value)',
+  },
+  updateStatusPrivacy: {
+    wwjs: { status: 'not-available', rootCause: 'library-limitation' },
+    baileys: { status: 'supported' },
+    evidence: 'wwjs has no privacy-settings symbol on Client; baileys Socket/chats.d.ts:58 updateStatusPrivacy(value)',
+  },
   upsertContact: {
     wwjs: { status: 'not-available', rootCause: 'library-limitation' },
     baileys: { status: 'supported' },

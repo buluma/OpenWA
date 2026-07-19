@@ -48,6 +48,18 @@ class FakeSock extends EventEmitter {
   public removeContact = jest.fn().mockResolvedValue(undefined);
   public addOrEditQuickReply = jest.fn().mockResolvedValue(undefined);
   public removeQuickReply = jest.fn().mockResolvedValue(undefined);
+  public fetchPrivacySettings = jest.fn().mockResolvedValue({});
+  public fetchBlocklist = jest.fn().mockResolvedValue([]);
+  public updateLastSeenPrivacy = jest.fn().mockResolvedValue(undefined);
+  public updateOnlinePrivacy = jest.fn().mockResolvedValue(undefined);
+  public updateProfilePicturePrivacy = jest.fn().mockResolvedValue(undefined);
+  public updateStatusPrivacy = jest.fn().mockResolvedValue(undefined);
+  public updateReadReceiptsPrivacy = jest.fn().mockResolvedValue(undefined);
+  public updateGroupsAddPrivacy = jest.fn().mockResolvedValue(undefined);
+  public updateCallPrivacy = jest.fn().mockResolvedValue(undefined);
+  public updateMessagesPrivacy = jest.fn().mockResolvedValue(undefined);
+  public updateDisableLinkPreviewsPrivacy = jest.fn().mockResolvedValue(undefined);
+  public updateDefaultDisappearingMode = jest.fn().mockResolvedValue(undefined);
   public signalRepository: { lidMapping: { getLIDForPN: jest.Mock } } | undefined;
   fire(event: string, arg: unknown): void {
     this.emitter.emit(event, arg);
@@ -2363,6 +2375,78 @@ describe('BaileysAdapter profile + block', () => {
     const adapter = await ready();
     await adapter.removeQuickReply('TS123');
     expect(fakeSock.removeQuickReply).toHaveBeenCalledWith('TS123');
+  });
+
+  it('getPrivacySettings wires 1:1 to sock.fetchPrivacySettings()', async () => {
+    fakeSock.fetchPrivacySettings.mockResolvedValueOnce({ last: 'all' });
+    const adapter = await ready();
+    await expect(adapter.getPrivacySettings()).resolves.toEqual({ last: 'all' });
+  });
+
+  it('getBlocklist wires 1:1 to sock.fetchBlocklist()', async () => {
+    fakeSock.fetchBlocklist.mockResolvedValueOnce(['628111@s.whatsapp.net']);
+    const adapter = await ready();
+    await expect(adapter.getBlocklist()).resolves.toEqual(['628111@s.whatsapp.net']);
+  });
+
+  it('updateLastSeenPrivacy wires 1:1 to sock.updateLastSeenPrivacy(value)', async () => {
+    const adapter = await ready();
+    await adapter.updateLastSeenPrivacy('contacts');
+    expect(fakeSock.updateLastSeenPrivacy).toHaveBeenCalledWith('contacts');
+  });
+
+  it('updateOnlinePrivacy wires 1:1 to sock.updateOnlinePrivacy(value)', async () => {
+    const adapter = await ready();
+    await adapter.updateOnlinePrivacy('match_last_seen');
+    expect(fakeSock.updateOnlinePrivacy).toHaveBeenCalledWith('match_last_seen');
+  });
+
+  it('updateProfilePicturePrivacy wires 1:1 to sock.updateProfilePicturePrivacy(value)', async () => {
+    const adapter = await ready();
+    await adapter.updateProfilePicturePrivacy('none');
+    expect(fakeSock.updateProfilePicturePrivacy).toHaveBeenCalledWith('none');
+  });
+
+  it('updateStatusPrivacy wires 1:1 to sock.updateStatusPrivacy(value)', async () => {
+    const adapter = await ready();
+    await adapter.updateStatusPrivacy('contact_blacklist');
+    expect(fakeSock.updateStatusPrivacy).toHaveBeenCalledWith('contact_blacklist');
+  });
+
+  it('updateReadReceiptsPrivacy wires 1:1 to sock.updateReadReceiptsPrivacy(value)', async () => {
+    const adapter = await ready();
+    await adapter.updateReadReceiptsPrivacy('none');
+    expect(fakeSock.updateReadReceiptsPrivacy).toHaveBeenCalledWith('none');
+  });
+
+  it('updateGroupsAddPrivacy wires 1:1 to sock.updateGroupsAddPrivacy(value)', async () => {
+    const adapter = await ready();
+    await adapter.updateGroupsAddPrivacy('contacts');
+    expect(fakeSock.updateGroupsAddPrivacy).toHaveBeenCalledWith('contacts');
+  });
+
+  it('updateCallPrivacy wires 1:1 to sock.updateCallPrivacy(value)', async () => {
+    const adapter = await ready();
+    await adapter.updateCallPrivacy('known');
+    expect(fakeSock.updateCallPrivacy).toHaveBeenCalledWith('known');
+  });
+
+  it('updateMessagesPrivacy wires 1:1 to sock.updateMessagesPrivacy(value)', async () => {
+    const adapter = await ready();
+    await adapter.updateMessagesPrivacy('contacts');
+    expect(fakeSock.updateMessagesPrivacy).toHaveBeenCalledWith('contacts');
+  });
+
+  it('updateDisableLinkPreviewsPrivacy wires 1:1 to sock.updateDisableLinkPreviewsPrivacy(disabled)', async () => {
+    const adapter = await ready();
+    await adapter.updateDisableLinkPreviewsPrivacy(true);
+    expect(fakeSock.updateDisableLinkPreviewsPrivacy).toHaveBeenCalledWith(true);
+  });
+
+  it('updateDefaultDisappearingMode wires 1:1 to sock.updateDefaultDisappearingMode(durationSeconds)', async () => {
+    const adapter = await ready();
+    await adapter.updateDefaultDisappearingMode(604800);
+    expect(fakeSock.updateDefaultDisappearingMode).toHaveBeenCalledWith(604800);
   });
 });
 

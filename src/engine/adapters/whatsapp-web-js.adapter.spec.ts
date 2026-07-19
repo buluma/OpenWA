@@ -494,6 +494,65 @@ describe('WhatsAppWebJsAdapter quick replies + contact book (no library primitiv
   });
 });
 
+describe('WhatsAppWebJsAdapter privacy settings (SHA-81)', () => {
+  const readyAdapter = (client: unknown = {}): WhatsAppWebJsAdapter => {
+    const adapter = new WhatsAppWebJsAdapter({ sessionId: 's', sessionDataPath: './data/sessions', puppeteer: {} });
+    (adapter as unknown as { status: EngineStatus }).status = EngineStatus.READY;
+    (adapter as unknown as { client: unknown }).client = client;
+    return adapter;
+  };
+
+  it('getBlocklist maps getBlockedContacts() to ids (the one real parity point)', async () => {
+    const getBlockedContacts = jest.fn().mockResolvedValue([{ id: { _serialized: '628111@c.us' } }]);
+    const result = await readyAdapter({ getBlockedContacts }).getBlocklist();
+    expect(result).toEqual(['628111@c.us']);
+  });
+
+  it('getPrivacySettings throws EngineNotSupportedError', async () => {
+    await expect(readyAdapter().getPrivacySettings()).rejects.toThrow(/not supported/i);
+  });
+
+  it('updateLastSeenPrivacy throws EngineNotSupportedError', async () => {
+    await expect(readyAdapter().updateLastSeenPrivacy('all')).rejects.toThrow(/not supported/i);
+  });
+
+  it('updateOnlinePrivacy throws EngineNotSupportedError', async () => {
+    await expect(readyAdapter().updateOnlinePrivacy('all')).rejects.toThrow(/not supported/i);
+  });
+
+  it('updateProfilePicturePrivacy throws EngineNotSupportedError', async () => {
+    await expect(readyAdapter().updateProfilePicturePrivacy('all')).rejects.toThrow(/not supported/i);
+  });
+
+  it('updateStatusPrivacy throws EngineNotSupportedError', async () => {
+    await expect(readyAdapter().updateStatusPrivacy('all')).rejects.toThrow(/not supported/i);
+  });
+
+  it('updateReadReceiptsPrivacy throws EngineNotSupportedError', async () => {
+    await expect(readyAdapter().updateReadReceiptsPrivacy('all')).rejects.toThrow(/not supported/i);
+  });
+
+  it('updateGroupsAddPrivacy throws EngineNotSupportedError', async () => {
+    await expect(readyAdapter().updateGroupsAddPrivacy('all')).rejects.toThrow(/not supported/i);
+  });
+
+  it('updateCallPrivacy throws EngineNotSupportedError', async () => {
+    await expect(readyAdapter().updateCallPrivacy('all')).rejects.toThrow(/not supported/i);
+  });
+
+  it('updateMessagesPrivacy throws EngineNotSupportedError', async () => {
+    await expect(readyAdapter().updateMessagesPrivacy('all')).rejects.toThrow(/not supported/i);
+  });
+
+  it('updateDisableLinkPreviewsPrivacy throws EngineNotSupportedError', async () => {
+    await expect(readyAdapter().updateDisableLinkPreviewsPrivacy(true)).rejects.toThrow(/not supported/i);
+  });
+
+  it('updateDefaultDisappearingMode throws EngineNotSupportedError', async () => {
+    await expect(readyAdapter().updateDefaultDisappearingMode(86400)).rejects.toThrow(/not supported/i);
+  });
+});
+
 describe('WhatsAppWebJsAdapter channels (#625 — wwebjs Client has no getChannelById)', () => {
   const CHANNEL = '120363401234567890@newsletter';
 

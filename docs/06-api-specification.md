@@ -4682,6 +4682,89 @@ No request body.
 
 **Errors:** `400` session is not started · `401` missing/invalid API key · `403` key role below OPERATOR · `404` session not found · `501` not supported by the active engine (whatsapp-web.js)
 
+### 6.4.14 Privacy Settings
+
+Privacy endpoints are scoped under a session: `/api/sessions/:sessionId/privacy`. Reads require a valid API key; the settings write requires an `OPERATOR` key. `getBlocklist` works on both engines; every other route is Baileys only — whatsapp-web.js has no privacy-settings API at all and returns `501`.
+
+#### GET /api/sessions/:sessionId/privacy/settings
+
+Get the account's raw privacy settings, exactly as WhatsApp reports them (undocumented, engine-specific keys — not normalized).
+
+**Auth:** API key
+
+**Path parameters**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| sessionId | string | Session ID |
+
+**Response** `200` — the raw object WhatsApp returns (shape not documented/stable):
+
+```json
+{ "last": "all", "online": "all", "profile": "all", "status": "contacts", ... }
+```
+
+**Errors:** `400` session is not started · `401` missing/invalid API key · `404` session not found · `501` not supported by the active engine (whatsapp-web.js)
+
+#### GET /api/sessions/:sessionId/privacy/blocklist
+
+Get the ids of contacts blocked on this account. Works on both engines.
+
+**Auth:** API key
+
+**Path parameters**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| sessionId | string | Session ID |
+
+**Response** `200`
+
+```json
+{ "blocklist": ["628111111111@c.us"] }
+```
+
+**Errors:** `400` session is not started · `401` missing/invalid API key · `404` session not found
+
+#### PATCH /api/sessions/:sessionId/privacy/settings
+
+Update one or more privacy settings. Only the fields present in the body are changed; each maps to its own underlying engine call, run concurrently.
+
+**Auth:** API key (OPERATOR)
+
+**Path parameters**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| sessionId | string | Session ID |
+
+**Request body** — `UpdatePrivacySettingsDto` (all fields optional)
+
+| Field | Type | Allowed values | Description |
+| --- | --- | --- | --- |
+| lastSeen | string | `all` \| `contacts` \| `contact_blacklist` \| `none` | Who can see your last-seen timestamp |
+| online | string | `all` \| `match_last_seen` | Who can see your online status |
+| profilePicture | string | `all` \| `contacts` \| `contact_blacklist` \| `none` | Who can see your profile picture |
+| status | string | `all` \| `contacts` \| `contact_blacklist` \| `none` | Who can see your status/about text |
+| readReceipts | string | `all` \| `none` | Whether read receipts are sent |
+| groupsAdd | string | `all` \| `contacts` \| `contact_blacklist` | Who can add you to groups |
+| call | string | `all` \| `known` | Who can call you |
+| messages | string | `all` \| `contacts` | Who can message you |
+| disableLinkPreviews | boolean | — | Disable link previews for messages you send |
+| defaultDisappearingMode | integer (≥0) | — | Default disappearing-messages timer (seconds) for new chats; `0` disables it |
+
+```json
+{ "lastSeen": "contacts", "call": "known" }
+```
+
+**Response** `200`
+
+```json
+{ "success": true }
+```
+
+**Errors:** `400` session is not started / invalid field value · `401` missing/invalid API key · `403` key role below OPERATOR · `404` session not found · `501` not supported by the active engine (whatsapp-web.js)
+
 ## 6.5 Real-time API (WebSocket)
 
 Live events are delivered over a **Socket.IO** connection (not a raw WebSocket). The server mounts a single Socket.IO namespace, **`/events`**, on the same port as the REST API. There are no REST routes in this module.

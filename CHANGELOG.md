@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   own WhatsApp contact book, and `POST`/`DELETE /api/sessions/{id}/quick-replies` — create/edit or
   remove a WhatsApp Business quick reply (canned response). Baileys only; whatsapp-web.js has no library
   primitive for either and returns `501`.
+- `GET /api/sessions/{id}/privacy/settings`, `GET /api/sessions/{id}/privacy/blocklist`, and
+  `PATCH /api/sessions/{id}/privacy/settings` — read/write WhatsApp's own privacy controls (last-seen,
+  online, profile picture, status, read receipts, groups-add, calls, messages, link previews, default
+  disappearing-messages timer). The blocklist read works on both engines; every other route is Baileys
+  only and returns `501` on whatsapp-web.js, which has no privacy-settings API at all.
 
 ### Fixed
 

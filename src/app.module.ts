@@ -25,6 +25,7 @@ import { ContactModule } from './modules/contact/contact.module';
 import { GroupModule } from './modules/group/group.module';
 import { LabelModule } from './modules/label/label.module';
 import { QuickReplyModule } from './modules/quick-reply/quick-reply.module';
+import { PrivacyModule } from './modules/privacy/privacy.module';
 import { ChannelModule } from './modules/channel/channel.module';
 import { CacheModule } from './common/cache';
 import { StorageModule } from './common/storage/storage.module';
@@ -278,6 +279,7 @@ if (dashboardServingEnabled && dashboardBuildPresent) {
     GroupModule,
     LabelModule, // Phase 3: Labels Management
     QuickReplyModule, // WhatsApp Business quick replies
+    PrivacyModule, // Privacy settings (Baileys only)
     ChannelModule, // Phase 3: Channels/Newsletter
     StatsModule, // Phase 3: Statistics Dashboard
     MetricsModule, // Prometheus /api/metrics

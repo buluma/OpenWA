@@ -3791,6 +3791,97 @@
         ]
       }
     },
+    "/api/sessions/{sessionId}/privacy/settings": {
+      "get": {
+        "description": "Raw settings as WhatsApp reports them (undocumented, engine-specific keys). Baileys only.",
+        "operationId": "PrivacyController_getSettings",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": true,
+            "in": "path",
+            "description": "Session ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Privacy settings"
+          },
+          "501": {
+            "description": "Not supported by the active engine"
+          }
+        },
+        "summary": "Get the account privacy settings",
+        "tags": [
+          "privacy"
+        ]
+      },
+      "patch": {
+        "description": "Only the fields present in the body are changed. Baileys only; whatsapp-web.js returns 501.",
+        "operationId": "PrivacyController_updateSettings",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": true,
+            "in": "path",
+            "description": "Session ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePrivacySettingsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Settings updated"
+          },
+          "501": {
+            "description": "Not supported by the active engine"
+          }
+        },
+        "summary": "Update one or more privacy settings",
+        "tags": [
+          "privacy"
+        ]
+      }
+    },
+    "/api/sessions/{sessionId}/privacy/blocklist": {
+      "get": {
+        "operationId": "PrivacyController_getBlocklist",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": true,
+            "in": "path",
+            "description": "Session ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of blocked contact ids"
+          }
+        },
+        "summary": "Get the ids of contacts blocked on this account",
+        "tags": [
+          "privacy"
+        ]
+      }
+    },
     "/api/sessions/{sessionId}/channels": {
       "get": {
         "operationId": "ChannelController_findAll",
@@ -7228,6 +7319,90 @@
           "shortcut",
           "message"
         ]
+      },
+      "UpdatePrivacySettingsDto": {
+        "type": "object",
+        "properties": {
+          "lastSeen": {
+            "type": "string",
+            "enum": [
+              "all",
+              "contacts",
+              "contact_blacklist",
+              "none"
+            ],
+            "description": "Who can see your last-seen timestamp"
+          },
+          "online": {
+            "type": "string",
+            "enum": [
+              "all",
+              "match_last_seen"
+            ],
+            "description": "Who can see your online status"
+          },
+          "profilePicture": {
+            "type": "string",
+            "enum": [
+              "all",
+              "contacts",
+              "contact_blacklist",
+              "none"
+            ],
+            "description": "Who can see your profile picture"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "all",
+              "contacts",
+              "contact_blacklist",
+              "none"
+            ],
+            "description": "Who can see your status/about text"
+          },
+          "readReceipts": {
+            "type": "string",
+            "enum": [
+              "all",
+              "none"
+            ],
+            "description": "Whether read receipts are sent"
+          },
+          "groupsAdd": {
+            "type": "string",
+            "enum": [
+              "all",
+              "contacts",
+              "contact_blacklist"
+            ],
+            "description": "Who can add you to groups"
+          },
+          "call": {
+            "type": "string",
+            "enum": [
+              "all",
+              "known"
+            ],
+            "description": "Who can call you"
+          },
+          "messages": {
+            "type": "string",
+            "enum": [
+              "all",
+              "contacts"
+            ],
+            "description": "Who can message you"
+          },
+          "disableLinkPreviews": {
+            "type": "boolean",
+            "description": "Disable link previews for messages you send"
+          },
+          "defaultDisappearingMode": {
+            "type": "number",
+            "description": "Default disappearing-messages timer (seconds) for new chats; 0 disables it"
+          }
+        }
       },
       "SendTextStatusDto": {
         "type": "object",

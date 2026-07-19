@@ -22,7 +22,7 @@ The `rootCause`/`evidence` fields are hand-curated from source traces of the ins
 
 ## Unwired-capability inventory
 
-18 of the 76 interface methods are `not-available` on at least one adapter (23 not-available adapter-cells total). Grouped by cluster below. Each entry shows: status today → rootCause → evidence → wiring note.
+29 of the 88 interface methods are `not-available` on at least one adapter (34 not-available adapter-cells total). Grouped by cluster below. Each entry shows: status today → rootCause → evidence → wiring note.
 
 ### Channels / Newsletter
 
@@ -45,6 +45,27 @@ The `rootCause`/`evidence` fields are hand-curated from source traces of the ins
 
 > **Wired.** ✅ `addLabelToChat` / `removeLabelFromChat` on the Baileys engine — 1:1 to `sock.addChatLabel(chatId, labelId)` / `sock.removeChatLabel(chatId, labelId)` (`Socket/chats.d.ts:70-71`). WhatsApp-Business-only (rejects on personal accounts). Do **not** use `addLabel(jid, LabelActionBody)` (`chats.d.ts:69`) — that creates/edits the label *definition*, not the chat association.
 - **`getLabels` / `getLabelById` / `getChatLabels` (baileys, library-limitation).** No label read/fetch symbol anywhere in `lib/**/*.d.ts` (`Types/Label.d.ts` has only the interface + `LabelColor` enum; `chats.d.ts`/`business.d.ts` expose only writes). Label data does arrive via app-state sync (`messaging-history.set`), so a determined adapter could capture+cache labels from the event stream — but that is a relay/cache hack, not a first-class getter, and there is no network fetch to seed/refresh it on demand.
+
+### Privacy Settings
+
+| Method | baileys | wwjs |
+|---|---|---|
+| `getPrivacySettings` | supported | not-available — **library-limitation** |
+| `updateLastSeenPrivacy` | supported | not-available — **library-limitation** |
+| `updateOnlinePrivacy` | supported | not-available — **library-limitation** |
+| `updateProfilePicturePrivacy` | supported | not-available — **library-limitation** |
+| `updateStatusPrivacy` | supported | not-available — **library-limitation** |
+| `updateReadReceiptsPrivacy` | supported | not-available — **library-limitation** |
+| `updateGroupsAddPrivacy` | supported | not-available — **library-limitation** |
+| `updateCallPrivacy` | supported | not-available — **library-limitation** |
+| `updateMessagesPrivacy` | supported | not-available — **library-limitation** |
+| `updateDisableLinkPreviewsPrivacy` | supported | not-available — **library-limitation** |
+| `updateDefaultDisappearingMode` | supported | not-available — **library-limitation** |
+
+> **Wired.** ✅ All eleven on Baileys — 1:1 to `sock.fetchPrivacySettings(force?)` / `sock.update*Privacy(value)` / `sock.updateDefaultDisappearingMode(duration)` (`Socket/chats.d.ts:33,52-61`). `getBlocklist` (below) is a twelfth privacy-adjacent read that IS wired on both engines.
+- **All eleven (wwjs, library-limitation).** `whatsapp-web.js`'s `Client` exposes no privacy-settings symbol at all (`index.d.ts` grep = 0 hits for any of the above). No workaround short of a raw-proto/app-state relay.
+
+> **Wired (both engines).** ✅ `getBlocklist` — Baileys via `sock.fetchBlocklist()` (`chats.d.ts:41`, filters undefined entries); whatsapp-web.js via `Client.getBlockedContacts()` mapped to `.id._serialized` — the one point of real cross-engine parity in this cluster.
 
 ### Catalog / Products / Orders (WhatsApp Business)
 
@@ -150,18 +171,22 @@ These are honestly out of reach of a clean adapter wiring because the installed 
 - `getContactStatus` / `getContactStatuses` — `fetchStatus` returns the *about* text, not 24h stories; stories only surface as `status@broadcast` messages. Needs an OpenWA-side story accumulator.
 - `sendCatalog` — no catalog-share message type in `AnyMessageContent` (only single `{product}`).
 
-**wwjs (9 cells):**
+**wwjs (20 cells):**
 - `getCatalog` / `getProducts` / `getProduct` — no catalog API at all (`index.d.ts` 0 hits; `Product` is inbound-only).
 - `sendProduct` — no outbound product content type.
 - `sendCatalog` — no outbound catalog content type.
 - `upsertContact` / `removeContact` — no contact-book write symbol at all (`index.d.ts` 0 hits).
 - `upsertQuickReply` / `removeQuickReply` — Business-app-only feature; no quick-reply symbol on `Client` at all.
+- `getPrivacySettings` / `updateLastSeenPrivacy` / `updateOnlinePrivacy` / `updateProfilePicturePrivacy` /
+  `updateStatusPrivacy` / `updateReadReceiptsPrivacy` / `updateGroupsAddPrivacy` / `updateCallPrivacy` /
+  `updateMessagesPrivacy` / `updateDisableLinkPreviewsPrivacy` / `updateDefaultDisappearingMode` — no
+  privacy-settings symbol on `Client` at all (`index.d.ts` 0 hits for any of them).
 
 ---
 
 ## Snapshot summary
 
-- **76** interface methods, **152** adapter-cells (76 × 2 engines).
-- **129** supported cells; **23** not-available cells across **18** methods.
-- Of the 23 not-available cells: **5 adapter-gaps** (fixable) + **18 library-limitations** + **0 uncertain**.
+- **88** interface methods, **176** adapter-cells (88 × 2 engines).
+- **142** supported cells; **34** not-available cells across **29** methods.
+- Of the 34 not-available cells: **5 adapter-gaps** (fixable) + **29 library-limitations** + **0 uncertain**.
 - **3 phantom-support rows** (wwjs `getCatalog`/`getProducts`/`getProduct` — they stub without throwing, so the drift gate's throw-heuristic cannot see them; the matrix is the source of truth for these).

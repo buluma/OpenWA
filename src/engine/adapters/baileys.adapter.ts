@@ -35,6 +35,12 @@ import {
   MessageResult,
   PaginatedProducts,
   PollInput,
+  PrivacyCallVisibility,
+  PrivacyGroupAddVisibility,
+  PrivacyMessagesVisibility,
+  PrivacyOnlineVisibility,
+  PrivacyReadReceipts,
+  PrivacyVisibility,
   Product,
   ProductQueryOptions,
   ReactionEvent,
@@ -888,6 +894,67 @@ export class BaileysAdapter implements IWhatsAppEngine {
   async removeContact(contactId: string): Promise<void> {
     this.ensureReady();
     await this.sock!.removeContact(contactId);
+  }
+
+  async getPrivacySettings(): Promise<Record<string, string>> {
+    this.ensureReady();
+    return this.sock!.fetchPrivacySettings();
+  }
+
+  async getBlocklist(): Promise<string[]> {
+    this.ensureReady();
+    const jids = await this.sock!.fetchBlocklist();
+    return jids.filter((jid): jid is string => Boolean(jid));
+  }
+
+  async updateLastSeenPrivacy(value: PrivacyVisibility): Promise<void> {
+    this.ensureReady();
+    await this.sock!.updateLastSeenPrivacy(value);
+  }
+
+  async updateOnlinePrivacy(value: PrivacyOnlineVisibility): Promise<void> {
+    this.ensureReady();
+    await this.sock!.updateOnlinePrivacy(value);
+  }
+
+  async updateProfilePicturePrivacy(value: PrivacyVisibility): Promise<void> {
+    this.ensureReady();
+    await this.sock!.updateProfilePicturePrivacy(value);
+  }
+
+  async updateStatusPrivacy(value: PrivacyVisibility): Promise<void> {
+    this.ensureReady();
+    await this.sock!.updateStatusPrivacy(value);
+  }
+
+  async updateReadReceiptsPrivacy(value: PrivacyReadReceipts): Promise<void> {
+    this.ensureReady();
+    await this.sock!.updateReadReceiptsPrivacy(value);
+  }
+
+  async updateGroupsAddPrivacy(value: PrivacyGroupAddVisibility): Promise<void> {
+    this.ensureReady();
+    await this.sock!.updateGroupsAddPrivacy(value);
+  }
+
+  async updateCallPrivacy(value: PrivacyCallVisibility): Promise<void> {
+    this.ensureReady();
+    await this.sock!.updateCallPrivacy(value);
+  }
+
+  async updateMessagesPrivacy(value: PrivacyMessagesVisibility): Promise<void> {
+    this.ensureReady();
+    await this.sock!.updateMessagesPrivacy(value);
+  }
+
+  async updateDisableLinkPreviewsPrivacy(disabled: boolean): Promise<void> {
+    this.ensureReady();
+    await this.sock!.updateDisableLinkPreviewsPrivacy(disabled);
+  }
+
+  async updateDefaultDisappearingMode(durationSeconds: number): Promise<void> {
+    this.ensureReady();
+    await this.sock!.updateDefaultDisappearingMode(durationSeconds);
   }
 
   async upsertQuickReply(quickReply: {
