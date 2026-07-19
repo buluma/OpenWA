@@ -378,10 +378,27 @@ export class BaileysSessionStore {
     return c ? (c.name ?? c.verifiedName ?? c.notify ?? undefined) : undefined;
   }
 
-  private toUnixSeconds(ts: number | { toNumber(): number } | null | undefined): number {
+  /**
+   * `conversationTimestamp` (and similar fields) are typed `number | Long | null` upstream. A real
+   * Long exposes `.toNumber()`, but one that round-tripped through plain JSON (not Baileys' own
+   * BufferJSON replacer/reviver) degrades to a plain `{low, high, unsigned}` object with no methods —
+   * reproduced by the persisted chat/contact store before it adopted BufferJSON (SHA-85). Recover the
+   * value from that shape instead of throwing: timestamps are always small positive epoch-seconds
+   * values, so `high` is 0 in every real case and the unsigned low word is the answer.
+   */
+  private toUnixSeconds(
+    ts: number | { toNumber(): number } | { low: number; high: number; unsigned?: boolean } | null | undefined,
+  ): number {
     if (ts == null) {
       return 0;
     }
-    return typeof ts === 'number' ? ts : ts.toNumber();
+    if (typeof ts === 'number') {
+      return ts;
+    }
+    if (typeof (ts as { toNumber?: unknown }).toNumber === 'function') {
+      return (ts as { toNumber(): number }).toNumber();
+    }
+    const degraded = ts as { low?: unknown };
+    return typeof degraded.low === 'number' ? degraded.low >>> 0 : 0;
   }
 }

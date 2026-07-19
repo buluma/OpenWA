@@ -36,6 +36,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   restart with no way to rebuild it short of one chat at a time as new activity arrived — unlike groups,
   which already had a live re-fetch on every connect. Chats/contacts are now also persisted to the DB
   (new `baileys_stored_chats` / `baileys_stored_contacts` tables) and reloaded on connect.
+- Baileys engine: `GET /api/sessions/{id}/chats` no longer 500s with `ts.toNumber is not a function`.
+  A chat's `conversationTimestamp` is typed `number | Long | null` upstream; the persisted chat/contact
+  store introduced above serialized it with plain `JSON.stringify`, which silently degrades a real
+  `Long` to a `{low, high, unsigned}` object with no methods on reload. It now goes through Baileys' own
+  `BufferJSON` replacer/reviver (the same helper already used for stored messages), and `toUnixSeconds`
+  is hardened to recover the value from a degraded shape rather than throw if it ever sees one again.
 
 ## [0.9.0] - 2026-07-18
 

@@ -1,3 +1,4 @@
+import type { Chat } from '@whiskeysockets/baileys';
 import { BaileysSessionStore } from './baileys-session-store';
 
 describe('BaileysSessionStore', () => {
@@ -239,6 +240,50 @@ describe('BaileysSessionStore', () => {
     it('falls back to the raw user-part when nothing is known (last resort)', () => {
       store.upsertChats([{ id: '628333@s.whatsapp.net' }]);
       expect(store.listChats()[0].name).toBe('628333');
+    });
+  });
+
+  // A chat's conversationTimestamp is typed number | Long | null upstream. Persisting a chat through
+  // plain JSON (rather than Baileys' BufferJSON replacer/reviver) degrades a real Long instance to a
+  // plain {low,high,unsigned} object with no .toNumber() — reproduced live via SHA-85's session-state
+  // persistence before it was fixed to use BufferJSON. toUnixSeconds must tolerate that shape instead
+  // of throwing "ts.toNumber is not a function" and 500ing the whole getChats() call.
+  describe('toUnixSeconds via toNeutralChat (Long / degraded-Long timestamps)', () => {
+    it('handles a plain number', () => {
+      store.upsertChats([{ id: '628111@s.whatsapp.net', conversationTimestamp: 1700000000 }]);
+      expect(store.listChats()[0].timestamp).toBe(1700000000);
+    });
+
+    it('handles a real Long-like object (.toNumber())', () => {
+      // Deliberately duck-typed, not a real Long instance — casting past the strict upstream type is
+      // the point: this simulates a shape that occurs at runtime but the compiler would otherwise reject.
+      store.upsertChats([
+        {
+          id: '628111@s.whatsapp.net',
+          conversationTimestamp: { toNumber: () => 1700000000 } as unknown as Chat['conversationTimestamp'],
+        },
+      ]);
+      expect(store.listChats()[0].timestamp).toBe(1700000000);
+    });
+
+    it('does not throw on a degraded Long (plain {low,high,unsigned}, no .toNumber) and recovers the value', () => {
+      store.upsertChats([
+        {
+          id: '628111@s.whatsapp.net',
+          conversationTimestamp: {
+            low: 1700000000,
+            high: 0,
+            unsigned: true,
+          } as unknown as Chat['conversationTimestamp'],
+        },
+      ]);
+      expect(() => store.listChats()).not.toThrow();
+      expect(store.listChats()[0].timestamp).toBe(1700000000);
+    });
+
+    it('falls back to 0 for null/undefined', () => {
+      store.upsertChats([{ id: '628111@s.whatsapp.net', conversationTimestamp: null }]);
+      expect(store.listChats()[0].timestamp).toBe(0);
     });
   });
 
