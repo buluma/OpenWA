@@ -32,8 +32,7 @@ export const queryKeys = {
   webhooks: ['webhooks'] as const,
   templates: (sessionId: string) => ['sessions', sessionId, 'templates'] as const,
   apiKeys: ['apiKeys'] as const,
-  logs: (params: { severity?: string; page: number; limit: number }) =>
-    ['logs', params] as const,
+  logs: (params: { severity?: string; page: number; limit: number }) => ['logs', params] as const,
   infraStatus: ['infra', 'status'] as const,
   plugins: ['plugins'] as const,
   pluginInstances: (pluginId: string) => ['plugins', pluginId, 'instances'] as const,
@@ -44,6 +43,8 @@ export const queryKeys = {
   contacts: (sessionId: string) => ['sessions', sessionId, 'contacts'] as const,
   privacySettings: (sessionId: string) => ['sessions', sessionId, 'privacy', 'settings'] as const,
   privacyBlocklist: (sessionId: string) => ['sessions', sessionId, 'privacy', 'blocklist'] as const,
+  contactPhone: (sessionId: string, contactId: string) =>
+    ['sessions', sessionId, 'contacts', contactId, 'phone'] as const,
 };
 
 // ── Session Queries ───────────────────────────────────────────────────
@@ -131,8 +132,7 @@ export function useUpdateWebhookMutation() {
 export function useDeleteWebhookMutation() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (params: { sessionId: string; id: string }) =>
-      webhookApi.delete(params.sessionId, params.id),
+    mutationFn: (params: { sessionId: string; id: string }) => webhookApi.delete(params.sessionId, params.id),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.webhooks });
     },
@@ -175,8 +175,7 @@ export function useUpdateTemplateMutation() {
 export function useDeleteTemplateMutation() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (params: { sessionId: string; id: string }) =>
-      templateApi.delete(params.sessionId, params.id),
+    mutationFn: (params: { sessionId: string; id: string }) => templateApi.delete(params.sessionId, params.id),
     onSuccess: (_template, params) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.templates(params.sessionId) });
     },
@@ -196,8 +195,13 @@ export function useApiKeysQuery() {
 export function useCreateApiKeyMutation() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: { name: string; role: string; allowedIps?: string[]; allowedSessions?: string[]; expiresAt?: string }) =>
-      apiKeyApi.create(data),
+    mutationFn: (data: {
+      name: string;
+      role: string;
+      allowedIps?: string[];
+      allowedSessions?: string[];
+      expiresAt?: string;
+    }) => apiKeyApi.create(data),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.apiKeys });
     },
@@ -420,6 +424,17 @@ export function usePrivacyBlocklistQuery(sessionId: string, enabled = true) {
     queryFn: () => privacyApi.getBlocklist(sessionId),
     enabled: enabled && !!sessionId,
     staleTime: 30_000,
+  });
+}
+
+/** Best-effort JID -> phone number resolution, e.g. for an @lid blocklist entry with no saved contact. */
+export function useResolvePhoneQuery(sessionId: string, contactId: string, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.contactPhone(sessionId, contactId),
+    queryFn: () => contactApi.resolvePhone(sessionId, contactId),
+    enabled: enabled && !!sessionId && !!contactId,
+    staleTime: 5 * 60_000,
+    retry: false,
   });
 }
 

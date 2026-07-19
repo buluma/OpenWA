@@ -10,6 +10,7 @@ import {
   usePrivacySettingsQuery,
   usePrivacyBlocklistQuery,
   useUpdatePrivacySettingsMutation,
+  useResolvePhoneQuery,
 } from '../hooks/queries';
 import type { UpdatePrivacySettingsInput } from '../services/api';
 import './Privacy.css';
@@ -40,6 +41,18 @@ const READ_RECEIPTS_OPTIONS: FieldValue[] = ['all', 'none'];
 const DISAPPEARING_OPTIONS = [0, 86400, 604800, 7776000];
 
 const visibilityFields: VisibilityField[] = ['lastSeen', 'profilePicture', 'status'];
+
+/** One blocklist row — resolves the raw JID (often an @lid) to a phone number, best-effort. */
+function BlocklistEntry({ sessionId, contactId }: { sessionId: string; contactId: string }) {
+  const { data, isLoading } = useResolvePhoneQuery(sessionId, contactId);
+  const phone = data?.phone;
+  return (
+    <li>
+      <span className="privacy-blocklist-id">{contactId}</span>
+      {!isLoading && phone && <span className="privacy-blocklist-phone">+{phone}</span>}
+    </li>
+  );
+}
 
 export function Privacy() {
   const { t } = useTranslation();
@@ -302,7 +315,7 @@ export function Privacy() {
           ) : (
             <ul className="privacy-blocklist">
               {blocklistData.blocklist.map(id => (
-                <li key={id}>{id}</li>
+                <BlocklistEntry key={id} sessionId={activeSessionId} contactId={id} />
               ))}
             </ul>
           )}

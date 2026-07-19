@@ -580,6 +580,23 @@ export interface Contact {
   profilePicUrl?: string;
 }
 
+// A blocklist can run to hundreds of entries, each resolved with its own request. The API's
+// short-window rate limit (10 req/s by default, shared across everything the dashboard calls —
+// session polling included) has no headroom for firing them all at once, so space them out one at
+// a time instead of just capping concurrency (four-at-once bursts still blew through the bucket).
+function createRateLimiter(minIntervalMs: number) {
+  let chain = Promise.resolve();
+  return <T>(fn: () => Promise<T>): Promise<T> => {
+    const result = chain.then(fn);
+    chain = result.then(
+      () => new Promise(resolve => setTimeout(resolve, minIntervalMs)),
+      () => new Promise(resolve => setTimeout(resolve, minIntervalMs)),
+    );
+    return result;
+  };
+}
+const limitResolvePhone = createRateLimiter(250);
+
 export const contactApi = {
   list: (sessionId: string, params: { limit?: number; offset?: number } = {}) => {
     const query = new URLSearchParams();
@@ -590,6 +607,13 @@ export const contactApi = {
   },
   checkNumber: (sessionId: string, number: string) =>
     request<CheckNumberResponse>(`/sessions/${sessionId}/contacts/check/${encodeURIComponent(number)}`),
+  /** Best-effort JID -> phone number resolution (e.g. an @lid with no saved contact/chat). */
+  resolvePhone: (sessionId: string, contactId: string) =>
+    limitResolvePhone(() =>
+      request<{ contactId: string; phone: string | null }>(
+        `/sessions/${sessionId}/contacts/${encodeURIComponent(contactId)}/phone`,
+      ),
+    ),
   getProfilePicture: (sessionId: string, contactId: string) =>
     requestBlob(`/sessions/${sessionId}/contacts/${encodeURIComponent(contactId)}/profile-picture/image`),
   /** Baileys only — whatsapp-web.js has no contact-book write API and returns 501. */
@@ -769,14 +793,20 @@ export const infraApi = {
   // Data migration: export all Data-DB tables (call while still on the OLD database, before switching),
   // then import after the switch + restart. Used by the DB-switch migration guard so data isn't lost.
   exportData: () =>
-    request<{ exportedAt: string; dataDbType: string; tables: Record<string, unknown[]>; counts: Record<string, number> }>(
-      '/infra/export-data',
-    ),
+    request<{
+      exportedAt: string;
+      dataDbType: string;
+      tables: Record<string, unknown[]>;
+      counts: Record<string, number>;
+    }>('/infra/export-data'),
   importData: (tables: Record<string, unknown[]>) =>
-    request<{ imported: boolean; counts?: Record<string, number>; message?: string; warnings?: string[] }>('/infra/import-data', {
-      method: 'POST',
-      body: JSON.stringify({ tables }),
-    }),
+    request<{ imported: boolean; counts?: Record<string, number>; message?: string; warnings?: string[] }>(
+      '/infra/import-data',
+      {
+        method: 'POST',
+        body: JSON.stringify({ tables }),
+      },
+    ),
 };
 
 // =============================================================================
@@ -818,7 +848,10 @@ export interface PluginConfigSchema {
   properties: Record<string, PluginConfigField>;
 }
 
-export interface PluginI18nText { title?: string; description?: string }
+export interface PluginI18nText {
+  title?: string;
+  description?: string;
+}
 export interface PluginI18nLocale {
   name?: string;
   description?: string;

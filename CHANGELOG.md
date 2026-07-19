@@ -23,7 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dashboard: new Contacts, Quick Replies, and Privacy pages, and a star/unstar button on message bubbles
   in Chats, wiring up the four API areas above. Quick Replies has no list endpoint on Baileys, so the
   dashboard tracks the ones it creates in browser `localStorage` per session rather than claiming a
-  server-side list that doesn't exist.
+  server-side list that doesn't exist. The Privacy page's blocklist also resolves each entry's `@lid`
+  to a phone number via the existing `contacts/:contactId/phone` route where a mapping is known,
+  throttled to one request at a time so a long blocklist doesn't trip the API's own rate limit.
 
 ### Fixed
 
