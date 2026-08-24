@@ -1,5 +1,11 @@
+# syntax=docker/dockerfile:1
 # OpenWA - Dockerfile
 # Multi-stage build for production-ready image
+
+# Pinned to $BUILDPLATFORM (not a COPY --platform flag — that doesn't exist; only FROM takes one)
+# so the builder stage below always gets a bun binary it can actually execute, regardless of the
+# image's own target-platform default.
+FROM --platform=$BUILDPLATFORM oven/bun:1-slim AS bun-bin
 
 # ===== Stage 1: Builder =====
 # Pin the builder to the BUILD host's platform (not the target's). It only produces arch-INDEPENDENT
@@ -11,9 +17,9 @@
 # NOTE: $BUILDPLATFORM requires BuildKit (CI uses buildx; modern `docker build`/compose default to it).
 FROM --platform=$BUILDPLATFORM docker.io/node:22-slim AS builder
 
-# Bun as installer, Node as runtime: grab the static binary from oven's image rather than
-# curl-installing or npm-installing it, so it costs one COPY instead of a network round trip.
-COPY --from=oven/bun:1-slim /usr/local/bin/bun /usr/local/bin/bun
+# Bun as installer, Node as runtime: grab the static binary from the bun-bin stage above rather
+# than curl-installing or npm-installing it, so it costs one COPY instead of a network round trip.
+COPY --from=bun-bin /usr/local/bin/bun /usr/local/bin/bun
 
 WORKDIR /app
 
