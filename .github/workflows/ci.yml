@@ -98,7 +98,31 @@ jobs:
         # (brace-expansion CVE-2026-14257, js-yaml GHSA-pm4m-ph32-ghv5), so this threshold now fences
         # HIGH regressions instead of only catching criticals. Scoped to the root tree; the dashboard
         # carries its own `overrides` and its remaining HIGH pair (react-router) rides Dependabot.
-        run: npm audit --audit-level=high
+        #
+        # GHSA-jmr9-qjv8-65gv (extract-zip unvalidated symlink path traversal, advisory id 1139346)
+        # is allow-listed below: no patched extract-zip exists (upstream abandoned; every version
+        # is vulnerable per the advisory), and the only upstream fix — @puppeteer/browsers 3.x /
+        # puppeteer 25.x — is ESM-only, which breaks this project's CommonJS require() chain at
+        # runtime and in jest. Downgrading whatsapp-web.js to 1.34.2 (npm's own audit-fix
+        # suggestion) dodges the ESM issue but reintroduces bugs fixed in 1.34.3-1.34.7 (auth
+        # timeout, disconnected event, sendSeen/sticker sends, group admin settings). Accepted risk,
+        # tracked in .github#34 — remove this allow-list once a CJS-compatible fix lands upstream.
+        run: |
+          npm audit --audit-level=high --json > audit.json || true
+          node -e '
+            const a = require("./audit.json");
+            const allowed = new Set([1139346]); // GHSA-jmr9-qjv8-65gv / extract-zip
+            const offenders = Object.entries(a.vulnerabilities || {}).filter(([, v]) => {
+              if (v.severity !== "high" && v.severity !== "critical") return false;
+              const ids = (v.via || []).filter(x => typeof x === "object").map(x => x.source);
+              return !ids.every(id => allowed.has(id));
+            });
+            if (offenders.length) {
+              console.error("Unallow-listed high/critical vulnerabilities:", offenders.map(([n]) => n).join(", "));
+              process.exit(1);
+            }
+            console.log("Only allow-listed advisories present (or none). OK.");
+          '
 
   test:
     name: Test
