@@ -5,6 +5,7 @@
   "author": "Yudhi Armyndharis & OpenWA Contributors",
   "private": true,
   "license": "MIT",
+  "packageManager": "bun@1.4.0",
   "engines": {
     "node": ">=22.13"
   },
@@ -26,7 +27,7 @@
     "dashboard:ci": "cd dashboard && npm ci",
     "dashboard:dev": "cd dashboard && npm run dev",
     "dashboard:build": "cd dashboard && npm run build",
-    "postinstall": "node scripts/postinstall.js",
+    "postinstall": "node scripts/postinstall.js && npm rebuild better-sqlite3 --update-binary",
     "check:versions": "node scripts/check-doc-versions.mjs",
     "check:dockerignore": "node scripts/check-dockerignore.mjs",
     "openapi:export": "ts-node scripts/export-openapi.ts openapi.json",
@@ -219,7 +220,11 @@
   },
   "overrides": {
     "shell-quote": "^1.10.0",
-    "brace-expansion": "^5.0.8",
-    "js-yaml": "^5.2.2"
+    "brace-expansion": "^5.0.9",
+    "js-yaml": "^5.2.2",
+    "fast-uri": "^4.1.3",
+    "hono": "^4.13.4",
+    "ip-address": "^10.5.0",
+    "socket.io-parser": "^4.2.7"
   }
 }
