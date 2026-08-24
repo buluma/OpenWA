@@ -64,11 +64,20 @@ jobs:
   # advisory database, not against the diff, so a newly published advisory turns red on unrelated
   # PRs. While it lived as the first step of Lint, that failure aborted the job before ESLint, the
   # type-check, the format check, the version check and the OpenAPI drift gate ever ran — a
-  # dependency advisory silently switched off every code-quality gate. Split out, an advisory is
-  # still blocking (`build` needs it) but can no longer mask an unrelated result.
+  # dependency advisory silently switched off every code-quality gate. Split out for that reason.
+  #
+  # continue-on-error since the bun migration: this job snapshots a lockfile via `npm install
+  # --package-lock-only` (bun.lock isn't a format npm audit understands), which re-resolves
+  # against the LIVE registry rather than reproducing bun.lock's pinned versions — so a finding
+  # here can be a newly-published advisory on an untouched transitive dep, unrelated to whatever
+  # PR triggered the run. It was a hard gate (`build` needed it) back when it audited a
+  # deliberately-committed, reviewed package-lock.json; that assumption doesn't hold against a
+  # freshly re-resolved one. Still runs and reports — just doesn't block merges until this gets a
+  # real fix (audit against bun.lock's actual pins, or a deliberate dependency-security pass).
   audit:
     name: Security audit
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
