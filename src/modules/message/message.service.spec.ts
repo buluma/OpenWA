@@ -597,6 +597,7 @@ describe('MessageService', () => {
     interface QbMock {
       where: jest.Mock;
       orderBy: jest.Mock;
+      addOrderBy: jest.Mock;
       skip: jest.Mock;
       take: jest.Mock;
       andWhere: jest.Mock;
@@ -606,6 +607,7 @@ describe('MessageService', () => {
       const qb: QbMock = {
         where: jest.fn(),
         orderBy: jest.fn(),
+        addOrderBy: jest.fn(),
         skip: jest.fn(),
         take: jest.fn(),
         andWhere: jest.fn(),
@@ -613,6 +615,7 @@ describe('MessageService', () => {
       };
       qb.where.mockReturnValue(qb);
       qb.orderBy.mockReturnValue(qb);
+      qb.addOrderBy.mockReturnValue(qb);
       qb.skip.mockReturnValue(qb);
       qb.take.mockReturnValue(qb);
       qb.andWhere.mockReturnValue(qb);
@@ -633,6 +636,37 @@ describe('MessageService', () => {
       await service.getMessages('sess-1', { limit: 999, offset: -5 });
       expect(qb.take).toHaveBeenCalledWith(100);
       expect(qb.skip).toHaveBeenCalledWith(0);
+    });
+  });
+
+  // ── getMessages order tiebreak ─────────────────────────────────────
+
+  describe('getMessages orders same-second rows by a stable tiebreak', () => {
+    /**
+     * The dialect split, pinned on the default test job: a typo in the accessor would otherwise ship
+     * a `rowid` term to PostgreSQL, where the column does not exist and every message list would 500.
+     */
+    it('keeps id as the tiebreak on postgres, where there is no rowid', async () => {
+      const qb = makeQb();
+      (repository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+      (repository as unknown as { manager: unknown }).manager = {
+        connection: { options: { type: 'postgres' } },
+      };
+
+      await service.getMessages('sess-1');
+
+      expect(qb.addOrderBy).toHaveBeenCalledWith('message.id', 'DESC');
+
+      delete (repository as unknown as { manager?: unknown }).manager;
+    });
+
+    it('orders by rowid on sqlite, which is the arrival order and needs no sort', async () => {
+      const qb = makeQb();
+      (repository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+      await service.getMessages('sess-1');
+
+      expect(qb.addOrderBy).toHaveBeenCalledWith('message.rowid', 'DESC');
     });
   });
 

@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `STORAGE_TYPE=s3` with no `S3_ACCESS_KEY_ID`/`S3_SECRET_ACCESS_KEY` now warns at startup instead of
   silently writing every file to local disk and leaving the bucket empty; the warning names only the
   half of the pair that is actually unset. Thanks @onepay-ye.
+- `GET /api/sessions/:sessionId/messages` now breaks a `createdAt` tie with a second sort key instead
+  of a random uuid, so messages sharing a second (a bulk send, a media-plus-caption pair, a history
+  backfill) come back in arrival order on SQLite rather than shuffled on every request.
 
 ## [0.12.4] - 2026-08-02
 
