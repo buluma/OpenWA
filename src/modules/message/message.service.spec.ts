@@ -637,11 +637,9 @@ describe('MessageService', () => {
       expect(qb.take).toHaveBeenCalledWith(100);
       expect(qb.skip).toHaveBeenCalledWith(0);
     });
-  });
 
-  // ── getMessages order tiebreak ─────────────────────────────────────
+    // ── getMessages order tiebreak ─────────────────────────────────
 
-  describe('getMessages orders same-second rows by a stable tiebreak', () => {
     /**
      * The dialect split, pinned on the default test job: a typo in the accessor would otherwise ship
      * a `rowid` term to PostgreSQL, where the column does not exist and every message list would 500.
@@ -685,6 +683,7 @@ describe('MessageService', () => {
       const qb = {
         where: jest.fn().mockReturnThis(),
         orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
         skip: jest.fn().mockReturnThis(),
         take: jest.fn().mockReturnThis(),
         andWhere: jest
@@ -743,6 +742,7 @@ describe('MessageService', () => {
       const qb = {
         where: jest.fn().mockReturnThis(),
         orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
         skip: jest.fn().mockReturnThis(),
         take: jest.fn().mockReturnThis(),
         andWhere: jest
@@ -811,6 +811,7 @@ describe('MessageService', () => {
       const qb = {
         where: jest.fn().mockReturnThis(),
         orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
         skip: jest.fn().mockReturnThis(),
         take: jest.fn().mockReturnThis(),
         andWhere: jest
@@ -899,6 +900,7 @@ describe('MessageService', () => {
       const qb = {
         where: jest.fn().mockReturnThis(),
         orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
         skip: jest.fn().mockReturnThis(),
         take: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockImplementation((_clause: string, params?: { chatIds?: string[] }) => {
