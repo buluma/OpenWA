@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `STORAGE_TYPE=s3` with no `S3_ACCESS_KEY_ID`/`S3_SECRET_ACCESS_KEY` now warns at startup instead of
+  silently writing every file to local disk and leaving the bucket empty; the warning names only the
+  half of the pair that is actually unset. Thanks @onepay-ye.
+
 ## [0.12.4] - 2026-08-02
 
 A large internal release with a deliberately small external surface: roughly 30,000 changed lines,
