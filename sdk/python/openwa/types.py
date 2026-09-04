@@ -184,11 +184,13 @@ class EditMessageRequest(TypedDict):
     body: str
 
 
-class PinMessageRequest(TypedDict, total=False):
-    # chatId/messageId required; durationSeconds optional (default 24h). Must be one of
-    # 86400 (24h), 604800 (7d) or 2592000 (30d).
+class _PinMessageRequired(TypedDict):
     chatId: Jid
     messageId: str
+
+
+class PinMessageRequest(_PinMessageRequired, total=False):
+    # Optional, default 24h. Must be one of 86400 (24h), 604800 (7d) or 2592000 (30d).
     durationSeconds: int
 
 

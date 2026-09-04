@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `POST`/`sessions/:sessionId/messages/pin` and `.../unpin` pin/unpin a message in its chat for a
+- `POST /api/sessions/:sessionId/messages/pin` and `.../unpin` pin/unpin a message in its chat for a
   bounded window (24h/7d/30d); `.../star` stars or unstars a message; `.../vote-poll` votes on a poll
   (`whatsapp-web.js` only — Baileys has no supported way to send an encrypted vote, `501`). Nothing is
   persisted locally for pin/star: both are WhatsApp-owned chat/account state. Available in all five

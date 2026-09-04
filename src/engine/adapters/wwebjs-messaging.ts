@@ -681,55 +681,74 @@ export class WwebjsMessaging {
 
   async pinMessage(chatId: string, messageId: string, durationSeconds: number): Promise<void> {
     this.host.ensureReady();
-    const message = await this.findInFetchWindow(chatId, messageId);
-    // The page-side helper returns false rather than throwing for every refusal — a non-number
-    // duration, a message it cannot resolve, or a send WhatsApp rejected. Surface that as a refusal
-    // instead of reporting a pin that never happened.
-    const pinned = await message.pin(durationSeconds);
-    if (!pinned) {
-      throw new EngineRefusedError(
-        `the pin of message ${messageId} was rejected — in a group only admins may pin, and the duration must be 24h, 7d or 30d`,
-      );
+    try {
+      const message = await this.findInFetchWindow(chatId, messageId);
+      // The page-side helper returns false rather than throwing for every refusal — a non-number
+      // duration, a message it cannot resolve, or a send WhatsApp rejected. Surface that as a
+      // refusal instead of reporting a pin that never happened.
+      const pinned = await message.pin(durationSeconds);
+      if (!pinned) {
+        throw new EngineRefusedError(
+          `the pin of message ${messageId} was rejected — in a group only admins may pin, and the duration must be 24h, 7d or 30d`,
+        );
+      }
+      this.host.logger.log(`Pinned message ${messageId} in chat ${chatId} for ${durationSeconds}s`);
+    } catch (error) {
+      this.host.reportIfPageTransportError(error, 'pinMessage');
+      throw error;
     }
-    this.host.logger.log(`Pinned message ${messageId} in chat ${chatId} for ${durationSeconds}s`);
   }
 
   async unpinMessage(chatId: string, messageId: string): Promise<void> {
     this.host.ensureReady();
-    const message = await this.findInFetchWindow(chatId, messageId);
-    // unpin() passes duration 0 itself, so the page-side non-number guard cannot bite here; a false
-    // return means WhatsApp refused the unpin (e.g. not an admin).
-    const unpinned = await message.unpin();
-    if (!unpinned) {
-      throw new EngineRefusedError(`the unpin of message ${messageId} was rejected — in a group only admins may unpin`);
+    try {
+      const message = await this.findInFetchWindow(chatId, messageId);
+      // unpin() passes duration 0 itself, so the page-side non-number guard cannot bite here; a
+      // false return means WhatsApp refused the unpin (e.g. not an admin).
+      const unpinned = await message.unpin();
+      if (!unpinned) {
+        throw new EngineRefusedError(
+          `the unpin of message ${messageId} was rejected — in a group only admins may unpin`,
+        );
+      }
+      this.host.logger.log(`Unpinned message ${messageId} in chat ${chatId}`);
+    } catch (error) {
+      this.host.reportIfPageTransportError(error, 'unpinMessage');
+      throw error;
     }
-    this.host.logger.log(`Unpinned message ${messageId} in chat ${chatId}`);
   }
 
   async starMessage(chatId: string, messageId: string, star: boolean): Promise<void> {
     this.host.ensureReady();
-    const message = await this.findInFetchWindow(chatId, messageId);
-    // Both resolve void, and the page-side helper silently does nothing when the message cannot be
-    // starred. There is no signal to map, so a star WhatsApp declined is indistinguishable from one
-    // it accepted — documented rather than faked into a refusal.
-    await (star ? message.star() : message.unstar());
-    this.host.logger.log(`${star ? 'Starred' : 'Unstarred'} message ${messageId} in chat ${chatId}`);
+    try {
+      const message = await this.findInFetchWindow(chatId, messageId);
+      // Both resolve void, and the page-side helper silently does nothing when the message cannot
+      // be starred. There is no signal to map, so a star WhatsApp declined is indistinguishable
+      // from one it accepted — documented rather than faked into a refusal.
+      await (star ? message.star() : message.unstar());
+      this.host.logger.log(`${star ? 'Starred' : 'Unstarred'} message ${messageId} in chat ${chatId}`);
+    } catch (error) {
+      this.host.reportIfPageTransportError(error, 'starMessage');
+      throw error;
+    }
   }
 
   async votePoll(chatId: string, pollMessageId: string, options: string[]): Promise<void> {
     this.host.ensureReady();
-    const message = await this.findInFetchWindow(chatId, pollMessageId);
     try {
+      const message = await this.findInFetchWindow(chatId, pollMessageId);
       await message.vote(options);
+      this.host.logger.log(`Voted on poll ${pollMessageId} in chat ${chatId} (${options.length} option(s))`);
     } catch (error) {
       // vote() throws a BARE STRING (not an Error) when the target is not a poll creation message.
       // Left alone that surfaces as an opaque 500; it is a client mistake, so map it to a 400.
-      // Anything that is a real Error is a genuine engine fault and propagates.
+      // Anything that is a real Error is a genuine engine fault, checked for transport death
+      // (a died page can throw here as easily as anywhere else on this path) and propagated.
       if (typeof error === 'string') {
         throw new BadRequestException(`Message ${pollMessageId} is not a poll: ${error}`);
       }
+      this.host.reportIfPageTransportError(error, 'votePoll');
       throw error;
     }
-    this.host.logger.log(`Voted on poll ${pollMessageId} in chat ${chatId} (${options.length} option(s))`);
   }
 }
