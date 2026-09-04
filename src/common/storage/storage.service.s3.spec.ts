@@ -127,6 +127,7 @@ describe('StorageService (s3) client init', () => {
     expect(svc.getCurrentStorageType()).toBe('s3');
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('S3_ACCESS_KEY_ID'));
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('S3_SECRET_ACCESS_KEY'));
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining(path.join(tmpRoot, 'media')));
     warn.mockRestore();
   });
 

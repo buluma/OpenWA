@@ -91,8 +91,7 @@ export class StorageService implements OnModuleDestroy {
         ].filter((name): name is string => name !== null);
         this.logger.warn(
           `STORAGE_TYPE=s3 but ${missing.join(' and ')} is not set; media is being written to the ` +
-            `local dir '${this.localPath}' instead of the bucket. The built-in MinIO uses ` +
-            `minioadmin/minioadmin.`,
+            `local dir '${this.localPath}' instead of the bucket.`,
         );
       }
     }
