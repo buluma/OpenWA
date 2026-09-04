@@ -269,6 +269,65 @@ export class BaileysMessaging {
   }
 
   /**
+   * The stored key must belong to the requested chat — acting on another chat's key would be a
+   * not-found here, not a cross-chat write (a pin sent into chat A referencing chat B's message, or
+   * a star indexed under the wrong conversation, would report success). Both sides are neutralized
+   * so @c.us/@s.whatsapp.net (and a known lid<->pn twin) compare equal.
+   */
+  private assertStoredInChat(target: WAMessage, chatId: string, messageId: string): void {
+    if (this.host.toNeutralJid(target.key.remoteJid ?? '') !== this.host.toNeutralJid(chatId)) {
+      throw new MessageNotFoundError(messageId, chatId);
+    }
+  }
+
+  async starMessage(chatId: string, messageId: string, star: boolean): Promise<void> {
+    this.host.ensureReady();
+    const target = await this.requireStored(messageId);
+    this.assertStoredInChat(target, chatId, messageId);
+    // fromMe is load-bearing: the same message id addresses a different message depending on
+    // direction, so omitting it would star the wrong side of the conversation.
+    // Fold @c.us -> @s.whatsapp.net: chatModify keys the star app-state index by the raw jid (no
+    // jidNormalizedUser, unlike the send path), so a neutral @c.us would index a phantom chat and
+    // the star would silently apply to nothing on a 1:1 conversation.
+    await this.sock().chatModify(
+      { star: { messages: [{ id: target.key.id!, fromMe: target.key.fromMe ?? false }], star } },
+      this.host.toEngineJid(chatId),
+    );
+  }
+
+  /**
+   * Pin/unpin a message IN THE CHAT. Deliberately not `chatModify({pin})` — that pins the chat
+   * itself in the chat list, a different feature that happens to share the word.
+   */
+  async pinMessage(chatId: string, messageId: string, durationSeconds: number): Promise<void> {
+    this.host.ensureReady();
+    const target = await this.requireStored(messageId);
+    this.assertStoredInChat(target, chatId, messageId);
+    // Read the enum through the LAZY loader rather than a static import — @whiskeysockets/baileys is
+    // pure ESM and every other site in this module defers it to first connect.
+    const { proto } = await this.host.loadLib();
+    await this.sock().sendMessage(await this.toDeliverableJid(chatId), {
+      pin: target.key,
+      type: proto.PinInChat.Type.PIN_FOR_ALL,
+      // WhatsApp recognises only these three windows; the DTO rejects anything else before we get
+      // here, so the cast documents the contract rather than widening it.
+      time: durationSeconds as 86400 | 604800 | 2592000,
+    });
+  }
+
+  async unpinMessage(chatId: string, messageId: string): Promise<void> {
+    this.host.ensureReady();
+    const target = await this.requireStored(messageId);
+    this.assertStoredInChat(target, chatId, messageId);
+    const { proto } = await this.host.loadLib();
+    // `time` is meaningless for an unpin and is omitted rather than sent as a dummy value.
+    await this.sock().sendMessage(await this.toDeliverableJid(chatId), {
+      pin: target.key,
+      type: proto.PinInChat.Type.UNPIN_FOR_ALL,
+    });
+  }
+
+  /**
    * Build the `{ mentions }` slice of a Baileys message content, de-normalizing neutral `@c.us` WIDs to
    * the engine dialect. Returns an empty object when none are given so the content is byte-identical to
    * the pre-#530 send (no stray `mentions` key). The text must still contain the `@<number>` token for

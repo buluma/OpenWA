@@ -1442,6 +1442,22 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
     return this.messaging.editMessage(chatId, messageId, body);
   }
 
+  pinMessage(chatId: string, messageId: string, durationSeconds: number): Promise<void> {
+    return this.messaging.pinMessage(chatId, messageId, durationSeconds);
+  }
+
+  unpinMessage(chatId: string, messageId: string): Promise<void> {
+    return this.messaging.unpinMessage(chatId, messageId);
+  }
+
+  starMessage(chatId: string, messageId: string, star: boolean): Promise<void> {
+    return this.messaging.starMessage(chatId, messageId, star);
+  }
+
+  votePoll(chatId: string, pollMessageId: string, options: string[]): Promise<void> {
+    return this.messaging.votePoll(chatId, pollMessageId, options);
+  }
+
   // Get Profile Picture
   getProfilePicture(contactId: string): Promise<string | null> {
     return this.contacts.getProfilePicture(contactId);

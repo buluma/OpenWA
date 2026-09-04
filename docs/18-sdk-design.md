@@ -29,7 +29,7 @@ All five SDKs expose the same fluent surface:
 | Resource | Methods |
 | --- | --- |
 | `sessions` | list, get, create, delete, start, stop, logout, forceKill, getQrCode, requestPairingCode, stats |
-| `messages` | list, sendText, sendImage/Video/Audio/Document/Sticker, sendLocation, sendContact, sendTemplate, sendPoll, reply, forward, react, delete, editMessage, history, reactions, sendBulk, batchStatus, cancelBatch |
+| `messages` | list, sendText, sendImage/Video/Audio/Document/Sticker, sendLocation, sendContact, sendTemplate, sendPoll, reply, forward, react, delete, editMessage, pin, unpin, star, votePoll, history, reactions, sendBulk, batchStatus, cancelBatch |
 | `contacts` | list, get, check, profilePicture, profilePictures, phone, block, unblock |
 | `groups` | list, get, create, joinGroup, add/remove/promote/demoteParticipants, setSubject, setDescription, getGroupSettings, updateGroupSettings, leave, inviteCode, revokeInviteCode |
 | `webhooks` | list, get, create, update, delete, test |
@@ -157,6 +157,10 @@ The top-level client also exposes:
 | `react` | `react(sessionId, body)` | React to a message (empty `reaction` removes it). **OPERATOR** |
 | `delete` | `delete(sessionId, body)` | Delete a message. **OPERATOR** |
 | `editMessage` | `editMessage(sessionId, body)` | Edit the text of a message already sent. **OPERATOR** |
+| `pin` | `pin(sessionId, body)` | Pin a message for a bounded window (86400/604800/2592000s, default 24h). **OPERATOR** |
+| `unpin` | `unpin(sessionId, body)` | Unpin a message. **OPERATOR** |
+| `star` | `star(sessionId, body)` | Star or unstar a message. **OPERATOR** |
+| `votePoll` | `votePoll(sessionId, body)` | Vote on a poll. whatsapp-web.js only — `501` on Baileys. **OPERATOR** |
 | `history` | `history(sessionId, chatId, query?)` | Get message history for a chat (read live from WhatsApp). |
 | `reactions` | `reactions(sessionId, chatId, messageId)` | Get reactions for a specific message. |
 | `sendBulk` | `sendBulk(sessionId, body)` | Send a batch asynchronously (202 + batch id); poll via `batchStatus`. **OPERATOR** |
@@ -483,6 +487,10 @@ Resources are accessed as properties on the client (e.g. `client.messages`). All
 | `react` | `react(session_id, body) -> SuccessResult` | React to a message. **OPERATOR** |
 | `delete` | `delete(session_id, body) -> SuccessResult` | Delete a message. **OPERATOR** |
 | `edit_message` | `edit_message(session_id, body) -> MessageResponse` | Edit the text of a message already sent. **OPERATOR** |
+| `pin` | `pin(session_id, body) -> SuccessResult` | Pin a message for a bounded window (86400/604800/2592000s, default 24h). **OPERATOR** |
+| `unpin` | `unpin(session_id, body) -> SuccessResult` | Unpin a message. **OPERATOR** |
+| `star` | `star(session_id, body) -> SuccessResult` | Star or unstar a message. **OPERATOR** |
+| `vote_poll` | `vote_poll(session_id, body) -> SuccessResult` | Vote on a poll. whatsapp-web.js only — `501` on Baileys. **OPERATOR** |
 | `history` | `history(session_id, chat_id, query=None) -> list[ChatHistoryMessage]` | Fetch chat history. |
 | `reactions` | `reactions(session_id, chat_id, message_id) -> list[ReactionRecord]` | List reactions on a message. |
 | `send_bulk` | `send_bulk(session_id, body) -> BulkMessageResponse` | Enqueue a bulk send batch. **OPERATOR** |
@@ -780,6 +788,10 @@ All payloads are associative arrays; all listed methods are synchronous and retu
 | `react` | `react(string $sessionId, array $body): array` | React to a message. **OPERATOR** |
 | `delete` | `delete(string $sessionId, array $body): array` | Delete a message. **OPERATOR** |
 | `editMessage` | `editMessage(string $sessionId, array $body): array` | Edit the text of a message already sent (`$body` needs `chatId`, `messageId`, `body`). **OPERATOR** |
+| `pin` | `pin(string $sessionId, array $body): array` | Pin a message for a bounded window (86400/604800/2592000s, default 24h). **OPERATOR** |
+| `unpin` | `unpin(string $sessionId, array $body): array` | Unpin a message. **OPERATOR** |
+| `star` | `star(string $sessionId, array $body): array` | Star or unstar a message. **OPERATOR** |
+| `votePoll` | `votePoll(string $sessionId, array $body): array` | Vote on a poll. whatsapp-web.js only — `501` on Baileys. **OPERATOR** |
 | `history` | `history(string $sessionId, string $chatId, array $query = []): array` | Fetch chat history. |
 | `reactions` | `reactions(string $sessionId, string $chatId, string $messageId): array` | List reactions on a message. |
 | `sendBulk` | `sendBulk(string $sessionId, array $body): array` | Enqueue a bulk send batch. **OPERATOR** |

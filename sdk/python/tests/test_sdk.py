@@ -203,6 +203,22 @@ class TestMessages:
         assert backend.last_call.body == {"chatId": "a@c.us", "messageId": "m1", "body": "edited"}
         assert res["messageId"] == "m1"
 
+    def test_pin_unpin_star_vote_poll(self):
+        backend = MockBackend()
+        backend.on("POST", "/pin", body={"success": True})
+        backend.on("POST", "/unpin", body={"success": True})
+        backend.on("POST", "/star", body={"success": True})
+        backend.on("POST", "/vote-poll", body={"success": True})
+        client = make_client(backend)
+        client.messages.pin("s", {"chatId": "a@c.us", "messageId": "m", "durationSeconds": 604800})
+        client.messages.unpin("s", {"chatId": "a@c.us", "messageId": "m"})
+        client.messages.star("s", {"chatId": "a@c.us", "messageId": "m", "star": True})
+        client.messages.vote_poll("s", {"chatId": "a@c.us", "pollMessageId": "m", "options": ["Beach"]})
+        assert "/messages/pin" in backend.calls[-4].url
+        assert "/messages/unpin" in backend.calls[-3].url
+        assert "/messages/star" in backend.calls[-2].url
+        assert "/messages/vote-poll" in backend.calls[-1].url
+
     def test_history_and_reactions_path(self):
         backend = MockBackend()
         backend.on("GET", "/history", body=[])

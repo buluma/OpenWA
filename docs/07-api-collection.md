@@ -418,6 +418,48 @@ curl -X POST "$BASE/api/sessions/$SESSION_ID/messages/delete" \
   -d '{ "chatId": "628123456789@c.us", "messageId": "true_628123456789@c.us_3EB0ABCD", "forEveryone": true }'
 ```
 
+#### POST /api/sessions/:sessionId/messages/pin
+
+Pin a message for a bounded window (`86400`/`604800`/`2592000` seconds; defaults to 24h).
+
+```bash
+curl -X POST "$BASE/api/sessions/$SESSION_ID/messages/pin" \
+  -H "X-API-Key: $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{ "chatId": "628123456789@c.us", "messageId": "true_628123456789@c.us_3EB0ABCD", "durationSeconds": 604800 }'
+```
+
+#### POST /api/sessions/:sessionId/messages/unpin
+
+```bash
+curl -X POST "$BASE/api/sessions/$SESSION_ID/messages/unpin" \
+  -H "X-API-Key: $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{ "chatId": "628123456789@c.us", "messageId": "true_628123456789@c.us_3EB0ABCD" }'
+```
+
+#### POST /api/sessions/:sessionId/messages/star
+
+Star or unstar a message (send `star: false` to remove).
+
+```bash
+curl -X POST "$BASE/api/sessions/$SESSION_ID/messages/star" \
+  -H "X-API-Key: $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{ "chatId": "628123456789@c.us", "messageId": "true_628123456789@c.us_3EB0ABCD", "star": true }'
+```
+
+#### POST /api/sessions/:sessionId/messages/vote-poll
+
+Vote on a poll (whatsapp-web.js only). `options` are the option texts, not indexes.
+
+```bash
+curl -X POST "$BASE/api/sessions/$SESSION_ID/messages/vote-poll" \
+  -H "X-API-Key: $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{ "chatId": "628123456789@c.us", "pollMessageId": "true_628123456789@c.us_3EB0ABCD", "options": ["Beach"] }'
+```
+
 #### POST /api/sessions/:sessionId/messages/send-bulk
 
 Send to multiple recipients as an async batch (max 100 messages; exact duplicate entries — same `chatId`, `type`, `content` and `variables` — are collapsed, first occurrence wins).

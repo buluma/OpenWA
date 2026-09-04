@@ -22,7 +22,7 @@ The `rootCause`/`evidence` fields are hand-curated from source traces of the ins
 
 ## Unwired-capability inventory
 
-16 of the 80 interface methods are `not-available` on at least one adapter (21 not-available adapter-cells total). Grouped by cluster below. Each entry shows: status today → rootCause → evidence → wiring note.
+17 of the 84 interface methods are `not-available` on at least one adapter (22 not-available adapter-cells total). Grouped by cluster below. Each entry shows: status today → rootCause → evidence → wiring note.
 
 ### Channels / Newsletter
 
@@ -87,9 +87,11 @@ The `rootCause`/`evidence` fields are hand-curated from source traces of the ins
 |---|---|---|
 | `getChatHistory` | not-available — **library-limitation** | supported |
 | `getMessageReactions` | not-available — **library-limitation** | supported |
+| `votePoll` | not-available — **library-limitation** | supported |
 
 - **`getChatHistory` (baileys, library-limitation).** The only history primitive is `fetchMessageHistory(count, oldestMsgKey, oldestMsgTimestamp)` (`Socket/business.d.ts:25`) — it returns a sync-token *string*, not messages; the messages are delivered later via the `messaging-history.set` event. There is no per-chat `fetchMessages(chatId, limit)` on the socket. A synchronous `Promise<IncomingMessage[]>` for one chat would require an OpenWA-side chat-indexed store populated from `messages.upsert` + `messaging-history.set` events.
 - **`getMessageReactions` (baileys, library-limitation).** No on-demand server fetch. Reactions exist only as event-augmented state on `WAMessage.reactions` (`proto.IReaction[]` at `WAProto/index.d.ts:10623`), mutated by `updateMessageWithReaction` and surfaced via the `messages.reaction` event. The adapter already processes `reactionMessage` events (`baileys.adapter.ts`, the `reactionMessage` branch of `processInboundMessage()`) and emits `onMessageReaction`, but it does **not** persist `.reactions` into its `messageStore` (that branch returns before the `messageStore.put`). A store-backed read would need that persistence added first; even then, only reactions observed since session start are known (no historical backfill).
+- **`votePoll` (baileys, library-limitation).** Baileys exposes `decryptPollVote` for *receiving* a vote only. Sending one needs a hand-built `proto.Message.PollUpdateMessage` with an HMAC-SHA256-encrypted vote keyed by the poll creation message's `messageSecret` — the library has no helper for constructing or encrypting that payload.
 
 ### Groups — disappearing messages
 
@@ -141,13 +143,14 @@ _All Tier-2 items wired (see progress above). Remaining channel work is Tier 3: 
 
 These are honestly out of reach of a clean adapter wiring because the installed library exposes no first-class symbol. Listed so operators can plan around them rather than file unactionable bugs.
 
-**baileys (9 cells):**
+**baileys (10 cells):**
 - `getSubscribedChannels` — no enumerate-newsletters query; all 19 newsletter members of `Socket/newsletter.d.ts` address a single newsletter (by jid, by invite key, or by creating one). Needs a raw WMex/app-state hack.
 - `getLabels` / `getLabelById` / `getChatLabels` — no label read symbol; only writes (`Types/Label.d.ts` is types-only). Workaround: capture labels from the `messaging-history.set` app-state event into an in-memory cache (relay hack, no on-demand refresh).
 - `getChatHistory` — only `fetchMessageHistory` (event-delivered sync token); no synchronous per-chat `fetchMessages`. Needs an OpenWA-side chat-indexed store fed from `messages.upsert` + `messaging-history.set`.
 - `getMessageReactions` — no on-demand fetch; reactions only arrive via the `messages.reaction` event. Partial local path: persist each event into the `messageStore`, then read (no historical backfill).
 - `getContactStatus` / `getContactStatuses` — `fetchStatus` returns the *about* text, not 24h stories; stories only surface as `status@broadcast` messages. The engine-level Baileys adapter methods remain unimplemented (`501`); however, the REST API reads are served from the `StatusStoreService` accumulator (see §Status — read above), so API-level parity is shipped.
 - `sendCatalog` — no catalog-share message type in `AnyMessageContent` (only single `{product}`).
+- `votePoll` — `decryptPollVote` exists for *receiving* only; sending needs a hand-built `proto.Message.PollUpdateMessage` with an HMAC-SHA256-encrypted vote keyed by the poll creation's `messageSecret`, which the library has no helper for.
 
 **wwjs (6 cells):**
 - `getCatalog` / `getProducts` / `getProduct` — no catalog API at all (`index.d.ts` 0 hits; `Product` is inbound-only).
@@ -159,7 +162,7 @@ These are honestly out of reach of a clean adapter wiring because the installed 
 
 ## Snapshot summary
 
-- **80** interface methods, **160** adapter-cells (80 × 2 engines).
-- **139** supported cells; **21** not-available cells across **16** methods.
-- Of the 21 not-available cells: **6 adapter-gaps** (fixable) + **15 library-limitations** + **0 uncertain**.
+- **84** interface methods, **168** adapter-cells (84 × 2 engines).
+- **146** supported cells; **22** not-available cells across **17** methods.
+- Of the 22 not-available cells: **6 adapter-gaps** (fixable) + **16 library-limitations** + **0 uncertain**.
 - **0 phantom-support rows** — every `not-available` row now throws at the adapter boundary, so the drift gate's throw-heuristic covers the full matrix.

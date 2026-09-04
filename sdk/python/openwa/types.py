@@ -184,6 +184,36 @@ class EditMessageRequest(TypedDict):
     body: str
 
 
+class _PinMessageRequired(TypedDict):
+    chatId: Jid
+    messageId: str
+
+
+class PinMessageRequest(_PinMessageRequired, total=False):
+    # Optional, default 24h. Must be one of 86400 (24h), 604800 (7d) or 2592000 (30d).
+    durationSeconds: int
+
+
+class UnpinMessageRequest(TypedDict):
+    chatId: Jid
+    messageId: str
+
+
+class StarMessageRequest(TypedDict):
+    chatId: Jid
+    messageId: str
+    # true to star, false to remove the star.
+    star: bool
+
+
+class VotePollRequest(TypedDict):
+    chatId: Jid
+    # The poll creation message to vote on.
+    pollMessageId: str
+    # Option TEXTS to select, exactly as they appear on the poll (max 12). Empty list clears the vote.
+    options: list[str]
+
+
 class SendTemplateRequest(TypedDict, total=False):
     # chatId required; provide exactly one of templateId / templateName.
     # Modeled total=False (callers pass plain dicts); the backend validates.

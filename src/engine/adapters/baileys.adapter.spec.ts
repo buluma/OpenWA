@@ -102,6 +102,9 @@ jest.mock('@whiskeysockets/baileys', () => ({
         Type: { REVOKE: 0, MESSAGE_EDIT: 14 },
       },
     },
+    PinInChat: {
+      Type: { UNKNOWN_TYPE: 0, PIN_FOR_ALL: 1, UNPIN_FOR_ALL: 2 },
+    },
   },
 }));
 
@@ -2626,6 +2629,84 @@ describe('BaileysAdapter store-backed ops', () => {
     await adapter.editMessage('628111@c.us', 'TARGET', 'edited body');
     expect(fakeSock.signalRepository.lidMapping.getLIDForPN).toHaveBeenCalledWith('628111@s.whatsapp.net');
     expect(fakeSock.sendMessage).toHaveBeenCalledWith('484848@lid', { text: 'edited body', edit: ownStored.key });
+  });
+
+  it('pinMessage sends PIN_FOR_ALL with the requested window', async () => {
+    delete fakeSock.signalRepository; // a prior LID-mapping test leaves this set on the shared fake
+    fakeStore.getMessage.mockResolvedValue(stored);
+    const adapter = await ready();
+    await adapter.pinMessage('628111@s.whatsapp.net', 'TARGET', 604800);
+    expect(fakeSock.sendMessage).toHaveBeenCalledWith('628111@s.whatsapp.net', {
+      pin: stored.key,
+      type: 1, // PIN_FOR_ALL
+      time: 604800,
+    });
+  });
+
+  it('pinMessage throws MessageNotFoundError when the message is not in the store', async () => {
+    fakeStore.getMessage.mockResolvedValue(null);
+    const adapter = await ready();
+    await expect(adapter.pinMessage('628111@s.whatsapp.net', 'GONE', 86400)).rejects.toBeInstanceOf(
+      MessageNotFoundError,
+    );
+    expect(fakeSock.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('pinMessage throws MessageNotFoundError when the stored key belongs to another chat', async () => {
+    fakeStore.getMessage.mockResolvedValue({ ...stored, key: { ...stored.key, remoteJid: '628222@s.whatsapp.net' } });
+    const adapter = await ready();
+    await expect(adapter.pinMessage('628111@s.whatsapp.net', 'TARGET', 86400)).rejects.toBeInstanceOf(
+      MessageNotFoundError,
+    );
+    expect(fakeSock.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('unpinMessage sends UNPIN_FOR_ALL with no time field', async () => {
+    delete fakeSock.signalRepository; // a prior LID-mapping test leaves this set on the shared fake
+    fakeStore.getMessage.mockResolvedValue(stored);
+    const adapter = await ready();
+    await adapter.unpinMessage('628111@s.whatsapp.net', 'TARGET');
+    expect(fakeSock.sendMessage).toHaveBeenCalledWith('628111@s.whatsapp.net', {
+      pin: stored.key,
+      type: 2, // UNPIN_FOR_ALL
+    });
+  });
+
+  it('starMessage sends chatModify({ star: { star: true } })', async () => {
+    fakeStore.getMessage.mockResolvedValue(stored);
+    const adapter = await ready();
+    await adapter.starMessage('628111@s.whatsapp.net', 'TARGET', true);
+    expect(fakeSock.chatModify).toHaveBeenCalledWith(
+      { star: { messages: [{ id: stored.key.id, fromMe: stored.key.fromMe }], star: true } },
+      '628111@s.whatsapp.net',
+    );
+  });
+
+  it('starMessage(star: false) unstars', async () => {
+    fakeStore.getMessage.mockResolvedValue(stored);
+    const adapter = await ready();
+    await adapter.starMessage('628111@s.whatsapp.net', 'TARGET', false);
+    expect(fakeSock.chatModify).toHaveBeenCalledWith(
+      { star: { messages: [{ id: stored.key.id, fromMe: stored.key.fromMe }], star: false } },
+      '628111@s.whatsapp.net',
+    );
+  });
+
+  it('starMessage throws MessageNotFoundError when the stored key belongs to another chat', async () => {
+    fakeStore.getMessage.mockResolvedValue({ ...stored, key: { ...stored.key, remoteJid: '628222@s.whatsapp.net' } });
+    const adapter = await ready();
+    await expect(adapter.starMessage('628111@s.whatsapp.net', 'TARGET', true)).rejects.toBeInstanceOf(
+      MessageNotFoundError,
+    );
+    expect(fakeSock.chatModify).not.toHaveBeenCalled();
+  });
+
+  it('votePoll is not supported on Baileys (EngineNotSupportedError, 501)', async () => {
+    const adapter = await ready();
+    await expect(adapter.votePoll('628111@s.whatsapp.net', 'TARGET', ['Beach'])).rejects.toBeInstanceOf(
+      EngineNotSupportedError,
+    );
+    expect(fakeSock.sendMessage).not.toHaveBeenCalled();
   });
 
   it('addLabelToChat wires 1:1 to sock.addChatLabel(chatId, labelId)', async () => {

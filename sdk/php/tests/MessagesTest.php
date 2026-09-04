@@ -132,6 +132,28 @@ class MessagesTest extends TestCase
         $backend->makeClient()->messages->editMessage('s1', ['chatId' => 'a@c.us', 'messageId' => 'missing', 'body' => 'x']);
     }
 
+    public function testPinUnpinStarVotePollPaths(): void
+    {
+        $backend = new MockBackend();
+        $backend->on(200, ['success' => true]);
+        $backend->on(200, ['success' => true]);
+        $backend->on(200, ['success' => true]);
+        $backend->on(200, ['success' => true]);
+        $client = $backend->makeClient();
+
+        $client->messages->pin('s1', ['chatId' => 'a@c.us', 'messageId' => 'm1', 'durationSeconds' => 604800]);
+        $this->assertStringContainsString('/messages/pin', $backend->calls()[0]['url']);
+
+        $client->messages->unpin('s1', ['chatId' => 'a@c.us', 'messageId' => 'm1']);
+        $this->assertStringContainsString('/messages/unpin', $backend->calls()[1]['url']);
+
+        $client->messages->star('s1', ['chatId' => 'a@c.us', 'messageId' => 'm1', 'star' => true]);
+        $this->assertStringContainsString('/messages/star', $backend->calls()[2]['url']);
+
+        $client->messages->votePoll('s1', ['chatId' => 'a@c.us', 'pollMessageId' => 'm1', 'options' => ['Beach']]);
+        $this->assertStringContainsString('/messages/vote-poll', $backend->calls()[3]['url']);
+    }
+
     public function testHistoryAndReactionsPath(): void
     {
         $backend = new MockBackend();
