@@ -101,7 +101,11 @@ export function QuickReplies() {
       />
 
       <div className="quick-replies-toolbar">
-        <select value={activeSessionId} onChange={e => setSessionId(e.target.value)}>
+        <select
+          aria-label={t('messageTester.session')}
+          value={activeSessionId}
+          onChange={e => setSessionId(e.target.value)}
+        >
           {sessions.map(s => (
             <option key={s.id} value={s.id}>
               {s.name}
@@ -174,8 +178,9 @@ export function QuickReplies() {
                 value={form.shortcut}
                 onChange={e => setForm({ ...form, shortcut: e.target.value })}
               />
-              <label>{t('quickReplies.message')}</label>
+              <label htmlFor="quick-reply-message">{t('quickReplies.message')}</label>
               <textarea
+                id="quick-reply-message"
                 rows={4}
                 value={form.message}
                 onChange={e => setForm({ ...form, message: e.target.value })}
