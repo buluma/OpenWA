@@ -110,7 +110,11 @@ export function Contacts() {
       />
 
       <div className="contacts-toolbar">
-        <select value={activeSessionId} onChange={e => setSessionId(e.target.value)}>
+        <select
+          aria-label={t('messageTester.session')}
+          value={activeSessionId}
+          onChange={e => setSessionId(e.target.value)}
+        >
           {sessions.map(s => (
             <option key={s.id} value={s.id}>
               {s.name}
@@ -195,14 +199,16 @@ export function Contacts() {
                   />
                 </>
               )}
-              <label>{t('contacts.fullName')}</label>
+              <label htmlFor="contacts-full-name">{t('contacts.fullName')}</label>
               <input
+                id="contacts-full-name"
                 type="text"
                 value={editForm.fullName}
                 onChange={e => setEditForm({ ...editForm, fullName: e.target.value })}
               />
-              <label>{t('contacts.firstName')}</label>
+              <label htmlFor="contacts-first-name">{t('contacts.firstName')}</label>
               <input
+                id="contacts-first-name"
                 type="text"
                 value={editForm.firstName}
                 onChange={e => setEditForm({ ...editForm, firstName: e.target.value })}

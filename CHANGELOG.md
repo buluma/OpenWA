@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `GET /api/sessions/:sessionId/messages` now breaks a `createdAt` tie with a second sort key instead
   of a random uuid, so messages sharing a second (a bulk send, a media-plus-caption pair, a history
   backfill) come back in arrival order on SQLite rather than shuffled on every request.
+- Dashboard: the session picker on the Contacts, Privacy and Quick Replies pages, the full/first name
+  fields on Contacts, the field selects on Privacy, and the message textarea on Quick Replies now
+  carry an accessible name (`aria-label` or an associated `<label>`) instead of relying on visual
+  layout alone.
 
 ## [0.12.4] - 2026-08-02
 

@@ -114,7 +114,11 @@ export function Privacy() {
       <PageHeader title={t('privacy.title')} subtitle={t('privacy.subtitle')} />
 
       <div className="privacy-toolbar">
-        <select value={activeSessionId} onChange={e => setSessionId(e.target.value)}>
+        <select
+          aria-label={t('messageTester.session')}
+          value={activeSessionId}
+          onChange={e => setSessionId(e.target.value)}
+        >
           {sessions.map(s => (
             <option key={s.id} value={s.id}>
               {s.name}
@@ -143,8 +147,9 @@ export function Privacy() {
             <>
               {visibilityFields.map(field => (
                 <div className="privacy-field" key={field}>
-                  <label>{visibilityLabel(field)}</label>
+                  <label htmlFor={`privacy-field-${field}`}>{visibilityLabel(field)}</label>
                   <select
+                    id={`privacy-field-${field}`}
                     value={form[field] || ''}
                     disabled={!canWrite}
                     onChange={e => setForm({ ...form, [field]: e.target.value || undefined })}
@@ -160,8 +165,9 @@ export function Privacy() {
               ))}
 
               <div className="privacy-field">
-                <label>{t('privacy.fields.online')}</label>
+                <label htmlFor="privacy-field-online">{t('privacy.fields.online')}</label>
                 <select
+                  id="privacy-field-online"
                   value={form.online || ''}
                   disabled={!canWrite}
                   onChange={e =>
@@ -178,8 +184,9 @@ export function Privacy() {
               </div>
 
               <div className="privacy-field">
-                <label>{t('privacy.fields.readReceipts')}</label>
+                <label htmlFor="privacy-field-read-receipts">{t('privacy.fields.readReceipts')}</label>
                 <select
+                  id="privacy-field-read-receipts"
                   value={form.readReceipts || ''}
                   disabled={!canWrite}
                   onChange={e =>
@@ -199,8 +206,9 @@ export function Privacy() {
               </div>
 
               <div className="privacy-field">
-                <label>{t('privacy.fields.groupsAdd')}</label>
+                <label htmlFor="privacy-field-groups-add">{t('privacy.fields.groupsAdd')}</label>
                 <select
+                  id="privacy-field-groups-add"
                   value={form.groupsAdd || ''}
                   disabled={!canWrite}
                   onChange={e =>
@@ -220,8 +228,9 @@ export function Privacy() {
               </div>
 
               <div className="privacy-field">
-                <label>{t('privacy.fields.call')}</label>
+                <label htmlFor="privacy-field-call">{t('privacy.fields.call')}</label>
                 <select
+                  id="privacy-field-call"
                   value={form.call || ''}
                   disabled={!canWrite}
                   onChange={e =>
@@ -238,8 +247,9 @@ export function Privacy() {
               </div>
 
               <div className="privacy-field">
-                <label>{t('privacy.fields.messages')}</label>
+                <label htmlFor="privacy-field-messages">{t('privacy.fields.messages')}</label>
                 <select
+                  id="privacy-field-messages"
                   value={form.messages || ''}
                   disabled={!canWrite}
                   onChange={e =>
@@ -259,8 +269,11 @@ export function Privacy() {
               </div>
 
               <div className="privacy-field">
-                <label>{t('privacy.fields.defaultDisappearingMode')}</label>
+                <label htmlFor="privacy-field-default-disappearing-mode">
+                  {t('privacy.fields.defaultDisappearingMode')}
+                </label>
                 <select
+                  id="privacy-field-default-disappearing-mode"
                   value={form.defaultDisappearingMode ?? ''}
                   disabled={!canWrite}
                   onChange={e =>
