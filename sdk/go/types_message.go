@@ -113,6 +113,36 @@ type EditMessageRequest struct {
 	Body      string `json:"body"`
 }
 
+// PinMessageRequest pins a message in its chat. DurationSeconds must be
+// 86400 (24h), 604800 (7d) or 2592000 (30d); defaults to 24h server-side.
+type PinMessageRequest struct {
+	ChatID          string `json:"chatId"`
+	MessageID       string `json:"messageId"`
+	DurationSeconds *int   `json:"durationSeconds,omitempty"`
+}
+
+// UnpinMessageRequest unpins a message from its chat.
+type UnpinMessageRequest struct {
+	ChatID    string `json:"chatId"`
+	MessageID string `json:"messageId"`
+}
+
+// StarMessageRequest stars or unstars a message.
+type StarMessageRequest struct {
+	ChatID    string `json:"chatId"`
+	MessageID string `json:"messageId"`
+	Star      bool   `json:"star"`
+}
+
+// VotePollRequest votes on a poll (whatsapp-web.js engine only). Options are the
+// option TEXTS as they appear on the poll, not indexes; an empty slice clears
+// the vote.
+type VotePollRequest struct {
+	ChatID        string   `json:"chatId"`
+	PollMessageID string   `json:"pollMessageId"`
+	Options       []string `json:"options"`
+}
+
 // ListMessagesQuery filters GET /sessions/:id/messages.
 type ListMessagesQuery struct {
 	ChatID *string

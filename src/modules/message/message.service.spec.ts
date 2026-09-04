@@ -1,7 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { BadRequestException, NotFoundException, PayloadTooLargeException } from '@nestjs/common';
+import {
+  BadRequestException,
+  NotFoundException,
+  NotImplementedException,
+  PayloadTooLargeException,
+} from '@nestjs/common';
 import { MessageService } from './message.service';
 import { Message, MessageDirection, MessageStatus } from './entities/message.entity';
 import { SessionService } from '../session/session.service';
@@ -33,6 +38,10 @@ function createMockEngine() {
     getMessageReactions: jest.fn().mockResolvedValue([]),
     deleteMessage: jest.fn().mockResolvedValue(undefined),
     editMessage: jest.fn().mockResolvedValue(mockEngineResult),
+    pinMessage: jest.fn().mockResolvedValue(undefined),
+    unpinMessage: jest.fn().mockResolvedValue(undefined),
+    starMessage: jest.fn().mockResolvedValue(undefined),
+    votePoll: jest.fn().mockResolvedValue(undefined),
     getChatHistory: jest.fn().mockResolvedValue([]),
     sendChatState: jest.fn().mockResolvedValue(undefined),
   };
@@ -1392,6 +1401,65 @@ describe('MessageService', () => {
 
       expect(mockEngine.editMessage).toHaveBeenCalledWith('test@c.us', 'wa-msg-1', 'redacted');
       expect(messageProjector.recordOutboundMessageEdit).toHaveBeenCalledWith('sess-1', 'wa-msg-1', 'redacted');
+    });
+  });
+
+  // ── pin / unpin / star / poll vote ──────────────────────────────────
+
+  describe('pinMessage / unpinMessage', () => {
+    it('defaults the pin window to 24h when the caller does not choose one', async () => {
+      await service.pinMessage('sess-1', { chatId: '621@c.us', messageId: 'M1' });
+      expect(mockEngine.pinMessage).toHaveBeenCalledWith('621@c.us', 'M1', 86400);
+    });
+
+    it('passes an explicit window through untouched', async () => {
+      await service.pinMessage('sess-1', { chatId: '621@c.us', messageId: 'M1', durationSeconds: 2592000 });
+      expect(mockEngine.pinMessage).toHaveBeenCalledWith('621@c.us', 'M1', 2592000);
+    });
+
+    it('unpins without a duration', async () => {
+      await service.unpinMessage('sess-1', { chatId: '621@c.us', messageId: 'M1' });
+      expect(mockEngine.unpinMessage).toHaveBeenCalledWith('621@c.us', 'M1');
+    });
+
+    it('does not touch the stored message row — a pin is WhatsApp-owned chat state that expires', async () => {
+      (repository.update as jest.Mock).mockClear();
+      await service.pinMessage('sess-1', { chatId: '621@c.us', messageId: 'M1' });
+      expect(repository.update).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException when the session is not started', async () => {
+      engines.delete('sess-1');
+      await expect(service.pinMessage('sess-1', { chatId: '621@c.us', messageId: 'M1' })).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      expect(mockEngine.pinMessage).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('starMessage', () => {
+    it('stars via the engine', async () => {
+      await service.starMessage('sess-1', { chatId: '621@c.us', messageId: 'M1', star: true });
+      expect(mockEngine.starMessage).toHaveBeenCalledWith('621@c.us', 'M1', true);
+    });
+
+    it('unstars via the engine', async () => {
+      await service.starMessage('sess-1', { chatId: '621@c.us', messageId: 'M1', star: false });
+      expect(mockEngine.starMessage).toHaveBeenCalledWith('621@c.us', 'M1', false);
+    });
+  });
+
+  describe('votePoll', () => {
+    it('votes via the engine', async () => {
+      await service.votePoll('sess-1', { chatId: '621@c.us', pollMessageId: 'M1', options: ['Beach'] });
+      expect(mockEngine.votePoll).toHaveBeenCalledWith('621@c.us', 'M1', ['Beach']);
+    });
+
+    it('propagates the engine not-supported error as-is (Baileys → 501)', async () => {
+      mockEngine.votePoll.mockRejectedValueOnce(new NotImplementedException('not supported'));
+      await expect(
+        service.votePoll('sess-1', { chatId: '621@c.us', pollMessageId: 'M1', options: [] }),
+      ).rejects.toBeInstanceOf(NotImplementedException);
     });
   });
 

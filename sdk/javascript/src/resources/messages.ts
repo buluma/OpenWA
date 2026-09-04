@@ -19,6 +19,7 @@ import type {
   MessageHistoryQuery,
   MessageListResponse,
   MessageResponse,
+  PinMessageRequest,
   ReactionRecord,
   ReactMessageRequest,
   ReplyMessageRequest,
@@ -30,7 +31,10 @@ import type {
   SendPollRequest,
   SendTemplateRequest,
   SendTextRequest,
+  StarMessageRequest,
   SuccessResult,
+  UnpinMessageRequest,
+  VotePollRequest,
 } from '../types.js';
 
 export class MessagesResource {
@@ -156,6 +160,42 @@ export class MessagesResource {
     return this.client.request<MessageResponse>({
       method: 'POST',
       path: `/api/sessions/${encodeSegment(sessionId)}/messages/edit`,
+      body,
+    });
+  }
+
+  /** Pin a message in its chat for a bounded window. */
+  pin(sessionId: string, body: PinMessageRequest): Promise<SuccessResult> {
+    return this.client.request<SuccessResult>({
+      method: 'POST',
+      path: `/api/sessions/${encodeSegment(sessionId)}/messages/pin`,
+      body,
+    });
+  }
+
+  /** Unpin a message from its chat. */
+  unpin(sessionId: string, body: UnpinMessageRequest): Promise<SuccessResult> {
+    return this.client.request<SuccessResult>({
+      method: 'POST',
+      path: `/api/sessions/${encodeSegment(sessionId)}/messages/unpin`,
+      body,
+    });
+  }
+
+  /** Star or unstar a message. */
+  star(sessionId: string, body: StarMessageRequest): Promise<SuccessResult> {
+    return this.client.request<SuccessResult>({
+      method: 'POST',
+      path: `/api/sessions/${encodeSegment(sessionId)}/messages/star`,
+      body,
+    });
+  }
+
+  /** Vote on a poll. whatsapp-web.js engine only — 501 on Baileys. */
+  votePoll(sessionId: string, body: VotePollRequest): Promise<SuccessResult> {
+    return this.client.request<SuccessResult>({
+      method: 'POST',
+      path: `/api/sessions/${encodeSegment(sessionId)}/messages/vote-poll`,
       body,
     });
   }

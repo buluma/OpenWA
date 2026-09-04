@@ -2150,6 +2150,179 @@
         ]
       }
     },
+    "/api/sessions/{sessionId}/messages/pin": {
+      "post": {
+        "operationId": "MessageController_pin",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": true,
+            "in": "path",
+            "description": "Session ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PinMessageDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Message pinned"
+          },
+          "400": {
+            "description": "Session not active, or an invalid pin duration"
+          },
+          "403": {
+            "description": "The engine refused the pin (e.g. not a group admin)"
+          },
+          "404": {
+            "description": "Message not found"
+          }
+        },
+        "summary": "Pin a message in its chat for a bounded window",
+        "tags": [
+          "messages"
+        ]
+      }
+    },
+    "/api/sessions/{sessionId}/messages/unpin": {
+      "post": {
+        "operationId": "MessageController_unpin",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": true,
+            "in": "path",
+            "description": "Session ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnpinMessageDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Message unpinned"
+          },
+          "400": {
+            "description": "Session not active"
+          },
+          "403": {
+            "description": "The engine refused the unpin (e.g. not a group admin)"
+          },
+          "404": {
+            "description": "Message not found"
+          }
+        },
+        "summary": "Unpin a message from its chat",
+        "tags": [
+          "messages"
+        ]
+      }
+    },
+    "/api/sessions/{sessionId}/messages/star": {
+      "post": {
+        "operationId": "MessageController_star",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": true,
+            "in": "path",
+            "description": "Session ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StarMessageDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Star state updated"
+          },
+          "400": {
+            "description": "Session not active"
+          },
+          "404": {
+            "description": "Message not found"
+          }
+        },
+        "summary": "Star or unstar a message",
+        "tags": [
+          "messages"
+        ]
+      }
+    },
+    "/api/sessions/{sessionId}/messages/vote-poll": {
+      "post": {
+        "operationId": "MessageController_votePoll",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": true,
+            "in": "path",
+            "description": "Session ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VotePollDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Vote recorded"
+          },
+          "400": {
+            "description": "Session not active, or the target message is not a poll"
+          },
+          "404": {
+            "description": "Message not found"
+          },
+          "501": {
+            "description": "Not supported on this engine (Baileys cannot send poll votes)"
+          }
+        },
+        "summary": "Vote on a poll (whatsapp-web.js only)",
+        "tags": [
+          "messages"
+        ]
+      }
+    },
     "/api/sessions/{sessionId}/messages/send-bulk": {
       "post": {
         "operationId": "MessageController_sendBulk",
@@ -7121,6 +7294,91 @@
           "chatId",
           "messageId",
           "body"
+        ]
+      },
+      "PinMessageDto": {
+        "type": "object",
+        "properties": {
+          "chatId": {
+            "type": "string"
+          },
+          "messageId": {
+            "type": "string"
+          },
+          "durationSeconds": {
+            "type": "number",
+            "description": "Pin duration in seconds: 86400 (24h), 604800 (7d) or 2592000 (30d). Defaults to 24h.",
+            "enum": [
+              86400,
+              604800,
+              2592000
+            ],
+            "default": 86400
+          }
+        },
+        "required": [
+          "chatId",
+          "messageId"
+        ]
+      },
+      "UnpinMessageDto": {
+        "type": "object",
+        "properties": {
+          "chatId": {
+            "type": "string"
+          },
+          "messageId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "chatId",
+          "messageId"
+        ]
+      },
+      "StarMessageDto": {
+        "type": "object",
+        "properties": {
+          "chatId": {
+            "type": "string"
+          },
+          "messageId": {
+            "type": "string"
+          },
+          "star": {
+            "type": "boolean",
+            "description": "true to star, false to remove the star."
+          }
+        },
+        "required": [
+          "chatId",
+          "messageId",
+          "star"
+        ]
+      },
+      "VotePollDto": {
+        "type": "object",
+        "properties": {
+          "chatId": {
+            "type": "string"
+          },
+          "pollMessageId": {
+            "type": "string",
+            "description": "The poll creation message to vote on."
+          },
+          "options": {
+            "description": "The option TEXTS to select, exactly as they appear on the poll. Replaces the current selection; an empty array clears the vote.",
+            "maxItems": 12,
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "chatId",
+          "pollMessageId",
+          "options"
         ]
       },
       "BulkMediaDto": {

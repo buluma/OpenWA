@@ -15,6 +15,10 @@ import {
   ReactMessageDto,
   DeleteMessageDto,
   EditMessageDto,
+  PinMessageDto,
+  UnpinMessageDto,
+  StarMessageDto,
+  VotePollDto,
 } from './dto/message-actions.dto';
 import { RequireRole } from '../auth/decorators/auth.decorators';
 import { ApiKeyRole } from '../auth/entities/api-key.entity';
@@ -395,6 +399,63 @@ export class MessageController {
   @ApiResponse({ status: 404, description: 'Message not found' })
   async edit(@Param('sessionId') sessionId: string, @Body() dto: EditMessageDto): Promise<MessageResponseDto> {
     return this.messageService.editMessage(sessionId, dto);
+  }
+
+  // ========== Pin / Unpin / Star / Poll Vote ==========
+
+  @Post('pin')
+  @HttpCode(HttpStatus.OK)
+  @RequireRole(ApiKeyRole.OPERATOR)
+  @ApiOperation({ summary: 'Pin a message in its chat for a bounded window' })
+  @ApiParam({ name: 'sessionId', description: 'Session ID' })
+  @ApiResponse({ status: 200, description: 'Message pinned' })
+  @ApiResponse({ status: 400, description: 'Session not active, or an invalid pin duration' })
+  @ApiResponse({ status: 403, description: 'The engine refused the pin (e.g. not a group admin)' })
+  @ApiResponse({ status: 404, description: 'Message not found' })
+  async pin(@Param('sessionId') sessionId: string, @Body() dto: PinMessageDto): Promise<{ success: boolean }> {
+    await this.messageService.pinMessage(sessionId, dto);
+    return { success: true };
+  }
+
+  @Post('unpin')
+  @HttpCode(HttpStatus.OK)
+  @RequireRole(ApiKeyRole.OPERATOR)
+  @ApiOperation({ summary: 'Unpin a message from its chat' })
+  @ApiParam({ name: 'sessionId', description: 'Session ID' })
+  @ApiResponse({ status: 200, description: 'Message unpinned' })
+  @ApiResponse({ status: 400, description: 'Session not active' })
+  @ApiResponse({ status: 403, description: 'The engine refused the unpin (e.g. not a group admin)' })
+  @ApiResponse({ status: 404, description: 'Message not found' })
+  async unpin(@Param('sessionId') sessionId: string, @Body() dto: UnpinMessageDto): Promise<{ success: boolean }> {
+    await this.messageService.unpinMessage(sessionId, dto);
+    return { success: true };
+  }
+
+  @Post('star')
+  @HttpCode(HttpStatus.OK)
+  @RequireRole(ApiKeyRole.OPERATOR)
+  @ApiOperation({ summary: 'Star or unstar a message' })
+  @ApiParam({ name: 'sessionId', description: 'Session ID' })
+  @ApiResponse({ status: 200, description: 'Star state updated' })
+  @ApiResponse({ status: 400, description: 'Session not active' })
+  @ApiResponse({ status: 404, description: 'Message not found' })
+  async star(@Param('sessionId') sessionId: string, @Body() dto: StarMessageDto): Promise<{ success: boolean }> {
+    await this.messageService.starMessage(sessionId, dto);
+    return { success: true };
+  }
+
+  @Post('vote-poll')
+  @HttpCode(HttpStatus.OK)
+  @RequireRole(ApiKeyRole.OPERATOR)
+  @ApiOperation({ summary: 'Vote on a poll (whatsapp-web.js only)' })
+  @ApiParam({ name: 'sessionId', description: 'Session ID' })
+  @ApiResponse({ status: 200, description: 'Vote recorded' })
+  @ApiResponse({ status: 400, description: 'Session not active, or the target message is not a poll' })
+  @ApiResponse({ status: 404, description: 'Message not found' })
+  @ApiResponse({ status: 501, description: 'Not supported on this engine (Baileys cannot send poll votes)' })
+  async votePoll(@Param('sessionId') sessionId: string, @Body() dto: VotePollDto): Promise<{ success: boolean }> {
+    await this.messageService.votePoll(sessionId, dto);
+    return { success: true };
   }
 
   // ========== Bulk Messaging ==========

@@ -695,6 +695,21 @@ export interface IWhatsAppEngine {
    */
   editMessage(chatId: string, messageId: string, body: string): Promise<MessageResult>;
   /**
+   * Pin a message in its chat for a bounded window (seconds — WhatsApp recognises only 86400/24h,
+   * 604800/7d and 2592000/30d). Chat-level, not the message itself: distinct from a chat pin (which
+   * pins the CHAT to the top of the chat list) despite sharing the word.
+   */
+  pinMessage(chatId: string, messageId: string, durationSeconds: number): Promise<void>;
+  unpinMessage(chatId: string, messageId: string): Promise<void>;
+  /** Star or unstar a message. Purely a per-account bookmark; not visible to other participants. */
+  starMessage(chatId: string, messageId: string, star: boolean): Promise<void>;
+  /**
+   * Vote on a poll. `options` are the exact option TEXTS from the poll (not indexes) and replace the
+   * account's current selection; an empty array clears the vote. whatsapp-web.js only — Baileys can
+   * decrypt an incoming vote but has no supported way to encrypt and send one.
+   */
+  votePoll(chatId: string, pollMessageId: string, options: string[]): Promise<void>;
+  /**
    * Read a chat's recent messages, newest first. When `includeMedia` downloads blobs, an optional
    * `mediaMaxBytes` tightens the declared-size pre-gate below the global MEDIA_DOWNLOAD_MAX_BYTES —
    * the status seed uses it to skip downloads the store would discard as over-cap anyway.

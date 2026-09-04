@@ -17,7 +17,7 @@ import { getEffectiveWebVersionInfo, resolveWebVersionPin, __resetWebVersionCach
 import * as fs from 'fs';
 import * as path from 'path';
 import * as qrcode from 'qrcode';
-import { InternalServerErrorException, UnprocessableEntityException } from '@nestjs/common';
+import { BadRequestException, InternalServerErrorException, UnprocessableEntityException } from '@nestjs/common';
 import { EngineNotReadyError } from '../../common/errors/engine-not-ready.error';
 import { MessageNotFoundError } from '../../common/errors/message-not-found.error';
 import { ChannelNotFoundError } from '../../common/errors/channel-not-found.error';
@@ -3529,6 +3529,86 @@ describe('editMessage', () => {
     const err = await adapter.editMessage('628@c.us', 'M1', 'x').catch((e: unknown) => e);
     expect(err).toBeInstanceOf(EngineRefusedError);
     expect((err as Error).message).toMatch(/was rejected/);
+  });
+});
+
+describe('pinMessage / unpinMessage / starMessage / votePoll', () => {
+  const ready = (client: unknown): WhatsAppWebJsAdapter => {
+    const adapter = new WhatsAppWebJsAdapter({ sessionId: 's', sessionDataPath: './data/sessions', puppeteer: {} });
+    (adapter as unknown as { status: EngineStatus }).status = EngineStatus.READY;
+    (adapter as unknown as { client: unknown }).client = client;
+    return adapter;
+  };
+  const chatWith = (messages: unknown[]) => ({
+    getChatById: jest.fn().mockResolvedValue({ fetchMessages: jest.fn().mockResolvedValue(messages) }),
+  });
+
+  it('pins with the requested duration', async () => {
+    const pin = jest.fn().mockResolvedValue(true);
+    const adapter = ready(chatWith([{ id: { _serialized: 'M1' }, pin }]));
+    await adapter.pinMessage('628@c.us', 'M1', 604800);
+    expect(pin).toHaveBeenCalledWith(604800);
+  });
+
+  it('treats a false pin result as a refusal (EngineRefusedError, 403)', async () => {
+    const pin = jest.fn().mockResolvedValue(false);
+    const adapter = ready(chatWith([{ id: { _serialized: 'M1' }, pin }]));
+    await expect(adapter.pinMessage('628@c.us', 'M1', 86400)).rejects.toBeInstanceOf(EngineRefusedError);
+  });
+
+  it('throws MessageNotFoundError when the message is outside the fetch window', async () => {
+    const adapter = ready(chatWith([]));
+    await expect(adapter.pinMessage('628@c.us', 'GONE', 86400)).rejects.toBeInstanceOf(MessageNotFoundError);
+  });
+
+  it('unpins', async () => {
+    const unpin = jest.fn().mockResolvedValue(true);
+    const adapter = ready(chatWith([{ id: { _serialized: 'M1' }, unpin }]));
+    await adapter.unpinMessage('628@c.us', 'M1');
+    expect(unpin).toHaveBeenCalled();
+  });
+
+  it('treats a false unpin result as a refusal (EngineRefusedError, 403)', async () => {
+    const unpin = jest.fn().mockResolvedValue(false);
+    const adapter = ready(chatWith([{ id: { _serialized: 'M1' }, unpin }]));
+    await expect(adapter.unpinMessage('628@c.us', 'M1')).rejects.toBeInstanceOf(EngineRefusedError);
+  });
+
+  it('stars', async () => {
+    const star = jest.fn().mockResolvedValue(undefined);
+    const unstar = jest.fn().mockResolvedValue(undefined);
+    const adapter = ready(chatWith([{ id: { _serialized: 'M1' }, star, unstar }]));
+    await adapter.starMessage('628@c.us', 'M1', true);
+    expect(star).toHaveBeenCalled();
+    expect(unstar).not.toHaveBeenCalled();
+  });
+
+  it('unstars', async () => {
+    const star = jest.fn().mockResolvedValue(undefined);
+    const unstar = jest.fn().mockResolvedValue(undefined);
+    const adapter = ready(chatWith([{ id: { _serialized: 'M1' }, star, unstar }]));
+    await adapter.starMessage('628@c.us', 'M1', false);
+    expect(unstar).toHaveBeenCalled();
+    expect(star).not.toHaveBeenCalled();
+  });
+
+  it('votes on a poll with the given options', async () => {
+    const vote = jest.fn().mockResolvedValue(undefined);
+    const adapter = ready(chatWith([{ id: { _serialized: 'M1' }, vote }]));
+    await adapter.votePoll('628@c.us', 'M1', ['Beach', 'Park']);
+    expect(vote).toHaveBeenCalledWith(['Beach', 'Park']);
+  });
+
+  it('maps a bare-string vote() rejection (not a poll) to BadRequestException, 400', async () => {
+    const vote = jest.fn().mockRejectedValue('message is not a poll creation message');
+    const adapter = ready(chatWith([{ id: { _serialized: 'M1' }, vote }]));
+    await expect(adapter.votePoll('628@c.us', 'M1', ['Beach'])).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('propagates a genuine Error from vote() unchanged', async () => {
+    const vote = jest.fn().mockRejectedValue(new Error('Evaluation failed'));
+    const adapter = ready(chatWith([{ id: { _serialized: 'M1' }, vote }]));
+    await expect(adapter.votePoll('628@c.us', 'M1', ['Beach'])).rejects.toThrow('Evaluation failed');
   });
 });
 

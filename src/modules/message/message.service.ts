@@ -800,6 +800,40 @@ export class MessageService {
     return { messageId: result.id, timestamp: result.timestamp };
   }
 
+  // ========== Pin / Unpin / Star / Poll Vote ==========
+
+  /** Default pin window when the caller does not choose one — matches PinMessageDto's documented default. */
+  private static readonly DEFAULT_PIN_DURATION_SECONDS = 86400;
+
+  /**
+   * Pins the message in its chat. Nothing is persisted locally: a pin is chat state owned by
+   * WhatsApp and expires on its own clock, so a local copy would go stale with nothing to correct it.
+   */
+  async pinMessage(sessionId: string, dto: { chatId: string; messageId: string; durationSeconds?: number }) {
+    const engine = this.getEngine(sessionId);
+    await engine.pinMessage(
+      dto.chatId,
+      dto.messageId,
+      dto.durationSeconds ?? MessageService.DEFAULT_PIN_DURATION_SECONDS,
+    );
+  }
+
+  async unpinMessage(sessionId: string, dto: { chatId: string; messageId: string }) {
+    const engine = this.getEngine(sessionId);
+    await engine.unpinMessage(dto.chatId, dto.messageId);
+  }
+
+  /** Starring is a per-account bookmark; nothing is persisted locally, same reasoning as pinMessage. */
+  async starMessage(sessionId: string, dto: { chatId: string; messageId: string; star: boolean }) {
+    const engine = this.getEngine(sessionId);
+    await engine.starMessage(dto.chatId, dto.messageId, dto.star);
+  }
+
+  async votePoll(sessionId: string, dto: { chatId: string; pollMessageId: string; options: string[] }) {
+    const engine = this.getEngine(sessionId);
+    await engine.votePoll(dto.chatId, dto.pollMessageId, dto.options);
+  }
+
   private getEngine(sessionId: string) {
     return this.engines.require(
       sessionId,

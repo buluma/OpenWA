@@ -9,6 +9,7 @@ import {
   IsArray,
   ArrayMinSize,
   ArrayMaxSize,
+  IsIn,
   MaxLength,
 } from 'class-validator';
 import { ToStrictBoolean, ToStrictNumber } from '../../../common/utils/strict-boolean';
@@ -208,4 +209,94 @@ export class EditMessageDto {
   @IsNotEmpty()
   @MaxLength(4096)
   body: string;
+}
+
+/**
+ * The only pin windows WhatsApp recognises, in seconds. Anything else is rejected here with a 400
+ * rather than turned into an engine-level mystery (whatsapp-web.js answers an unrecognised duration
+ * with a silent `false`; Baileys cannot represent it at all).
+ */
+export const PIN_DURATIONS_SECONDS = [86400, 604800, 2592000] as const;
+
+export class PinMessageDto {
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  chatId: string;
+
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  messageId: string;
+
+  @ApiPropertyOptional({
+    description: 'Pin duration in seconds: 86400 (24h), 604800 (7d) or 2592000 (30d). Defaults to 24h.',
+    enum: PIN_DURATIONS_SECONDS,
+    default: 86400,
+  })
+  // Read strictly for the same reason as DeleteMessageDto.forEveryone: under implicit conversion a
+  // non-numeric string would arrive as NaN and slip past IsIn as a "different" value rather than
+  // being rejected outright.
+  @ToStrictNumber()
+  @IsOptional()
+  @IsIn(PIN_DURATIONS_SECONDS)
+  durationSeconds?: number;
+}
+
+export class UnpinMessageDto {
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  chatId: string;
+
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  messageId: string;
+}
+
+export class StarMessageDto {
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  chatId: string;
+
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  messageId: string;
+
+  @ApiProperty({ description: 'true to star, false to remove the star.' })
+  // Read strictly for the same reason as DeleteMessageDto.forEveryone: implicit conversion would
+  // turn the string "false" into boolean true, silently inverting the caller's intent.
+  @ToStrictBoolean()
+  @IsBoolean()
+  star: boolean;
+}
+
+/** Cap on how many options one vote may select — WhatsApp polls hold at most 12. */
+export const POLL_VOTE_MAX_OPTIONS = 12;
+
+export class VotePollDto {
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  chatId: string;
+
+  @ApiProperty({ description: 'The poll creation message to vote on.' })
+  @IsString()
+  @IsNotEmpty()
+  pollMessageId: string;
+
+  @ApiProperty({
+    description:
+      'The option TEXTS to select, exactly as they appear on the poll. Replaces the current ' +
+      'selection; an empty array clears the vote.',
+    type: [String],
+    maxItems: POLL_VOTE_MAX_OPTIONS,
+  })
+  @IsArray()
+  @ArrayMaxSize(POLL_VOTE_MAX_OPTIONS)
+  @IsString({ each: true })
+  options: string[];
 }

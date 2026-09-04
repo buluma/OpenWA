@@ -149,6 +149,50 @@ class MessagesResource
     }
 
     /**
+     * Pin a message in its chat. Body is {chatId, messageId, durationSeconds?}; durationSeconds
+     * must be 86400 (24h), 604800 (7d) or 2592000 (30d), defaulting to 24h.
+     *
+     * @param array<string,mixed> $body
+     * @return array<string,mixed>
+     */
+    public function pin(string $sessionId, array $body): array
+    {
+        return $this->http->request('POST', "/api/sessions/{$this->http->encodeSegment($sessionId)}/messages/pin", [], $body);
+    }
+
+    /**
+     * @param array<string,mixed> $body
+     * @return array<string,mixed>
+     */
+    public function unpin(string $sessionId, array $body): array
+    {
+        return $this->http->request('POST', "/api/sessions/{$this->http->encodeSegment($sessionId)}/messages/unpin", [], $body);
+    }
+
+    /**
+     * Star or unstar a message. Body is {chatId, messageId, star}.
+     *
+     * @param array<string,mixed> $body
+     * @return array<string,mixed>
+     */
+    public function star(string $sessionId, array $body): array
+    {
+        return $this->http->request('POST', "/api/sessions/{$this->http->encodeSegment($sessionId)}/messages/star", [], $body);
+    }
+
+    /**
+     * Vote on a poll (whatsapp-web.js engine only; 501 on Baileys). Body is
+     * {chatId, pollMessageId, options}.
+     *
+     * @param array<string,mixed> $body
+     * @return array<string,mixed>
+     */
+    public function votePoll(string $sessionId, array $body): array
+    {
+        return $this->http->request('POST', "/api/sessions/{$this->http->encodeSegment($sessionId)}/messages/vote-poll", [], $body);
+    }
+
+    /**
      * @param array<string,mixed> $query
      * @return array<int,array<string,mixed>>
      */

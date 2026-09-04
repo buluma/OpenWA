@@ -120,6 +120,23 @@ describe('MessagesResource — exact paths', () => {
     expect(res.timestamp).toBe(4);
   });
 
+  it('pin / unpin / star / votePoll', async () => {
+    const t = new MockTransport()
+      .on('POST', /\/messages\/pin$/, { body: { success: true } })
+      .on('POST', /\/messages\/unpin$/, { body: { success: true } })
+      .on('POST', /\/messages\/star$/, { body: { success: true } })
+      .on('POST', /\/messages\/vote-poll$/, { body: { success: true } });
+    const c = client(t);
+    await c.messages.pin('s', { chatId: 'a@c.us', messageId: 'm', durationSeconds: 604800 });
+    expect(t.lastCall!.url).toContain('/messages/pin');
+    await c.messages.unpin('s', { chatId: 'a@c.us', messageId: 'm' });
+    expect(t.lastCall!.url).toContain('/messages/unpin');
+    await c.messages.star('s', { chatId: 'a@c.us', messageId: 'm', star: true });
+    expect(t.lastCall!.url).toContain('/messages/star');
+    await c.messages.votePoll('s', { chatId: 'a@c.us', pollMessageId: 'm', options: ['Beach'] });
+    expect(t.lastCall!.url).toContain('/messages/vote-poll');
+  });
+
   it('history puts chatId in the path', async () => {
     const t = new MockTransport().on('GET', /\/messages\/[^/]+\/history$/, { body: [] });
     await client(t).messages.history('s', 'a@c.us', { limit: 5 });

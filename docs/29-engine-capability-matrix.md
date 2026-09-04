@@ -22,7 +22,7 @@ The `rootCause`/`evidence` fields are hand-curated from source traces of the ins
 
 ## Unwired-capability inventory
 
-16 of the 80 interface methods are `not-available` on at least one adapter (21 not-available adapter-cells total). Grouped by cluster below. Each entry shows: status today → rootCause → evidence → wiring note.
+17 of the 84 interface methods are `not-available` on at least one adapter (22 not-available adapter-cells total). Grouped by cluster below. Each entry shows: status today → rootCause → evidence → wiring note.
 
 ### Channels / Newsletter
 
@@ -87,9 +87,11 @@ The `rootCause`/`evidence` fields are hand-curated from source traces of the ins
 |---|---|---|
 | `getChatHistory` | not-available — **library-limitation** | supported |
 | `getMessageReactions` | not-available — **library-limitation** | supported |
+| `votePoll` | not-available — **library-limitation** | supported |
 
 - **`getChatHistory` (baileys, library-limitation).** The only history primitive is `fetchMessageHistory(count, oldestMsgKey, oldestMsgTimestamp)` (`Socket/business.d.ts:25`) — it returns a sync-token *string*, not messages; the messages are delivered later via the `messaging-history.set` event. There is no per-chat `fetchMessages(chatId, limit)` on the socket. A synchronous `Promise<IncomingMessage[]>` for one chat would require an OpenWA-side chat-indexed store populated from `messages.upsert` + `messaging-history.set` events.
 - **`getMessageReactions` (baileys, library-limitation).** No on-demand server fetch. Reactions exist only as event-augmented state on `WAMessage.reactions` (`proto.IReaction[]` at `WAProto/index.d.ts:10623`), mutated by `updateMessageWithReaction` and surfaced via the `messages.reaction` event. The adapter already processes `reactionMessage` events (`baileys.adapter.ts`, the `reactionMessage` branch of `processInboundMessage()`) and emits `onMessageReaction`, but it does **not** persist `.reactions` into its `messageStore` (that branch returns before the `messageStore.put`). A store-backed read would need that persistence added first; even then, only reactions observed since session start are known (no historical backfill).
+- **`votePoll` (baileys, library-limitation).** Baileys exposes `decryptPollVote` for *receiving* a vote only. Sending one needs a hand-built `proto.Message.PollUpdateMessage` with an HMAC-SHA256-encrypted vote keyed by the poll creation message's `messageSecret` — the library has no helper for constructing or encrypting that payload.
 
 ### Groups — disappearing messages
 

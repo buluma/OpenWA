@@ -14,6 +14,7 @@ import com.rmyndharis.openwa.model.ListMessagesQuery;
 import com.rmyndharis.openwa.model.MessageHistoryQuery;
 import com.rmyndharis.openwa.model.MessageListResponse;
 import com.rmyndharis.openwa.model.MessageResponse;
+import com.rmyndharis.openwa.model.PinMessageRequest;
 import com.rmyndharis.openwa.model.ReactMessageRequest;
 import com.rmyndharis.openwa.model.ReactionRecord;
 import com.rmyndharis.openwa.model.ReplyMessageRequest;
@@ -25,7 +26,10 @@ import com.rmyndharis.openwa.model.SendAudioRequest;
 import com.rmyndharis.openwa.model.SendPollRequest;
 import com.rmyndharis.openwa.model.SendTemplateRequest;
 import com.rmyndharis.openwa.model.SendTextRequest;
+import com.rmyndharis.openwa.model.StarMessageRequest;
 import com.rmyndharis.openwa.model.SuccessResult;
+import com.rmyndharis.openwa.model.UnpinMessageRequest;
+import com.rmyndharis.openwa.model.VotePollRequest;
 import java.util.List;
 
 /**
@@ -170,6 +174,46 @@ public final class MessagesResource {
         return client.request(
             HttpMethod.POST,
             "/api/sessions/" + encodeSegment(sessionId) + "/messages/delete",
+            null,
+            body,
+            SuccessResult.class);
+    }
+
+    /** Pin a message in its chat for a bounded window. */
+    public SuccessResult pin(String sessionId, PinMessageRequest body) {
+        return client.request(
+            HttpMethod.POST,
+            "/api/sessions/" + encodeSegment(sessionId) + "/messages/pin",
+            null,
+            body,
+            SuccessResult.class);
+    }
+
+    /** Unpin a message from its chat. */
+    public SuccessResult unpin(String sessionId, UnpinMessageRequest body) {
+        return client.request(
+            HttpMethod.POST,
+            "/api/sessions/" + encodeSegment(sessionId) + "/messages/unpin",
+            null,
+            body,
+            SuccessResult.class);
+    }
+
+    /** Star or unstar a message. */
+    public SuccessResult star(String sessionId, StarMessageRequest body) {
+        return client.request(
+            HttpMethod.POST,
+            "/api/sessions/" + encodeSegment(sessionId) + "/messages/star",
+            null,
+            body,
+            SuccessResult.class);
+    }
+
+    /** Vote on a poll. whatsapp-web.js engine only — 501 on Baileys. */
+    public SuccessResult votePoll(String sessionId, VotePollRequest body) {
+        return client.request(
+            HttpMethod.POST,
+            "/api/sessions/" + encodeSegment(sessionId) + "/messages/vote-poll",
             null,
             body,
             SuccessResult.class);

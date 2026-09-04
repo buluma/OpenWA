@@ -185,6 +185,33 @@ export interface EditMessageRequest {
   body: string;
 }
 
+export interface PinMessageRequest {
+  chatId: Jid;
+  messageId: string;
+  /** Pin duration in seconds: 86400 (24h), 604800 (7d) or 2592000 (30d). Defaults to 24h. */
+  durationSeconds?: 86400 | 604800 | 2592000;
+}
+
+export interface UnpinMessageRequest {
+  chatId: Jid;
+  messageId: string;
+}
+
+export interface StarMessageRequest {
+  chatId: Jid;
+  messageId: string;
+  /** true to star, false to remove the star. */
+  star: boolean;
+}
+
+export interface VotePollRequest {
+  chatId: Jid;
+  /** The poll creation message to vote on. */
+  pollMessageId: string;
+  /** Option TEXTS to select, exactly as they appear on the poll (max 12). Empty array clears the vote. */
+  options: string[];
+}
+
 export interface SendTemplateRequest {
   chatId: Jid;
   /** Provide exactly one of `templateId` or `templateName`. */

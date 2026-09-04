@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `POST`/`sessions/:sessionId/messages/pin` and `.../unpin` pin/unpin a message in its chat for a
+  bounded window (24h/7d/30d); `.../star` stars or unstars a message; `.../vote-poll` votes on a poll
+  (`whatsapp-web.js` only — Baileys has no supported way to send an encrypted vote, `501`). Nothing is
+  persisted locally for pin/star: both are WhatsApp-owned chat/account state. Available in all five
+  SDKs (`messages.pin`/`.unpin`/`.star`/`.votePoll`, snake_case in Python).
+
 ### Fixed
 
 - `STORAGE_TYPE=s3` with no `S3_ACCESS_KEY_ID`/`S3_SECRET_ACCESS_KEY` now warns at startup instead of

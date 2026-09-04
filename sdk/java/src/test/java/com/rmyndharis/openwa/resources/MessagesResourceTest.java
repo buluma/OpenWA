@@ -14,6 +14,7 @@ import com.rmyndharis.openwa.model.EditMessageRequest;
 import com.rmyndharis.openwa.model.ForwardMessageRequest;
 import com.rmyndharis.openwa.model.ListMessagesQuery;
 import com.rmyndharis.openwa.model.MessageHistoryQuery;
+import com.rmyndharis.openwa.model.PinMessageRequest;
 import com.rmyndharis.openwa.model.ReactMessageRequest;
 import com.rmyndharis.openwa.model.ReplyMessageRequest;
 import com.rmyndharis.openwa.model.SendBulkRequest;
@@ -24,6 +25,9 @@ import com.rmyndharis.openwa.model.SendAudioRequest;
 import com.rmyndharis.openwa.model.SendPollRequest;
 import com.rmyndharis.openwa.model.SendTemplateRequest;
 import com.rmyndharis.openwa.model.SendTextRequest;
+import com.rmyndharis.openwa.model.StarMessageRequest;
+import com.rmyndharis.openwa.model.UnpinMessageRequest;
+import com.rmyndharis.openwa.model.VotePollRequest;
 import com.rmyndharis.openwa.support.MockTransport;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -211,6 +215,45 @@ class MessagesResourceTest {
         assertEquals("http://h/api/sessions/s/messages/delete", tx.lastRequest().url());
         assertEquals(HttpMethod.POST, tx.lastRequest().method());
         assertTrue(tx.lastRequest().body().contains("del-msg"));
+    }
+
+    @Test
+    void pinHitsPinPath() {
+        tx.respond(200, "{\"success\":true}");
+        client.messages.pin(
+            "s", PinMessageRequest.builder().chatId("628@c.us").messageId("pin-msg").durationSeconds(604800).build());
+        assertEquals("http://h/api/sessions/s/messages/pin", tx.lastRequest().url());
+        assertEquals(HttpMethod.POST, tx.lastRequest().method());
+        assertTrue(tx.lastRequest().body().contains("pin-msg"));
+    }
+
+    @Test
+    void unpinHitsUnpinPath() {
+        tx.respond(200, "{\"success\":true}");
+        client.messages.unpin("s", UnpinMessageRequest.builder().chatId("628@c.us").messageId("pin-msg").build());
+        assertEquals("http://h/api/sessions/s/messages/unpin", tx.lastRequest().url());
+        assertEquals(HttpMethod.POST, tx.lastRequest().method());
+    }
+
+    @Test
+    void starHitsStarPath() {
+        tx.respond(200, "{\"success\":true}");
+        client.messages.star(
+            "s", StarMessageRequest.builder().chatId("628@c.us").messageId("star-msg").star(true).build());
+        assertEquals("http://h/api/sessions/s/messages/star", tx.lastRequest().url());
+        assertEquals(HttpMethod.POST, tx.lastRequest().method());
+        assertTrue(tx.lastRequest().body().contains("star-msg"));
+    }
+
+    @Test
+    void votePollHitsVotePollPath() {
+        tx.respond(200, "{\"success\":true}");
+        client.messages.votePoll(
+            "s",
+            VotePollRequest.builder().chatId("628@c.us").pollMessageId("poll-msg").options(List.of("Beach")).build());
+        assertEquals("http://h/api/sessions/s/messages/vote-poll", tx.lastRequest().url());
+        assertEquals(HttpMethod.POST, tx.lastRequest().method());
+        assertTrue(tx.lastRequest().body().contains("poll-msg"));
     }
 
     @Test

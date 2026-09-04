@@ -178,6 +178,7 @@ export const ENGINE_CAPABILITY_MATRIX: Record<string, MethodCapability> = {
   leaveGroup: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
   logout: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
   markUnread: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
+  pinMessage: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
   postImageStatus: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
   postTextStatus: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
   postVideoStatus: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
@@ -276,6 +277,7 @@ export const ENGINE_CAPABILITY_MATRIX: Record<string, MethodCapability> = {
     evidence:
       'wwjs Client.setStatus(status) (index.d.ts:245); baileys updateProfileStatus(status) (Socket/chats.d.ts:49)',
   },
+  starMessage: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
   subscribeToChannel: {
     wwjs: { status: 'not-available', rootCause: 'adapter-gap' },
     baileys: { status: 'supported' },
@@ -283,10 +285,17 @@ export const ENGINE_CAPABILITY_MATRIX: Record<string, MethodCapability> = {
       "wwjs Client.subscribeToChannel(channelId) → boolean (index.d.ts:71; Client.js:2533) takes a CHANNEL id, not the interface's invite code, and getChannelByInviteCode(inviteCode) (index.d.ts:103; Client.js:1707) is the invite→channel bridge — the adapter used to pass the invite code straight in and fabricate a Channel from the returned boolean; now an honest EngineNotSupportedError pending a verified two-step wiring; baileys newsletterMetadata('invite', code) + newsletterFollow (Socket/newsletter.d.ts)",
   },
   unblockContact: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
+  unpinMessage: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
   unsubscribeFromChannel: {
     wwjs: { status: 'supported' },
     baileys: { status: 'supported' },
     evidence:
       'wwjs Client.unsubscribeFromChannel(channelId, options?) → boolean (index.d.ts:74; Client.js:2556; false → adapter throws EngineRefusedError); baileys newsletterUnfollow(jid) (Socket/newsletter.d.ts)',
+  },
+  votePoll: {
+    wwjs: { status: 'supported' },
+    baileys: { status: 'not-available', rootCause: 'library-limitation' },
+    evidence:
+      'wwjs Message.vote(selectedOptions) (index.d.ts:1376); baileys exposes decryptPollVote for RECEIVING only — sending one needs a hand-built proto.Message.PollUpdateMessage with HMAC-SHA256 vote encryption keyed by the poll creation messageSecret, which the library has no helper for',
   },
 };

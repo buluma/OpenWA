@@ -1451,6 +1451,133 @@ The edited message keeps its original id.
 
 **Errors:** `400` session not active / unknown body field · `401` missing/invalid API key · `403` key role below OPERATOR · `404` message not found · `500` engine error (e.g. editing another account's message, which WhatsApp forbids)
 
+#### POST /api/sessions/:sessionId/messages/pin
+
+Pin a message in its chat for a bounded window. Nothing is persisted locally — a pin is chat state owned by WhatsApp and expires on its own clock.
+
+**Auth:** API key (OPERATOR)
+
+**Path parameters**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| sessionId | string | Session ID |
+
+**Request body** — `PinMessageDto`
+
+| Field | Type | Required | Constraints | Description |
+| --- | --- | --- | --- | --- |
+| chatId | string | Yes | non-empty | Chat containing the message |
+| messageId | string | Yes | non-empty | Message to pin |
+| durationSeconds | number | No | one of `86400` (24h), `604800` (7d), `2592000` (30d); default `86400` | Pin window |
+
+```json
+{ "chatId": "628123456789@c.us", "messageId": "true_628123456789@c.us_3EB0ABCD", "durationSeconds": 604800 }
+```
+
+**Response** `200`
+
+```json
+{ "success": true }
+```
+
+**Errors:** `400` session not active, or an invalid pin duration · `401` missing/invalid API key · `403` key role below OPERATOR, or the engine refused the pin (e.g. not a group admin) · `404` message not found
+
+#### POST /api/sessions/:sessionId/messages/unpin
+
+Unpin a message from its chat.
+
+**Auth:** API key (OPERATOR)
+
+**Path parameters**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| sessionId | string | Session ID |
+
+**Request body** — `UnpinMessageDto`
+
+| Field | Type | Required | Constraints | Description |
+| --- | --- | --- | --- | --- |
+| chatId | string | Yes | non-empty | Chat containing the message |
+| messageId | string | Yes | non-empty | Message to unpin |
+
+```json
+{ "chatId": "628123456789@c.us", "messageId": "true_628123456789@c.us_3EB0ABCD" }
+```
+
+**Response** `200`
+
+```json
+{ "success": true }
+```
+
+**Errors:** `400` session not active · `401` missing/invalid API key · `403` key role below OPERATOR, or the engine refused the unpin (e.g. not a group admin) · `404` message not found
+
+#### POST /api/sessions/:sessionId/messages/star
+
+Star or unstar a message. Purely a per-account bookmark; not visible to other participants.
+
+**Auth:** API key (OPERATOR)
+
+**Path parameters**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| sessionId | string | Session ID |
+
+**Request body** — `StarMessageDto`
+
+| Field | Type | Required | Constraints | Description |
+| --- | --- | --- | --- | --- |
+| chatId | string | Yes | non-empty | Chat containing the message |
+| messageId | string | Yes | non-empty | Message to star/unstar |
+| star | boolean | Yes | boolean | `true` to star, `false` to remove the star |
+
+```json
+{ "chatId": "628123456789@c.us", "messageId": "true_628123456789@c.us_3EB0ABCD", "star": true }
+```
+
+**Response** `200`
+
+```json
+{ "success": true }
+```
+
+**Errors:** `400` session not active · `401` missing/invalid API key · `403` key role below OPERATOR · `404` message not found
+
+#### POST /api/sessions/:sessionId/messages/vote-poll
+
+Vote on a poll. **whatsapp-web.js only** — Baileys can decrypt an incoming vote but has no supported way to encrypt and send one (`501`).
+
+**Auth:** API key (OPERATOR)
+
+**Path parameters**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| sessionId | string | Session ID |
+
+**Request body** — `VotePollDto`
+
+| Field | Type | Required | Constraints | Description |
+| --- | --- | --- | --- | --- |
+| chatId | string | Yes | non-empty | Chat containing the poll |
+| pollMessageId | string | Yes | non-empty | The poll creation message to vote on |
+| options | string[] | Yes | ≤ 12 items | Option TEXTS (not indexes) to select, exactly as they appear on the poll. Replaces the current selection; an empty array clears the vote |
+
+```json
+{ "chatId": "628123456789@c.us", "pollMessageId": "true_628123456789@c.us_3EB0ABCD", "options": ["Beach"] }
+```
+
+**Response** `200`
+
+```json
+{ "success": true }
+```
+
+**Errors:** `400` session not active, or the target message is not a poll · `401` missing/invalid API key · `403` key role below OPERATOR · `404` message not found · `501` not supported on this engine (Baileys)
+
 #### POST /api/sessions/:sessionId/messages/send-bulk
 
 Send messages to multiple recipients as an async batch — returns immediately and processes in the background.

@@ -121,6 +121,46 @@ func (s *MessagesService) EditMessage(ctx context.Context, sessionID string, bod
 	return &out, nil
 }
 
+// Pin pins a message in its chat for a bounded window.
+func (s *MessagesService) Pin(ctx context.Context, sessionID string, body PinMessageRequest) (*SuccessResult, error) {
+	var out SuccessResult
+	err := s.client.do(ctx, "POST", s.base(sessionID)+"/pin", nil, body, &out)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// Unpin unpins a message from its chat.
+func (s *MessagesService) Unpin(ctx context.Context, sessionID string, body UnpinMessageRequest) (*SuccessResult, error) {
+	var out SuccessResult
+	err := s.client.do(ctx, "POST", s.base(sessionID)+"/unpin", nil, body, &out)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// Star stars or unstars a message.
+func (s *MessagesService) Star(ctx context.Context, sessionID string, body StarMessageRequest) (*SuccessResult, error) {
+	var out SuccessResult
+	err := s.client.do(ctx, "POST", s.base(sessionID)+"/star", nil, body, &out)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// VotePoll votes on a poll. whatsapp-web.js engine only — returns a 501 error on Baileys.
+func (s *MessagesService) VotePoll(ctx context.Context, sessionID string, body VotePollRequest) (*SuccessResult, error) {
+	var out SuccessResult
+	err := s.client.do(ctx, "POST", s.base(sessionID)+"/vote-poll", nil, body, &out)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // History reads live chat history from WhatsApp.
 func (s *MessagesService) History(ctx context.Context, sessionID, chatID string, query *MessageHistoryQuery) ([]ChatHistoryMessage, error) {
 	var out []ChatHistoryMessage

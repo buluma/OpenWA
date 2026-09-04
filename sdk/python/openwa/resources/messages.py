@@ -20,6 +20,7 @@ from ..types import (
     MessageHistoryQuery,
     MessageListResponse,
     MessageResponse,
+    PinMessageRequest,
     ReactionRecord,
     ReactMessageRequest,
     ReplyMessageRequest,
@@ -31,7 +32,10 @@ from ..types import (
     SendPollRequest,
     SendTemplateRequest,
     SendTextRequest,
+    StarMessageRequest,
     SuccessResult,
+    UnpinMessageRequest,
+    VotePollRequest,
 )
 
 if TYPE_CHECKING:
@@ -94,6 +98,20 @@ class MessagesResource:
     def edit_message(self, session_id: str, body: EditMessageRequest) -> MessageResponse:
         """Edit the text of a message sent by this account. 404 when the message is not found."""
         return self._http.request("POST", f"/api/sessions/{quote_segment(session_id)}/messages/edit", body=body)
+
+    def pin(self, session_id: str, body: PinMessageRequest) -> SuccessResult:
+        """Pin a message. ``durationSeconds`` must be 86400, 604800 or 2592000; defaults to 24h."""
+        return self._http.request("POST", f"/api/sessions/{quote_segment(session_id)}/messages/pin", body=body)
+
+    def unpin(self, session_id: str, body: UnpinMessageRequest) -> SuccessResult:
+        return self._http.request("POST", f"/api/sessions/{quote_segment(session_id)}/messages/unpin", body=body)
+
+    def star(self, session_id: str, body: StarMessageRequest) -> SuccessResult:
+        return self._http.request("POST", f"/api/sessions/{quote_segment(session_id)}/messages/star", body=body)
+
+    def vote_poll(self, session_id: str, body: VotePollRequest) -> SuccessResult:
+        """Vote on a poll. whatsapp-web.js engine only — 501 on Baileys."""
+        return self._http.request("POST", f"/api/sessions/{quote_segment(session_id)}/messages/vote-poll", body=body)
 
     def history(
         self, session_id: str, chat_id: str, query: MessageHistoryQuery | None = None
