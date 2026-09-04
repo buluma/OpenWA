@@ -64,6 +64,29 @@ export class MessageService {
     private readonly configService?: ConfigService,
   ) {}
 
+  /**
+   * Second sort key for the message list: what makes the page order TOTAL without scrambling the
+   * order the messages actually arrived in.
+   *
+   * A tiebreaker is required, because `createdAt` is not unique. But `id` is a random v4 uuid, so
+   * it orders a tie group at random: five same-second messages came back shuffled, and the
+   * dashboard renders whatever the server sends. It is also in no index, so SQLite sorted the whole
+   * result into a temp b-tree to apply it.
+   *
+   * SQLite already stores the insertion sequence as `rowid`, the implicit trailing column of every
+   * index, so `(createdAt DESC, rowid DESC)` is a plain backward scan of `(sessionId, createdAt)`:
+   * arrival order restored, and the temp b-tree gone with it. Measured on the pinned better-sqlite3
+   * with the shipped index set.
+   *
+   * PostgreSQL has no equivalent. `ctid` is physical position and moves on every ack UPDATE, so it
+   * cannot order anything, and a monotonic column would need a table rewrite on the hottest table
+   * with no recoverable insertion order to backfill from. It keeps `id`: the walk stays correct,
+   * and a same-second group keeps its uuid order there.
+   */
+  private get orderTiebreak(): 'rowid' | 'id' {
+    return this.messageRepository.manager?.connection?.options?.type === 'postgres' ? 'id' : 'rowid';
+  }
+
   async sendText(sessionId: string, dto: SendTextMessageDto): Promise<MessageResponseDto> {
     const finalDto = await this.applySendingGate(sessionId, 'text', dto);
 
@@ -299,10 +322,18 @@ export class MessageService {
       typeof rawLimit === 'number' && Number.isFinite(rawLimit) ? Math.min(Math.max(Math.trunc(rawLimit), 1), 100) : 50;
     const offset = typeof rawOffset === 'number' && Number.isFinite(rawOffset) ? Math.max(Math.trunc(rawOffset), 0) : 0;
 
+    const tiebreak = this.orderTiebreak;
+
     const query = this.messageRepository
       .createQueryBuilder('message')
       .where('message.sessionId = :sessionId', { sessionId })
       .orderBy('message.createdAt', 'DESC')
+      // `createdAt` is not unique: SQLite stores whole seconds, Postgres NOW() is transaction-scoped
+      // so a bulk write ties every row, and a history backfill stamps WhatsApp's own second-resolution
+      // timestamp. Without a tiebreaker the tie group's order is whatever the plan produces, and
+      // Postgres sorts it differently between two statements, so a page walk repeats some rows and
+      // never returns others. See `orderTiebreak` for why the key differs by dialect.
+      .addOrderBy(`message.${tiebreak}`, 'DESC')
       .skip(offset)
       .take(limit);
 

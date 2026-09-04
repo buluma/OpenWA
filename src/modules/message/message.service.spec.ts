@@ -597,6 +597,7 @@ describe('MessageService', () => {
     interface QbMock {
       where: jest.Mock;
       orderBy: jest.Mock;
+      addOrderBy: jest.Mock;
       skip: jest.Mock;
       take: jest.Mock;
       andWhere: jest.Mock;
@@ -606,6 +607,7 @@ describe('MessageService', () => {
       const qb: QbMock = {
         where: jest.fn(),
         orderBy: jest.fn(),
+        addOrderBy: jest.fn(),
         skip: jest.fn(),
         take: jest.fn(),
         andWhere: jest.fn(),
@@ -613,6 +615,7 @@ describe('MessageService', () => {
       };
       qb.where.mockReturnValue(qb);
       qb.orderBy.mockReturnValue(qb);
+      qb.addOrderBy.mockReturnValue(qb);
       qb.skip.mockReturnValue(qb);
       qb.take.mockReturnValue(qb);
       qb.andWhere.mockReturnValue(qb);
@@ -634,6 +637,35 @@ describe('MessageService', () => {
       expect(qb.take).toHaveBeenCalledWith(100);
       expect(qb.skip).toHaveBeenCalledWith(0);
     });
+
+    // ── getMessages order tiebreak ─────────────────────────────────
+
+    /**
+     * The dialect split, pinned on the default test job: a typo in the accessor would otherwise ship
+     * a `rowid` term to PostgreSQL, where the column does not exist and every message list would 500.
+     */
+    it('keeps id as the tiebreak on postgres, where there is no rowid', async () => {
+      const qb = makeQb();
+      (repository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+      (repository as unknown as { manager: unknown }).manager = {
+        connection: { options: { type: 'postgres' } },
+      };
+
+      await service.getMessages('sess-1');
+
+      expect(qb.addOrderBy).toHaveBeenCalledWith('message.id', 'DESC');
+
+      delete (repository as unknown as { manager?: unknown }).manager;
+    });
+
+    it('orders by rowid on sqlite, which is the arrival order and needs no sort', async () => {
+      const qb = makeQb();
+      (repository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+      await service.getMessages('sess-1');
+
+      expect(qb.addOrderBy).toHaveBeenCalledWith('message.rowid', 'DESC');
+    });
   });
 
   // ── getMessages from-filter (lid resolution becomes a hit) ─────────
@@ -651,6 +683,7 @@ describe('MessageService', () => {
       const qb = {
         where: jest.fn().mockReturnThis(),
         orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
         skip: jest.fn().mockReturnThis(),
         take: jest.fn().mockReturnThis(),
         andWhere: jest
@@ -709,6 +742,7 @@ describe('MessageService', () => {
       const qb = {
         where: jest.fn().mockReturnThis(),
         orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
         skip: jest.fn().mockReturnThis(),
         take: jest.fn().mockReturnThis(),
         andWhere: jest
@@ -777,6 +811,7 @@ describe('MessageService', () => {
       const qb = {
         where: jest.fn().mockReturnThis(),
         orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
         skip: jest.fn().mockReturnThis(),
         take: jest.fn().mockReturnThis(),
         andWhere: jest
@@ -865,6 +900,7 @@ describe('MessageService', () => {
       const qb = {
         where: jest.fn().mockReturnThis(),
         orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
         skip: jest.fn().mockReturnThis(),
         take: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockImplementation((_clause: string, params?: { chatIds?: string[] }) => {
