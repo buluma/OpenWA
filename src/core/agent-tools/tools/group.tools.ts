@@ -38,8 +38,11 @@ export function groupTools(group: GroupService): ToolDescriptor[] {
     },
     {
       name: 'GroupGetInviteCode',
-      description: 'Get the invite code and link for a group.',
+      description:
+        'Get the invite code and link for a group. Requires OPERATOR role: the code is a ' +
+        'transferable join capability, not plain read data.',
       tier: 'read',
+      requiredRole: ApiKeyRole.OPERATOR,
       sessionScoped: true,
       inputSchema: z.object({
         sessionId,

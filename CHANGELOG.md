@@ -27,6 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fields on Contacts, the field selects on Privacy, and the message textarea on Quick Replies now
   carry an accessible name (`aria-label` or an associated `<label>`) instead of relying on visual
   layout alone.
+- The group invite-code read, over REST or the MCP `GroupGetInviteCode` tool, requires the
+  OPERATOR role; the code is a transferable join capability, so a VIEWER key can no longer extract
+  it.
 
 ## [0.12.4] - 2026-08-02
 
