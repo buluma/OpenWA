@@ -15,7 +15,7 @@ import { AuditService } from '../audit/audit.service';
 import { AuditAction } from '../audit/entities/audit-log.entity';
 import { resolveCorsPolicy } from '../../config/bootstrap-security';
 import { resolveClientIp as resolveRequestClientIp, type RequestLike } from '../../common/utils/ip';
-import type { ApiKey } from '../auth/entities/api-key.entity';
+import { ApiKeyRole, type ApiKey } from '../auth/entities/api-key.entity';
 import {
   readWsRateLimitConfig,
   TokenBucketLimiter,
@@ -72,6 +72,18 @@ export function isSessionSubscriptionAllowed(allowedSessions: string[] | null | 
   }
   return allowedSessions.includes(sessionId);
 }
+
+/**
+ * Room holding every socket whose key may NOT read a session's pairing QR over REST
+ * (`GET /sessions/:sessionId/qr` requires OPERATOR). `session.qr` is broadcast with this room
+ * excluded, which covers the explicit event name and both wildcard subscribe forms. Membership is
+ * set from the re-validated key on every subscribe, before any subscription room is joined, so a
+ * socket can never hold a subscription room without it.
+ */
+export const QR_DENIED_ROOM = 'role:qr-denied';
+
+/** Roles allowed to receive `session.qr`. Anything else, including an unknown role, is denied. */
+const QR_ALLOWED_ROLES: ReadonlySet<string> = new Set([ApiKeyRole.OPERATOR, ApiKeyRole.ADMIN]);
 
 /** Why an API key's live WebSocket sockets are being torn down — drives the client-facing message. */
 export type ApiKeyEvictionReason = 'revoked' | 'deleted' | 'authorization_changed' | 'expired';
@@ -364,7 +376,7 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     // here too, not just at connect.
     const rawApiKey = (client.data as { rawApiKey?: string }).rawApiKey;
     const clientIp = this.resolveClientIp(client);
-    let subscriberKey: { allowedSessions?: string[] | null } | null;
+    let subscriberKey: { allowedSessions?: string[] | null; role?: ApiKeyRole } | null;
     try {
       subscriberKey = rawApiKey ? await this.authService.validateApiKey(rawApiKey, clientIp) : null;
     } catch {
@@ -375,6 +387,7 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
       client.disconnect();
       return this.createError('UNAUTHORIZED', 'API key is no longer valid', requestId);
     }
+    this.syncQrAccess(client, subscriberKey.role);
 
     // Enforce per-key session scope against the FRESH key: a key restricted to specific
     // sessions must not subscribe to '*' or a session outside its allowlist (#221).
@@ -416,6 +429,15 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
       requestId,
       timestamp: new Date().toISOString(),
     };
+  }
+
+  /** Put the socket in or out of the QR-denied room for its key's current role. */
+  private syncQrAccess(client: Socket, role: ApiKeyRole | undefined): void {
+    if (role && QR_ALLOWED_ROLES.has(role)) {
+      void client.leave(QR_DENIED_ROOM);
+    } else {
+      void client.join(QR_DENIED_ROOM);
+    }
   }
 
   private handleUnsubscribe(client: Socket, message: WSUnsubscribeRequest): WSUnsubscribedResponse {
@@ -499,7 +521,7 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
   /**
    * Emit event to specific rooms based on sessionId and event type
    */
-  private emitToRooms(sessionId: string, event: string, data: unknown): void {
+  private emitToRooms(sessionId: string, event: string, data: unknown, exceptRoom?: string): void {
     const eventMessage: WSEventMessage = {
       type: 'event',
       payload: { event, sessionId, data },
@@ -510,12 +532,13 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     // unions the rooms into a single broadcast, so a socket joined to several of
     // them receives the event exactly once (Socket.IO dedups recipients per
     // broadcast). Four separate .emit() calls would deliver one copy per room.
-    this.server
+    // `except` is resolved by the adapter, so the exclusion also holds across nodes with Redis.
+    const broadcast = this.server
       .to(buildRoomName(sessionId, event))
       .to(buildRoomName(sessionId, '*'))
       .to(buildRoomName('*', event))
-      .to(buildRoomName('*', '*'))
-      .emit('message', eventMessage);
+      .to(buildRoomName('*', '*'));
+    (exceptRoom ? broadcast.except(exceptRoom) : broadcast).emit('message', eventMessage);
   }
 
   /**
@@ -540,10 +563,11 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
   }
 
   /**
-   * Emit QR code update for a session
+   * Emit QR code update for a session. Scanning the QR links a device to the account, so it only
+   * reaches keys that may read it over REST (OPERATOR and above).
    */
   emitQRCode(sessionId: string, qrCode: string) {
-    this.emitToRooms(sessionId, 'session.qr', { qrCode });
+    this.emitToRooms(sessionId, 'session.qr', { qrCode }, QR_DENIED_ROOM);
   }
 
   /**
