@@ -705,9 +705,9 @@ export const sessionApi = {
       method: 'POST',
       body: JSON.stringify({ chatId }),
     }),
-  getChatMessages: (id: string, chatId: string, limit = 100) =>
+  getChatMessages: (id: string, chatId: string, limit = 100, offset = 0) =>
     request<{ messages: ChatMessage[]; total: number }>(
-      `/sessions/${id}/messages?chatId=${encodeURIComponent(chatId)}&limit=${limit}`,
+      `/sessions/${id}/messages?chatId=${encodeURIComponent(chatId)}&limit=${limit}&offset=${offset}`,
     ),
   // Live history straight from WhatsApp (bypasses the DB) — backfills a thread the gateway never
   // captured, e.g. a freshly paired session whose persisted store is still empty.

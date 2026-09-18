@@ -4,14 +4,7 @@ import { Trans, useTranslation } from 'react-i18next';
 import { nextReconnectState } from '../utils/reconnectState';
 import { applyIncomingToChatList } from '../utils/chatList';
 import { filterChats, filterChannels, groupStatusesByContact } from '../utils/chatFilters';
-import {
-  ArrowLeft,
-  Loader2,
-  Megaphone,
-  CircleDashed,
-  AlertCircle,
-  MessageSquare,
-} from 'lucide-react';
+import { ArrowLeft, Loader2, Megaphone, CircleDashed, AlertCircle, MessageSquare } from 'lucide-react';
 import { useProfilePicture } from '../hooks/useProfilePicture';
 import { useProfilePictures } from '../hooks/useProfilePictures';
 import { useResolvedPhone } from '../hooks/useResolvedPhone';
@@ -40,7 +33,12 @@ import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useToast } from '../hooks/useToast';
 import { PageHeader } from '../components/PageHeader';
 import { GlobalSearch } from '../components/GlobalSearch';
-import { useChatMessages, useChatMessagesActions, messagesQueryKey } from '../hooks/useChatMessages';
+import {
+  useChatMessages,
+  useChatMessagesActions,
+  useLoadOlderMessages,
+  messagesQueryKey,
+} from '../hooks/useChatMessages';
 import { useChannelMessages } from '../hooks/useChannelMessages';
 import { useContactStatuses } from '../hooks/useContactStatuses';
 import { useChatScrollPosition } from '../hooks/useChatScrollPosition';
@@ -230,7 +228,34 @@ export function Chats() {
     containerRef: messagesContainerRef,
     onMessageAppended,
     onMediaLoad,
+    onOlderMessagesPrepended,
   } = useChatScrollPosition(activeChat?.id ?? null, messages.length > 0);
+
+  const { loadOlder, isLoadingOlder } = useLoadOlderMessages();
+
+  // Load an older page once the user scrolls near the top. No dep array (like the scroll-position
+  // hook's own listener above): re-attaching each render keeps the closure over selectedSessionId /
+  // activeChat / loadOlder fresh without a stale-closure bug, and addEventListener/removeEventListener
+  // on the same element+handler is cheap.
+  useEffect(() => {
+    const el = messagesContainerRef.current;
+    const sessionId = selectedSessionId;
+    const chatId = activeChat?.id;
+    if (!el || !sessionId || !chatId) return undefined;
+    // 200px: a page's worth of bubbles before the user actually sees the top, so the fetch is
+    // already resolving by the time they would notice a gap.
+    const NEAR_TOP_PX = 200;
+    const onScroll = () => {
+      if (el.scrollTop > NEAR_TOP_PX) return;
+      const prevScrollHeight = el.scrollHeight;
+      const prevScrollTop = el.scrollTop;
+      void loadOlder(sessionId, chatId).then(loaded => {
+        if (loaded) onOlderMessagesPrepended(prevScrollHeight, prevScrollTop);
+      });
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  });
 
   // Batch profile-picture fetch for the visible chat list — ONE request for the whole sidebar
   // (per-row queries burst the per-IP throttle into 429s). Sorted-key cached 1h; rows fall back
@@ -903,6 +928,7 @@ export function Chats() {
                   activeChat={activeChat}
                   messages={messages}
                   loadingMessages={loadingMessages}
+                  loadingOlderMessages={selectedSessionId ? isLoadingOlder(selectedSessionId, activeChat.id) : false}
                   messagesError={messagesError}
                   messagesContainerRef={messagesContainerRef}
                   onMediaLoad={onMediaLoad}
@@ -937,11 +963,7 @@ export function Chats() {
               // subscribed channels are a broadcast feed, not a two-way conversation.
               <div key={activeChannel.id} className="channel-room">
                 <header className="chats-room-header">
-                  <button
-                    className="room-back"
-                    onClick={() => setActiveChannel(null)}
-                    aria-label={t('common.back')}
-                  >
+                  <button className="room-back" onClick={() => setActiveChannel(null)} aria-label={t('common.back')}>
                     <ArrowLeft size={20} />
                   </button>
                   <Megaphone size={20} />
@@ -987,7 +1009,11 @@ export function Chats() {
                     <ArrowLeft size={20} />
                   </button>
                   <CircleDashed size={20} />
-                  <h2>{activeStatusGroup.contact.name ?? activeStatusGroup.contact.pushName ?? activeStatusGroup.contact.id}</h2>
+                  <h2>
+                    {activeStatusGroup.contact.name ??
+                      activeStatusGroup.contact.pushName ??
+                      activeStatusGroup.contact.id}
+                  </h2>
                 </header>
                 <div className="messages-list" ref={statusFeedRef}>
                   {activeStatusGroup.items.map(item => (
@@ -1000,9 +1026,7 @@ export function Chats() {
                       style={
                         item.type === 'text' && (item.backgroundColor || item.font)
                           ? {
-                              ...(item.backgroundColor
-                                ? { backgroundColor: item.backgroundColor, color: '#fff' }
-                                : {}),
+                              ...(item.backgroundColor ? { backgroundColor: item.backgroundColor, color: '#fff' } : {}),
                               ...statusFontStyle(item.font),
                             }
                           : undefined

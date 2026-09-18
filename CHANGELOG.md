@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Dashboard: the Sessions page can set a proxy when creating a session, and view, change or clear it
+  afterward, against the `GET`/`PATCH :sessionId/proxy` routes. Credentials are never round-tripped
+  back by the read.
+- Dashboard: the Message Tester's bulk-recipients box accepts a `.txt`/`.csv` file upload (one
+  recipient per line, appended to the textarea), rejecting files over 2 MB before reading them.
+- Dashboard: the Chats page loads older history as you scroll up, paged by DB rows already fetched,
+  holding the reading position when a page is prepended.
 - `POST /api/sessions/:sessionId/messages/pin` and `.../unpin` pin/unpin a message in its chat for a
   bounded window (24h/7d/30d); `.../star` stars or unstars a message; `.../vote-poll` votes on a poll
   (`whatsapp-web.js` only — Baileys has no supported way to send an encrypted vote, `501`). Nothing is
