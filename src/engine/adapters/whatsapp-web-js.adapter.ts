@@ -1473,6 +1473,21 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
     return this.contacts.unblockContact(contactId);
   }
 
+  // The read half of block/unblock
+  getBlockedContacts(): Promise<string[]> {
+    return this.contacts.getBlockedContacts();
+  }
+
+  // Save/edit an addressbook entry
+  upsertContact(contactId: string, firstName: string, lastName?: string): Promise<void> {
+    return this.contacts.upsertContact(contactId, firstName, lastName);
+  }
+
+  // Remove an addressbook entry
+  deleteContact(contactId: string): Promise<void> {
+    return this.contacts.deleteContact(contactId);
+  }
+
   // ========== Profile (own account) ==========
 
   setProfileName(name: string): Promise<void> {

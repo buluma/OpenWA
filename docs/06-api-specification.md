@@ -1855,6 +1855,81 @@ Resolve a contact id (e.g. an `@lid`) to a phone number (MSISDN digits), best-ef
 
 **Errors:** `400` session is not started · `401` missing/invalid API key
 
+#### GET /api/sessions/:sessionId/contacts/blocked
+
+List the contacts this account has blocked. The read half of the block/unblock endpoints below.
+
+**Auth:** API key
+
+**Path parameters**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| sessionId | string | Session ID. |
+
+**Response** `200`
+
+A bare array of neutral contact ids — ids only, because that is the honest common subset:
+whatsapp-web.js resolves full contact models but Baileys' blocklist query answers bare jids.
+
+```json
+["6281234567890@c.us", "6289876543210@c.us"]
+```
+
+**Errors:** `400` session is not started · `401` missing/invalid API key
+
+#### PUT /api/sessions/:sessionId/contacts/:contactId
+
+Save a contact to the account's addressbook, or edit an existing entry.
+
+**Auth:** API key (OPERATOR)
+
+**Path parameters**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| sessionId | string | Session ID. |
+| contactId | string | Contact id — must resolve to a phone number: a phone-based JID (`6281234567890@c.us`) or a bare number. A privacy id (`@lid`) with no known phone mapping is refused with `400`, since the addressbook is keyed by phone number, not JID. |
+
+**Request body**
+
+```json
+{ "firstName": "Ada", "lastName": "Lovelace" }
+```
+
+`firstName` is required (1–100 chars). `lastName` is optional (omit for a single-name contact).
+
+**Response** `200`
+
+```json
+{ "success": true, "message": "Contact saved" }
+```
+
+**Errors:** `400` session is not started, invalid body, or contactId does not name a phone-addressable person · `401` missing/invalid API key · `403` key role below OPERATOR
+
+#### DELETE /api/sessions/:sessionId/contacts/:contactId
+
+Remove a contact from the account's addressbook.
+
+**Auth:** API key (OPERATOR)
+
+**Path parameters**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| sessionId | string | Session ID. |
+| contactId | string | Contact id — same phone-addressability rule as the PUT above. |
+
+No request body.
+
+**Response** `200`
+
+```json
+{ "success": true, "message": "Contact deleted" }
+```
+
+**Errors:** `400` session is not started, or contactId does not name a phone-addressable person · `401` missing/invalid API key · `403` key role below OPERATOR
+
 #### POST /api/sessions/:sessionId/contacts/:contactId/block
 
 Block a contact.

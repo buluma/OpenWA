@@ -14,6 +14,8 @@ export interface BaileysContactsHost {
   getSocket(): WASocket;
   readonly logger: ReturnType<typeof createLogger>;
   normalizedSelfJid(): string;
+  toNeutralJid(jid: string): string;
+  toEngineJid(jid: string): string;
   listContacts(): Contact[];
   findContact(contactId: string): Contact | null;
   resolvePhone(contactId: string): string | null;
@@ -51,6 +53,30 @@ export class BaileysContacts {
   async unblockContact(contactId: string): Promise<void> {
     this.host.ensureReady();
     await this.sock().updateBlockStatus(contactId, 'unblock');
+  }
+
+  async getBlockedContacts(): Promise<string[]> {
+    this.host.ensureReady();
+    const jids = await this.sock().fetchBlocklist();
+    return (jids ?? []).filter((jid): jid is string => Boolean(jid)).map(jid => this.host.toNeutralJid(jid));
+  }
+
+  // Baileys keys the addressbook app-state patch by the raw jid it is handed (no jidNormalizedUser,
+  // unlike the send path), so the neutral @c.us dialect the API speaks must be folded to the engine
+  // dialect first or the write silently targets a key WhatsApp never reads while reporting success.
+  async upsertContact(contactId: string, firstName: string, lastName = ''): Promise<void> {
+    this.host.ensureReady();
+    const fullName = [firstName, lastName].filter(Boolean).join(' ');
+    await this.sock().addOrEditContact(this.host.toEngineJid(contactId), {
+      firstName,
+      fullName,
+      saveOnPrimaryAddressbook: false,
+    });
+  }
+
+  async deleteContact(contactId: string): Promise<void> {
+    this.host.ensureReady();
+    await this.sock().removeContact(this.host.toEngineJid(contactId));
   }
 
   async setProfileName(name: string): Promise<void> {

@@ -4933,6 +4933,37 @@ describe('WhatsAppWebJsAdapter honest outcomes (no phantom success)', () => {
     });
   });
 
+  describe('addressbook + blocklist (getBlockedContacts / upsertContact / deleteContact)', () => {
+    it('getBlockedContacts maps the blocked-contacts list to bare ids', async () => {
+      const getBlockedContacts = jest
+        .fn()
+        .mockResolvedValue([{ id: { _serialized: '628111@c.us' } }, { id: { _serialized: '628222@c.us' } }]);
+      const adapter = readyAdapter({ getBlockedContacts });
+      await expect(adapter.getBlockedContacts()).resolves.toEqual(['628111@c.us', '628222@c.us']);
+    });
+
+    it('upsertContact saves under the phone number (user-part), passing lastName positionally', async () => {
+      const saveOrEditAddressbookContact = jest.fn().mockResolvedValue(undefined);
+      const adapter = readyAdapter({ saveOrEditAddressbookContact });
+      await adapter.upsertContact('628111@c.us', 'Ada', 'Lovelace');
+      expect(saveOrEditAddressbookContact).toHaveBeenCalledWith('628111', 'Ada', 'Lovelace');
+    });
+
+    it('upsertContact passes an empty string, not undefined, when lastName is omitted', async () => {
+      const saveOrEditAddressbookContact = jest.fn().mockResolvedValue(undefined);
+      const adapter = readyAdapter({ saveOrEditAddressbookContact });
+      await adapter.upsertContact('628111@c.us', 'Ada');
+      expect(saveOrEditAddressbookContact).toHaveBeenCalledWith('628111', 'Ada', '');
+    });
+
+    it('deleteContact removes by the phone number (user-part)', async () => {
+      const deleteAddressbookContact = jest.fn().mockResolvedValue(undefined);
+      const adapter = readyAdapter({ deleteAddressbookContact });
+      await adapter.deleteContact('628111@c.us');
+      expect(deleteAddressbookContact).toHaveBeenCalledWith('628111');
+    });
+  });
+
   describe('WhatsAppWebJsAdapter onboarding modal watcher (#982)', () => {
     type ModalProbe = { modalPresent: boolean; dismissed: boolean };
 

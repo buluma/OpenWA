@@ -1,4 +1,4 @@
-import { chatKind, isChannelJid, parseWaId, toNeutralJid, userPart } from './wa-id';
+import { chatKind, isChannelJid, isIndividualWid, parseWaId, toNeutralJid, userPart } from './wa-id';
 
 describe('wa-id', () => {
   describe('userPart', () => {
@@ -42,6 +42,23 @@ describe('wa-id', () => {
       expect(isChannelJid('123@broadcast')).toBe(false);
       expect(isChannelJid('status@broadcast')).toBe(false);
       expect(isChannelJid('not-a-jid')).toBe(false);
+    });
+  });
+
+  describe('isIndividualWid', () => {
+    it('is true for a phone-addressed user or a numeric privacy id', () => {
+      expect(isIndividualWid('628111@c.us')).toBe(true);
+      expect(isIndividualWid('628111@s.whatsapp.net')).toBe(true);
+      expect(isIndividualWid('99111@lid')).toBe(true);
+    });
+
+    it('is false for a group, channel, broadcast, status id, or free text', () => {
+      expect(isIndividualWid('120-456@g.us')).toBe(false);
+      expect(isIndividualWid('120363-abc@newsletter')).toBe(false);
+      expect(isIndividualWid('123@broadcast')).toBe(false);
+      expect(isIndividualWid('status@broadcast')).toBe(false);
+      expect(isIndividualWid('NOT A USER@c.us')).toBe(false); // non-numeric user-part
+      expect(isIndividualWid('not-a-jid')).toBe(false);
     });
   });
 

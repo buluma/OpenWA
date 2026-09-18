@@ -96,4 +96,51 @@ describe('ContactService', () => {
     expect(out).toEqual({ 'a@c.us': 'https://pps/1.jpg', 'b@c.us': null });
     expect(Date.now() - started).toBeLessThan(12_000);
   }, 15_000);
+
+  it('delegates getBlockedContacts to the engine', async () => {
+    const getBlockedContacts = jest.fn().mockResolvedValue(['628111@c.us']);
+    await expect(makeService({ getBlockedContacts }).getBlockedContacts('s1')).resolves.toEqual(['628111@c.us']);
+  });
+
+  describe('upsertContact', () => {
+    it('saves a phone-based contact, qualifying a bare number to @c.us', async () => {
+      const upsertContact = jest.fn().mockResolvedValue(undefined);
+      await makeService({ upsertContact }).upsertContact('s1', '628123456789', 'Ada', 'Lovelace');
+      expect(upsertContact).toHaveBeenCalledWith('628123456789@c.us', 'Ada', 'Lovelace');
+    });
+
+    it('saves an already-neutral @c.us id unchanged', async () => {
+      const upsertContact = jest.fn().mockResolvedValue(undefined);
+      await makeService({ upsertContact }).upsertContact('s1', '628123456789@c.us', 'Ada');
+      expect(upsertContact).toHaveBeenCalledWith('628123456789@c.us', 'Ada', undefined);
+    });
+
+    it('refuses a privacy id (@lid) — the addressbook is keyed by phone number', () => {
+      const upsertContact = jest.fn();
+      expect(() => makeService({ upsertContact }).upsertContact('s1', '99999@lid', 'Ada')).toThrow(BadRequestException);
+      expect(upsertContact).not.toHaveBeenCalled();
+    });
+
+    it('refuses a group id — not a person', () => {
+      const upsertContact = jest.fn();
+      expect(() => makeService({ upsertContact }).upsertContact('s1', '123-456@g.us', 'Ada')).toThrow(
+        BadRequestException,
+      );
+      expect(upsertContact).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('deleteContact', () => {
+    it('deletes a phone-based contact', async () => {
+      const deleteContact = jest.fn().mockResolvedValue(undefined);
+      await makeService({ deleteContact }).deleteContact('s1', '628123456789@c.us');
+      expect(deleteContact).toHaveBeenCalledWith('628123456789@c.us');
+    });
+
+    it('refuses a privacy id (@lid)', () => {
+      const deleteContact = jest.fn();
+      expect(() => makeService({ deleteContact }).deleteContact('s1', '99999@lid')).toThrow(BadRequestException);
+      expect(deleteContact).not.toHaveBeenCalled();
+    });
+  });
 });

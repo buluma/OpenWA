@@ -18,6 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`whatsapp-web.js` only — Baileys has no supported way to send an encrypted vote, `501`). Nothing is
   persisted locally for pin/star: both are WhatsApp-owned chat/account state. Available in all five
   SDKs (`messages.pin`/`.unpin`/`.star`/`.votePoll`, snake_case in Python).
+- `GET /api/sessions/:sessionId/contacts/blocked` lists the contacts this account has blocked, the
+  read half of the existing block/unblock endpoints. `PUT` and `DELETE
+  /api/sessions/:sessionId/contacts/:contactId` save/edit or remove a contact from the account's
+  addressbook. The addressbook is keyed by phone number, so a privacy id (`@lid`) with no known
+  phone mapping is refused with `400` on both writes.
 
 ### Fixed
 
