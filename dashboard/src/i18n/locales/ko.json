@@ -299,7 +299,8 @@
       "reconnect": "재연결",
       "unlink": "연결 해제",
       "delete": "삭제",
-      "killStuck": "강제 종료"
+      "killStuck": "강제 종료",
+      "proxy": "Proxy"
     },
     "toasts": {
       "readyTitle": "세션 준비 완료",
@@ -360,6 +361,23 @@
     "start": {
       "teardownPendingTitle": "세션 시작 중",
       "teardownPending": "이 세션의 자격 증명 해체가 아직 진행 중입니다. 잠시 기다린 후 다시 시도하세요."
+    },
+    "proxy": {
+      "title": "Proxy Configuration",
+      "status": "Current",
+      "enabled": "Use proxy",
+      "url": "Proxy URL",
+      "urlPlaceholder": "http://user:pass@proxy.example.com:8080",
+      "urlKeepPlaceholder": "Enter new URL to replace {{host}} (credentials not shown)",
+      "configured": "{{host}} ({{type}})",
+      "noProxy": "No proxy configured",
+      "hasCredentials": "Credentials are stored but not shown. Enter a full URL to change them.",
+      "hint": "Changes apply on the next session start, not to a running connection. The proxy must be real and reachable — an unreachable value blocks QR delivery and start returns 504.",
+      "createHint": "Only needed when your network cannot reach WhatsApp directly. Must be a real, reachable proxy.",
+      "invalidUrl": "Enter a valid http, https, socks4, or socks5 proxy URL.",
+      "saveSuccessTitle": "Proxy Saved",
+      "saveSuccess": "Proxy settings saved. They apply on the next session start.",
+      "saveError": "Failed to save proxy settings"
     }
   },
   "webhooks": {

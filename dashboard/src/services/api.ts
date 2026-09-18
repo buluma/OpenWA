@@ -22,6 +22,15 @@ if (API_ORIGIN) warnIfInsecureHttpUrl(API_ORIGIN, 'VITE_API_URL');
 // Types
 // =============================================================================
 
+export type SessionProxyType = 'http' | 'https' | 'socks4' | 'socks5';
+
+export interface SessionProxy {
+  enabled: boolean;
+  proxyType: SessionProxyType | null;
+  proxyHost: string | null;
+  hasCredentials: boolean;
+}
+
 export interface Session {
   id: string;
   name: string;
@@ -652,15 +661,26 @@ async function requestBlob(endpoint: string): Promise<Blob> {
 // Session API
 // =============================================================================
 
+export interface CreateSessionOptions {
+  proxyUrl?: string;
+  proxyType?: SessionProxyType;
+}
+
 export const sessionApi = {
   list: () => request<Session[]>('/sessions'),
   get: (id: string) => request<Session>(`/sessions/${id}`),
-  create: (name: string) =>
+  create: (name: string, options?: CreateSessionOptions) =>
     request<Session>('/sessions', {
       method: 'POST',
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, ...options }),
     }),
   delete: (id: string) => request<void>(`/sessions/${id}`, { method: 'DELETE' }),
+  getProxy: (id: string) => request<SessionProxy>(`/sessions/${id}/proxy`),
+  updateProxy: (id: string, patch: { proxyUrl?: string | null }) =>
+    request<SessionProxy>(`/sessions/${id}/proxy`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    }),
   start: (id: string) => request<Session>(`/sessions/${id}/start`, { method: 'POST' }),
   stop: (id: string) => request<Session>(`/sessions/${id}/stop`, { method: 'POST' }),
   logout: (id: string) => request<Session>(`/sessions/${id}/logout`, { method: 'POST' }),
