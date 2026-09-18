@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Single-message autoreply rules under `/api/sessions/:sessionId/automation-rules` (create, list, get,
+  update, delete — all OPERATOR). A rule matches an inbound message using the same filter shape as
+  webhook `filters` and replies with `replyText` through the ordinary send path; at most one rule
+  replies per message, and a per-chat `cooldownSeconds` (default 60) bounds two auto-repliers
+  answering each other forever. A session may hold at most 32 rules.
 - `POST /api/sessions/:sessionId/messages/pin` and `.../unpin` pin/unpin a message in its chat for a
   bounded window (24h/7d/30d); `.../star` stars or unstars a message; `.../vote-poll` votes on a poll
   (`whatsapp-web.js` only — Baileys has no supported way to send an encrypted vote, `501`). Nothing is

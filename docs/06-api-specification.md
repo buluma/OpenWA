@@ -5121,6 +5121,90 @@ Reject a currently ringing incoming call. Only a live call can be rejected — t
 
 > **Auto-reject per session.** Set `"config": { "autoRejectCalls": true }` when creating a session to have the server reject every incoming call automatically — the `call.received` event is still dispatched first, so automations keep full visibility.
 
+### 6.4.15 Automation Rules
+
+Single-message autoreply rules, managed under `/api/sessions/:sessionId/automation-rules`. Every route requires **OPERATOR** role or higher. A rule matches an inbound message using the same filter shape and evaluator as webhook `filters` (§6.4.8's `message` family: sender, recipient, body, type, isGroup, fromMe, hasMedia, mentions); omitted or empty `conditions` match every inbound message. On the first match, the rule's `replyText` is sent back into the chat through the ordinary send path (send pacing and plugin vetoes included). At most one rule replies per inbound message — first match in evaluation order (creation time, id as the same-second tiebreak) wins. After a rule replies in a chat it stays quiet there for `cooldownSeconds` (default 60; 0 disables the guard, knowingly — the point of the default is to bound two auto-repliers answering each other forever). A session may hold at most 32 rules.
+
+#### POST /api/sessions/:sessionId/automation-rules
+
+Create an autoreply rule.
+
+**Auth:** API key (OPERATOR)
+
+**Path parameters**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| sessionId | string | Session ID |
+
+**Request body**
+
+| Field | Type | Description |
+| --- | --- | --- |
+| name | string | Display name, max 100 chars. |
+| replyText | string | Text sent back into the chat when the rule matches, max 4096 chars. |
+| conditions | object \| null | Optional. Webhook filter shape (`message` family). Omitted/empty matches every inbound message. |
+| cooldownSeconds | integer | Optional, default 60, max 86400. Quiet period per chat after a reply. |
+| enabled | boolean | Optional, default true. |
+
+**Response** `201`
+
+```json
+{
+  "id": "f1e2d3c4-b5a6-7890-1234-567890abcdef",
+  "sessionId": "my-session",
+  "name": "Greet new enquiries",
+  "enabled": true,
+  "conditions": null,
+  "replyText": "Thanks for reaching out — we reply within the hour.",
+  "cooldownSeconds": 60,
+  "createdAt": "2026-06-25T10:00:00.000Z",
+  "updatedAt": "2026-06-25T10:00:00.000Z"
+}
+```
+
+**Errors:** `400` invalid rule (bad conditions, over-limit text) or the session already holds 32 rules · `401` missing/invalid `X-API-Key` · `403` key lacks OPERATOR role
+
+#### GET /api/sessions/:sessionId/automation-rules
+
+List the session's autoreply rules, in evaluation order.
+
+**Auth:** API key (OPERATOR)
+
+**Response** `200` — array of the same shape as the create response. Empty array if the session has no rules.
+
+**Errors:** `401` missing/invalid `X-API-Key` · `403` key lacks OPERATOR role
+
+#### GET /api/sessions/:sessionId/automation-rules/:ruleId
+
+Get one autoreply rule.
+
+**Auth:** API key (OPERATOR)
+
+**Response** `200` — same shape as the create response.
+
+**Errors:** `401` missing/invalid `X-API-Key` · `403` key lacks OPERATOR role · `404` no such rule in this session
+
+#### PUT /api/sessions/:sessionId/automation-rules/:ruleId
+
+Update an autoreply rule. Every field is optional; an omitted field keeps its current value.
+
+**Auth:** API key (OPERATOR)
+
+**Response** `200` — the updated rule, same shape as the create response.
+
+**Errors:** `401` missing/invalid `X-API-Key` · `403` key lacks OPERATOR role · `404` no such rule in this session
+
+#### DELETE /api/sessions/:sessionId/automation-rules/:ruleId
+
+Delete an autoreply rule.
+
+**Auth:** API key (OPERATOR)
+
+**Response** `204` — no body.
+
+**Errors:** `401` missing/invalid `X-API-Key` · `403` key lacks OPERATOR role · `404` no such rule in this session
+
 ## 6.5 Real-time API (WebSocket)
 
 Live events are delivered over a **Socket.IO** connection (not a raw WebSocket). The server mounts a single Socket.IO namespace, **`/events`**, on the same port as the REST API. There are no REST routes in this module.
