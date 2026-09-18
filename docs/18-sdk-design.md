@@ -199,7 +199,7 @@ Media bodies share the `SendMediaRequest` shape: `{ chatId, url? | base64?, mime
 | `getGroupSettings` | `getGroupSettings(sessionId, groupId)` | Get the group settings (announce / locked / ephemeral timer). |
 | `updateGroupSettings` | `updateGroupSettings(sessionId, groupId, body)` | Update the group settings (at least one field required). **OPERATOR** |
 | `leave` | `leave(sessionId, groupId)` | Leave a group. **OPERATOR** |
-| `inviteCode` | `inviteCode(sessionId, groupId)` | Get the group invite code and link. |
+| `inviteCode` | `inviteCode(sessionId, groupId)` | Get the group invite code and link. **OPERATOR** |
 | `revokeInviteCode` | `revokeInviteCode(sessionId, groupId)` | Revoke the current invite code and generate a new one. **OPERATOR** |
 
 #### `chats`

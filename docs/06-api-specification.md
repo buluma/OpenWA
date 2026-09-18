@@ -1987,9 +1987,9 @@ Raw object (no envelope). `engine.getGroupInfo()` returns `GroupInfo | null`; th
 
 #### GET /api/sessions/:sessionId/groups/:groupId/invite-code
 
-Get the group invite code and full invite link.
+Get the group invite code and full invite link. The code is a transferable join capability rather than plain read data, so it sits at OPERATOR, like the QR endpoint.
 
-**Auth:** API key
+**Auth:** API key (OPERATOR)
 
 **Path parameters**
 
@@ -2009,7 +2009,7 @@ Get the group invite code and full invite link.
 }
 ```
 
-**Errors:** `400` session is not started · `401` missing/invalid `X-API-Key`
+**Errors:** `400` session is not started · `401` missing/invalid `X-API-Key` · `403` key lacks OPERATOR role
 
 #### POST /api/sessions/:sessionId/groups
 
@@ -5228,6 +5228,7 @@ A subscribe request whose `events` array contains no recognized name (after filt
 - **`sessionId: "*"`** subscribes to every session; **`events: ["*"]`** subscribes to every subscribable event. They combine (e.g. `"*"` + `["*"]` = every event of every session).
 - The API key is **re-validated on every `subscribe`** (not just at connect), so a key revoked or expired mid-connection is caught — the server replies `UNAUTHORIZED` and disconnects.
 - **Per-key session scope is enforced** against the fresh key: a key restricted via `allowedSessions` may NOT subscribe to `"*"` and may NOT subscribe to a session outside its allowlist — either is rejected with `FORBIDDEN_SESSION`. An unrestricted key (no `allowedSessions`) may subscribe to anything, including `"*"`.
+- **`session.qr` requires the OPERATOR role**, matching `GET /api/sessions/{sessionId}/qr`. A VIEWER key may still subscribe to it, by name or through a wildcard, but the QR is never delivered to its sockets; every other event is. The role is read from the key re-validated on each `subscribe`, so a key narrowed to VIEWER stops receiving the QR from its next `subscribe` (a role change also disconnects the key's sockets).
 
 ### Example (socket.io-client)
 

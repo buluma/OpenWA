@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- The `session.qr` WebSocket event reaches only OPERATOR and ADMIN keys, matching `GET /api/sessions/{sessionId}/qr`; a VIEWER key subscribed by name or through a wildcard no longer receives the pairing QR.
+
 ### Added
 
 - `POST /api/sessions/:sessionId/messages/pin` and `.../unpin` pin/unpin a message in its chat for a
@@ -27,6 +31,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fields on Contacts, the field selects on Privacy, and the message textarea on Quick Replies now
   carry an accessible name (`aria-label` or an associated `<label>`) instead of relying on visual
   layout alone.
+- The group invite-code read, over REST or the MCP `GroupGetInviteCode` tool, requires the
+  OPERATOR role; the code is a transferable join capability, so a VIEWER key can no longer extract
+  it.
+- The dashboard Logs page and its sidebar entry are shown to admin keys only, matching the
+  ADMIN-only `GET /api/audit` it reads. The Sessions page hides Show QR for viewer keys, since the
+  QR is operator-only.
+
+### Dependencies
+
+- `multer` pinned to `^2.3.0` via override, closing three high-severity multipart denial-of-service
+  advisories (GHSA-wc9g-mqfw-jrwm, GHSA-qfvm-cv95-jqjf, GHSA-535w-7cp7-47q4). No
+  `@nestjs/platform-express` release carries the patched version yet.
 
 ## [0.12.4] - 2026-08-02
 
