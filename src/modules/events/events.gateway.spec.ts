@@ -494,7 +494,6 @@ describe('EventsGateway session.qr role gate', () => {
     gateway = new EventsGateway(
       { validateApiKey: jest.fn((raw: string) => Promise.resolve({ ...keys[raw] })) } as unknown as AuthService,
       { logWarn: jest.fn().mockResolvedValue(null) } as unknown as AuditService,
-      asConfig() as unknown as ConfigService,
     );
     (gateway as unknown as { server: unknown }).server = { to: (room: string) => broadcast([room], []) };
   });
