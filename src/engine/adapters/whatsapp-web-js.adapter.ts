@@ -1585,6 +1585,22 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
     return this.chats.deleteChat(chatId);
   }
 
+  clearChatMessages(chatId: string): Promise<boolean> {
+    return this.chats.clearChatMessages(chatId);
+  }
+
+  archiveChat(chatId: string, archive: boolean): Promise<boolean> {
+    return this.chats.archiveChat(chatId, archive);
+  }
+
+  pinChat(chatId: string, pin: boolean): Promise<boolean> {
+    return this.chats.pinChat(chatId, pin);
+  }
+
+  muteChat(chatId: string, muteUntil: number | null): Promise<void> {
+    return this.chats.muteChat(chatId, muteUntil);
+  }
+
   sendChatState(chatId: string, state: ChatState): Promise<void> {
     return this.chats.sendChatState(chatId, state);
   }

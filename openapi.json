@@ -946,6 +946,169 @@
         ]
       }
     },
+    "/api/sessions/{id}/chats/{chatId}/messages": {
+      "delete": {
+        "operationId": "SessionController_clearChatMessages",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Session ID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "chatId",
+            "required": true,
+            "in": "path",
+            "description": "Chat JID, e.g. 1234567890-123@g.us (URL-encode the '@')",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Returns `{ success }`. `false` means the engine declined to act — an unknown chat, or on the Baileys engine a chat with no known history, since the change is keyed to its last message."
+          },
+          "400": {
+            "description": "Session not ready"
+          },
+          "404": {
+            "description": "Session not found"
+          }
+        },
+        "summary": "Delete every message in a chat, keeping the chat itself",
+        "tags": [
+          "sessions"
+        ]
+      }
+    },
+    "/api/sessions/{id}/chats/archive": {
+      "post": {
+        "operationId": "SessionController_archiveChat",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Session ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ArchiveChatDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Returns `{ success }`. `false` means the engine declined to act — on the Baileys engine a chat with no known history cannot be archived, since the change is keyed to its last message."
+          },
+          "400": {
+            "description": "Session not ready"
+          },
+          "404": {
+            "description": "Session not found"
+          }
+        },
+        "summary": "Archive or unarchive a chat",
+        "tags": [
+          "sessions"
+        ]
+      }
+    },
+    "/api/sessions/{id}/chats/mute": {
+      "post": {
+        "operationId": "SessionController_muteChat",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Session ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MuteChatDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Mute applied successfully"
+          },
+          "400": {
+            "description": "Session not ready, or an invalid chatId / muteUntil"
+          },
+          "404": {
+            "description": "Session not found"
+          }
+        },
+        "summary": "Mute or unmute a chat",
+        "tags": [
+          "sessions"
+        ]
+      }
+    },
+    "/api/sessions/{id}/chats/pin": {
+      "post": {
+        "operationId": "SessionController_pinChat",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Session ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PinChatDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Returns `{ success }`. `false` means the engine declined, and only a pin can: WhatsApp allows at most three pinned chats and the whatsapp-web.js engine reports the refusal. Unpinning always succeeds, and the Baileys engine always reports success because it cannot observe the cap."
+          },
+          "400": {
+            "description": "Session not ready, or a chatId the session cannot resolve"
+          },
+          "404": {
+            "description": "Session not found"
+          }
+        },
+        "summary": "Pin or unpin a chat at the top of the chat list",
+        "tags": [
+          "sessions"
+        ]
+      }
+    },
     "/api/sessions/{id}/chats/typing": {
       "post": {
         "operationId": "SessionController_sendChatState",
@@ -6644,6 +6807,26 @@
           "lastMessage": {
             "type": "string",
             "example": "hi"
+          },
+          "archived": {
+            "type": "boolean",
+            "description": "Archived state, as set via POST .../chats/archive.",
+            "example": false
+          },
+          "pinned": {
+            "type": "boolean",
+            "description": "Pinned state, as set via POST .../chats/pin.",
+            "example": false
+          },
+          "muted": {
+            "type": "boolean",
+            "description": "Muted state, as set via POST .../chats/mute.",
+            "example": false
+          },
+          "muteExpiration": {
+            "type": "number",
+            "description": "Epoch milliseconds the mute ends, present only when `muted` is true (0 = indefinite).",
+            "example": 1800000000000
           }
         },
         "required": [
@@ -6652,7 +6835,10 @@
           "isGroup",
           "kind",
           "unreadCount",
-          "timestamp"
+          "timestamp",
+          "archived",
+          "pinned",
+          "muted"
         ]
       },
       "MarkChatReadDto": {
@@ -6679,6 +6865,62 @@
         },
         "required": [
           "chatId"
+        ]
+      },
+      "ArchiveChatDto": {
+        "type": "object",
+        "properties": {
+          "chatId": {
+            "type": "string",
+            "description": "Chat ID in the active engine's native format (e.g. 1234567890-123@g.us on whatsapp-web.js)",
+            "example": "1234567890-123@g.us"
+          },
+          "archive": {
+            "type": "boolean",
+            "description": "true to archive, false to unarchive."
+          }
+        },
+        "required": [
+          "chatId",
+          "archive"
+        ]
+      },
+      "MuteChatDto": {
+        "type": "object",
+        "properties": {
+          "chatId": {
+            "type": "string",
+            "description": "Chat ID in the active engine's native format (e.g. 1234567890-123@g.us on whatsapp-web.js)",
+            "example": "1234567890-123@g.us"
+          },
+          "muteUntil": {
+            "type": "number",
+            "description": "Absolute epoch-MILLISECONDS timestamp at which the mute expires, or `null` to unmute now. Required — omitting it is rejected rather than guessed, because the two plausible readings (unmute vs mute forever) are opposites. To mute indefinitely, send a far-future timestamp. Milliseconds, not seconds: a seconds-scale value is an instant in 1970, so the mute expires immediately while the request still answers 200.",
+            "example": 1800000000000,
+            "nullable": true
+          }
+        },
+        "required": [
+          "chatId",
+          "muteUntil"
+        ]
+      },
+      "PinChatDto": {
+        "type": "object",
+        "properties": {
+          "chatId": {
+            "type": "string",
+            "description": "Chat ID in the active engine's native format (e.g. 1234567890-123@g.us on whatsapp-web.js)",
+            "example": "1234567890-123@g.us"
+          },
+          "pin": {
+            "type": "boolean",
+            "description": "true to pin the chat to the top of the list, false to unpin it."
+          }
+        },
+        "required": [
+          "chatId",
+          "pin"
         ]
       },
       "SendChatStateDto": {

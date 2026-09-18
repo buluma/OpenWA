@@ -367,6 +367,68 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
     return engine.deleteChat(chatId);
   }
 
+  /**
+   * Delete every message in a chat, keeping the chat itself. Resolves false when the engine could
+   * not act — an unknown chat, or on Baileys a chat with no known history to key the change to.
+   */
+  async clearChatMessages(id: string, chatId: string): Promise<boolean> {
+    await this.findOne(id); // Verify session exists
+    const engine = this.engines.get(id);
+
+    if (!engine) {
+      throw new BadRequestException('Session is not started');
+    }
+
+    return engine.clearChatMessages(chatId);
+  }
+
+  /**
+   * Archive or unarchive a chat. Resolves false when the engine could not act — on Baileys a chat
+   * with no known history has no last message to key the app-state modification to. That is a
+   * defined outcome, not an error, so it is reported as `success: false` rather than a 500.
+   */
+  async archiveChat(id: string, chatId: string, archive: boolean): Promise<boolean> {
+    await this.findOne(id); // Verify session exists
+    const engine = this.engines.get(id);
+
+    if (!engine) {
+      throw new BadRequestException('Session is not started');
+    }
+
+    return engine.archiveChat(chatId, archive);
+  }
+
+  /**
+   * Mute a chat until `muteUntil` (absolute epoch milliseconds), or unmute it with `null`. Unlike
+   * archiveChat there is no "engine declined" outcome, so this resolves void and a failure surfaces
+   * as an error.
+   */
+  async muteChat(id: string, chatId: string, muteUntil: number | null): Promise<void> {
+    await this.findOne(id); // Verify session exists
+    const engine = this.engines.get(id);
+
+    if (!engine) {
+      throw new BadRequestException('Session is not started');
+    }
+
+    return engine.muteChat(chatId, muteUntil);
+  }
+
+  /**
+   * Pin or unpin a chat. Resolves false only when the engine declined — whatsapp-web.js reports
+   * WhatsApp's three-pin cap; Baileys cannot see it and always resolves true.
+   */
+  async pinChat(id: string, chatId: string, pin: boolean): Promise<boolean> {
+    await this.findOne(id); // Verify session exists
+    const engine = this.engines.get(id);
+
+    if (!engine) {
+      throw new BadRequestException('Session is not started');
+    }
+
+    return engine.pinChat(chatId, pin);
+  }
+
   async sendChatState(id: string, chatId: string, state: ChatState): Promise<void> {
     await this.findOne(id); // Verify session exists
     const engine = this.engines.get(id);

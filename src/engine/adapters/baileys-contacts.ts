@@ -134,4 +134,47 @@ export class BaileysContacts {
     );
     return true;
   }
+
+  async clearChatMessages(chatId: string): Promise<boolean> {
+    this.host.ensureReady();
+    const last = this.host.lastMessage(chatId);
+    if (!last) {
+      return false; // Baileys' clear needs the last message; can't synthesize it
+    }
+    await this.sock().chatModify(
+      { clear: true, lastMessages: [{ key: last.key, messageTimestamp: last.timestamp }] },
+      chatId,
+    );
+    return true;
+  }
+
+  async archiveChat(chatId: string, archive: boolean): Promise<boolean> {
+    this.host.ensureReady();
+    const last = this.host.lastMessage(chatId);
+    if (!last) {
+      return false; // Baileys' archive toggle needs the last message; can't synthesize it
+    }
+    await this.sock().chatModify(
+      { archive, lastMessages: [{ key: last.key, messageTimestamp: last.timestamp }] },
+      chatId,
+    );
+    return true;
+  }
+
+  async pinChat(chatId: string, pin: boolean): Promise<boolean> {
+    this.host.ensureReady();
+    // No lastMessage lookup: the `pin` member of ChatModification carries no `lastMessages`, unlike
+    // archive/clear/delete, so a chat with no known history pins fine. Always true — Baileys writes
+    // the app-state patch and reports nothing back, so it has no equivalent of the whatsapp-web.js
+    // three-pin refusal to surface.
+    await this.sock().chatModify({ pin }, chatId);
+    return true;
+  }
+
+  async muteChat(chatId: string, muteUntil: number | null): Promise<void> {
+    this.host.ensureReady();
+    // Deliberately no lastMessage lookup: the `mute` member of ChatModification carries no
+    // `lastMessages`, unlike archive/clear/delete, so a chat with no known history mutes fine.
+    await this.sock().chatModify({ mute: muteUntil }, chatId);
+  }
 }

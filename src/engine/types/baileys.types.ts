@@ -1,5 +1,6 @@
 import type { WAMessage } from '@whiskeysockets/baileys';
 import type { LidMappingStore } from '../identity/lid-mapping-store.service';
+import type { BaileysChatStateStore } from '../adapters/baileys-chat-state-store.service';
 
 /**
  * Persistence boundary for the Baileys engine's message store. The adapter depends on this narrow
@@ -31,6 +32,8 @@ export interface BaileysAdapterConfig {
   messageStore?: BaileysMessageStore;
   /** Persisted, cross-session lid->phone resolution table. Backs lid resolution beyond the in-memory map. */
   lidMappingStore?: LidMappingStore;
+  /** Persisted chat mute/archive/pin state. Backs archiveChat/muteChat/pinChat and the ChatSummary fields. */
+  chatStateStore?: BaileysChatStateStore;
 }
 
 /**

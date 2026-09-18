@@ -137,6 +137,10 @@ describe('SessionService', () => {
       sendSeen: jest.fn().mockResolvedValue(true),
       markUnread: jest.fn().mockResolvedValue(true),
       deleteChat: jest.fn().mockResolvedValue(true),
+      clearChatMessages: jest.fn().mockResolvedValue(true),
+      archiveChat: jest.fn().mockResolvedValue(true),
+      pinChat: jest.fn().mockResolvedValue(true),
+      muteChat: jest.fn().mockResolvedValue(undefined),
       sendChatState: jest.fn().mockResolvedValue(undefined),
       resolveContactPhone: jest.fn().mockResolvedValue('628111222333'),
       rejectCall: jest.fn().mockResolvedValue(undefined),
@@ -4395,6 +4399,122 @@ describe('SessionService', () => {
       (repository.findOne as jest.Mock).mockResolvedValue(session);
 
       await expect(service.deleteChat('sess-uuid-1', '1234567890-123@g.us')).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  // ── clearChatMessages ─────────────────────────────────────────────
+
+  describe('clearChatMessages', () => {
+    it('should delegate to engine.clearChatMessages with the chatId', async () => {
+      const session = createMockSession();
+      (repository.findOne as jest.Mock).mockResolvedValue(session);
+      (repository.update as jest.Mock).mockResolvedValue({ affected: 1 });
+
+      await service.start('sess-uuid-1');
+      mockEngine.clearChatMessages.mockResolvedValue(true);
+
+      const result = await service.clearChatMessages('sess-uuid-1', '1234567890-123@g.us');
+
+      expect(mockEngine.clearChatMessages).toHaveBeenCalledWith('1234567890-123@g.us');
+      expect(result).toBe(true);
+    });
+
+    it('should throw BadRequestException when session is not started', async () => {
+      const session = createMockSession();
+      (repository.findOne as jest.Mock).mockResolvedValue(session);
+
+      await expect(service.clearChatMessages('sess-uuid-1', '1234567890-123@g.us')).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+  });
+
+  // ── archiveChat ───────────────────────────────────────────────────
+
+  describe('archiveChat', () => {
+    it('should delegate to engine.archiveChat with the chatId and archive flag', async () => {
+      const session = createMockSession();
+      (repository.findOne as jest.Mock).mockResolvedValue(session);
+      (repository.update as jest.Mock).mockResolvedValue({ affected: 1 });
+
+      await service.start('sess-uuid-1');
+      mockEngine.archiveChat.mockResolvedValue(true);
+
+      const result = await service.archiveChat('sess-uuid-1', '1234567890-123@g.us', true);
+
+      expect(mockEngine.archiveChat).toHaveBeenCalledWith('1234567890-123@g.us', true);
+      expect(result).toBe(true);
+    });
+
+    it('should throw BadRequestException when session is not started', async () => {
+      const session = createMockSession();
+      (repository.findOne as jest.Mock).mockResolvedValue(session);
+
+      await expect(service.archiveChat('sess-uuid-1', '1234567890-123@g.us', true)).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+  });
+
+  // ── pinChat ───────────────────────────────────────────────────────
+
+  describe('pinChat', () => {
+    it('should delegate to engine.pinChat with the chatId and pin flag', async () => {
+      const session = createMockSession();
+      (repository.findOne as jest.Mock).mockResolvedValue(session);
+      (repository.update as jest.Mock).mockResolvedValue({ affected: 1 });
+
+      await service.start('sess-uuid-1');
+      mockEngine.pinChat.mockResolvedValue(true);
+
+      const result = await service.pinChat('sess-uuid-1', '1234567890-123@g.us', true);
+
+      expect(mockEngine.pinChat).toHaveBeenCalledWith('1234567890-123@g.us', true);
+      expect(result).toBe(true);
+    });
+
+    it('should throw BadRequestException when session is not started', async () => {
+      const session = createMockSession();
+      (repository.findOne as jest.Mock).mockResolvedValue(session);
+
+      await expect(service.pinChat('sess-uuid-1', '1234567890-123@g.us', true)).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  // ── muteChat ──────────────────────────────────────────────────────
+
+  describe('muteChat', () => {
+    it('should delegate to engine.muteChat with the chatId and muteUntil', async () => {
+      const session = createMockSession();
+      (repository.findOne as jest.Mock).mockResolvedValue(session);
+      (repository.update as jest.Mock).mockResolvedValue({ affected: 1 });
+
+      await service.start('sess-uuid-1');
+      mockEngine.muteChat.mockResolvedValue(undefined);
+
+      await service.muteChat('sess-uuid-1', '1234567890-123@g.us', 1800000000000);
+
+      expect(mockEngine.muteChat).toHaveBeenCalledWith('1234567890-123@g.us', 1800000000000);
+    });
+
+    it('unmutes by passing null through unchanged', async () => {
+      const session = createMockSession();
+      (repository.findOne as jest.Mock).mockResolvedValue(session);
+      (repository.update as jest.Mock).mockResolvedValue({ affected: 1 });
+
+      await service.start('sess-uuid-1');
+      mockEngine.muteChat.mockResolvedValue(undefined);
+
+      await service.muteChat('sess-uuid-1', '1234567890-123@g.us', null);
+
+      expect(mockEngine.muteChat).toHaveBeenCalledWith('1234567890-123@g.us', null);
+    });
+
+    it('should throw BadRequestException when session is not started', async () => {
+      const session = createMockSession();
+      (repository.findOne as jest.Mock).mockResolvedValue(session);
+
+      await expect(service.muteChat('sess-uuid-1', '1234567890-123@g.us', null)).rejects.toThrow(BadRequestException);
     });
   });
 

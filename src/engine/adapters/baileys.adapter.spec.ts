@@ -3626,6 +3626,10 @@ describe('BaileysAdapter contact + chat reads', () => {
       unreadCount: 1,
       timestamp: 1700000010,
       lastMessage: 'hi',
+      archived: false,
+      pinned: false,
+      muted: false,
+      muteExpiration: undefined,
     });
   });
 
@@ -3735,6 +3739,95 @@ describe('BaileysAdapter sendSeen + markUnread + deleteChat', () => {
     fakeSock.fire('connection.update', { connection: 'open' });
     expect(await adapter.deleteChat('628999@s.whatsapp.net')).toBe(false);
     expect(fakeSock.chatModify).not.toHaveBeenCalled();
+  });
+
+  it('clearChatMessages clears the chat via chatModify with the last message', async () => {
+    const adapter = await readyWithMessage();
+    const ok = await adapter.clearChatMessages('628111@s.whatsapp.net');
+    expect(ok).toBe(true);
+    expect(fakeSock.chatModify).toHaveBeenCalledWith(
+      {
+        clear: true,
+        lastMessages: [
+          { key: { remoteJid: '628111@s.whatsapp.net', fromMe: false, id: 'M1' }, messageTimestamp: 1700000020 },
+        ],
+      },
+      '628111@s.whatsapp.net',
+    );
+  });
+
+  it('clearChatMessages returns false when no last message is known', async () => {
+    const adapter = newAdapter();
+    await adapter.initialize({});
+    fakeSock.fire('connection.update', { connection: 'open' });
+    expect(await adapter.clearChatMessages('628999@s.whatsapp.net')).toBe(false);
+    expect(fakeSock.chatModify).not.toHaveBeenCalled();
+  });
+
+  it('archiveChat archives via chatModify with the last message', async () => {
+    const adapter = await readyWithMessage();
+    const ok = await adapter.archiveChat('628111@s.whatsapp.net', true);
+    expect(ok).toBe(true);
+    expect(fakeSock.chatModify).toHaveBeenCalledWith(
+      {
+        archive: true,
+        lastMessages: [
+          { key: { remoteJid: '628111@s.whatsapp.net', fromMe: false, id: 'M1' }, messageTimestamp: 1700000020 },
+        ],
+      },
+      '628111@s.whatsapp.net',
+    );
+  });
+
+  it('archiveChat(false) unarchives via chatModify', async () => {
+    const adapter = await readyWithMessage();
+    await adapter.archiveChat('628111@s.whatsapp.net', false);
+    expect(fakeSock.chatModify).toHaveBeenCalledWith(
+      expect.objectContaining({ archive: false }),
+      '628111@s.whatsapp.net',
+    );
+  });
+
+  it('archiveChat returns false when no last message is known', async () => {
+    const adapter = newAdapter();
+    await adapter.initialize({});
+    fakeSock.fire('connection.update', { connection: 'open' });
+    expect(await adapter.archiveChat('628999@s.whatsapp.net', true)).toBe(false);
+    expect(fakeSock.chatModify).not.toHaveBeenCalled();
+  });
+
+  it('pinChat pins via chatModify with no lastMessage requirement', async () => {
+    const adapter = newAdapter();
+    await adapter.initialize({});
+    fakeSock.fire('connection.update', { connection: 'open' });
+    const ok = await adapter.pinChat('628999@s.whatsapp.net', true);
+    expect(ok).toBe(true);
+    expect(fakeSock.chatModify).toHaveBeenCalledWith({ pin: true }, '628999@s.whatsapp.net');
+  });
+
+  it('pinChat(false) unpins via chatModify and always resolves true', async () => {
+    const adapter = newAdapter();
+    await adapter.initialize({});
+    fakeSock.fire('connection.update', { connection: 'open' });
+    const ok = await adapter.pinChat('628999@s.whatsapp.net', false);
+    expect(ok).toBe(true);
+    expect(fakeSock.chatModify).toHaveBeenCalledWith({ pin: false }, '628999@s.whatsapp.net');
+  });
+
+  it('muteChat mutes via chatModify with the epoch-ms muteUntil, no lastMessage requirement', async () => {
+    const adapter = newAdapter();
+    await adapter.initialize({});
+    fakeSock.fire('connection.update', { connection: 'open' });
+    await adapter.muteChat('628999@s.whatsapp.net', 1800000000000);
+    expect(fakeSock.chatModify).toHaveBeenCalledWith({ mute: 1800000000000 }, '628999@s.whatsapp.net');
+  });
+
+  it('muteChat(null) unmutes via chatModify', async () => {
+    const adapter = newAdapter();
+    await adapter.initialize({});
+    fakeSock.fire('connection.update', { connection: 'open' });
+    await adapter.muteChat('628999@s.whatsapp.net', null);
+    expect(fakeSock.chatModify).toHaveBeenCalledWith({ mute: null }, '628999@s.whatsapp.net');
   });
 });
 

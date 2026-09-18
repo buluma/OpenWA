@@ -98,7 +98,7 @@ export class BaileysAdapter implements IWhatsAppEngine {
   constructor(private readonly config: BaileysAdapterConfig) {
     // Isolate each session's auth state under its own subdirectory of the shared auth dir.
     this.authPath = path.join(config.authDir, config.sessionId);
-    this.sessionStore = new BaileysSessionStore(config.lidMappingStore, config.sessionId);
+    this.sessionStore = new BaileysSessionStore(config.lidMappingStore, config.sessionId, config.chatStateStore);
     // Constructed before messaging: the messaging delegate's own-send echo maps through
     // events.mapMessage (and the lifecycle delegate clears that same live-call cache on teardown).
     // An object-literal getter's `this` is the literal itself, so the live connectedAt read goes
@@ -473,6 +473,22 @@ export class BaileysAdapter implements IWhatsAppEngine {
 
   async deleteChat(chatId: string): Promise<boolean> {
     return this.contacts.deleteChat(chatId);
+  }
+
+  async clearChatMessages(chatId: string): Promise<boolean> {
+    return this.contacts.clearChatMessages(chatId);
+  }
+
+  async archiveChat(chatId: string, archive: boolean): Promise<boolean> {
+    return this.contacts.archiveChat(chatId, archive);
+  }
+
+  async pinChat(chatId: string, pin: boolean): Promise<boolean> {
+    return this.contacts.pinChat(chatId, pin);
+  }
+
+  async muteChat(chatId: string, muteUntil: number | null): Promise<void> {
+    return this.contacts.muteChat(chatId, muteUntil);
   }
 
   // ----- Gated: not supported by this minimal slice (no store) -----
