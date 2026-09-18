@@ -50,7 +50,7 @@ export function resolveSupportedLanguage(lang?: string): SupportedLanguage {
   return supportedLanguages.find(supported => supported === base) ?? 'en';
 }
 
-void i18n
+export const i18nReady = i18n
   .use(LanguageDetector)
   .use(initReactI18next)
   .init({
