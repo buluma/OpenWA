@@ -381,6 +381,18 @@ export interface ChatSummary {
   unreadCount: number;
   timestamp: number;
   lastMessage?: string;
+  /** Archived state, as set via `POST /sessions/{sessionId}/chats/archive`. */
+  archived: boolean;
+  /** Pinned state, as set via `POST /sessions/{sessionId}/chats/pin`. */
+  pinned: boolean;
+  /** Muted state, as set via `POST /sessions/{sessionId}/chats/mute`. */
+  muted: boolean;
+  /**
+   * Epoch MILLISECONDS at which the mute ends, present only when `muted` is true (`0` means muted
+   * indefinitely). Same unit as `POST /sessions/{sessionId}/chats/mute`'s `muteUntil`, so a finite
+   * value read here can be sent straight back to re-apply the same mute.
+   */
+  muteExpiration?: number;
 }
 
 /**
@@ -787,6 +799,32 @@ export interface IWhatsAppEngine {
   sendSeen(chatId: string): Promise<boolean>;
   markUnread(chatId: string): Promise<boolean>;
   deleteChat(chatId: string): Promise<boolean>;
+  /**
+   * Delete every message in a chat while keeping the chat itself in the list. Resolves false when
+   * the engine cannot act — an unknown chat on whatsapp-web.js, or (as with archiveChat) a chat
+   * with no known history on Baileys, whose clear is keyed to the last message.
+   */
+  clearChatMessages(chatId: string): Promise<boolean>;
+  /**
+   * Archive or unarchive a chat. Resolves false when the engine cannot act — on Baileys the archive
+   * is an app-state modification keyed to the chat's last message, so a chat with no known history
+   * cannot be archived at all.
+   */
+  archiveChat(chatId: string, archive: boolean): Promise<boolean>;
+  /**
+   * Pin or unpin a chat at the top of the chat list. Resolves false only when the engine DECLINED,
+   * and only one direction can: WhatsApp allows at most three pinned chats and whatsapp-web.js
+   * reports the refusal. Unpinning always resolves true, and Baileys always resolves true in both
+   * directions since it cannot observe the cap.
+   */
+  pinChat(chatId: string, pin: boolean): Promise<boolean>;
+  /**
+   * Mute or unmute a chat's notifications. `muteUntil` is an absolute epoch-MILLISECONDS timestamp
+   * the mute expires at; `null` unmutes now. To mute indefinitely, pass a far-future timestamp.
+   * Resolves void rather than boolean: unlike archiveChat/pinChat there is no "engine declined"
+   * outcome on either engine.
+   */
+  muteChat(chatId: string, muteUntil: number | null): Promise<void>;
   /**
    * Send a typing/recording presence indicator to a chat, or clear it (`paused`).
    * Engine-agnostic and best-effort: engines without a presence concept should no-op.

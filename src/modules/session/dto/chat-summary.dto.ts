@@ -25,4 +25,19 @@ export class ChatSummaryDto {
 
   @ApiPropertyOptional({ example: 'hi' })
   lastMessage?: string;
+
+  @ApiProperty({ description: 'Archived state, as set via POST .../chats/archive.', example: false })
+  archived!: boolean;
+
+  @ApiProperty({ description: 'Pinned state, as set via POST .../chats/pin.', example: false })
+  pinned!: boolean;
+
+  @ApiProperty({ description: 'Muted state, as set via POST .../chats/mute.', example: false })
+  muted!: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Epoch milliseconds the mute ends, present only when `muted` is true (0 = indefinite).',
+    example: 1800000000000,
+  })
+  muteExpiration?: number;
 }

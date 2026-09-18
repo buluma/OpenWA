@@ -47,6 +47,16 @@ export class WwebjsChats {
         timestamp: chat.timestamp || 0,
         // A location message's body is the base64 map thumbnail; don't surface it as the chat preview.
         lastMessage: chat.lastMessage?.type === MessageTypes.LOCATION ? '📍' : chat.lastMessage?.body || undefined,
+        archived: Boolean(chat.archived),
+        pinned: Boolean(chat.pinned),
+        // Chat.isMuted is the current verdict; muteExpiration is wwjs epoch SECONDS with -1 = forever.
+        muted: Boolean(chat.isMuted),
+        // Expose the expiry as ms (0 = indefinite), present only when muted, per ChatSummary.
+        muteExpiration: chat.isMuted
+          ? (chat.muteExpiration ?? 0) > 0
+            ? (chat.muteExpiration ?? 0) * 1000
+            : 0
+          : undefined,
       });
     }
 
@@ -98,6 +108,68 @@ export class WwebjsChats {
       return await chat.delete();
     } catch (error) {
       this.host.logger.error(`Error deleting chat ${chatId}`, String(error));
+      return false;
+    }
+  }
+
+  async clearChatMessages(chatId: string): Promise<boolean> {
+    this.host.ensureReady();
+    try {
+      // An unknown chat needs no special case: getChatById rejects for one, and the resulting error
+      // lands in the catch below as the same `false` the other chat operations return for a chat
+      // they cannot find.
+      const chat = await this.client().getChatById(chatId);
+      return await chat.clearMessages();
+    } catch (error) {
+      this.host.logger.error(`Error clearing messages in chat ${chatId}`, String(error));
+      return false;
+    }
+  }
+
+  async archiveChat(chatId: string, archive: boolean): Promise<boolean> {
+    this.host.ensureReady();
+    try {
+      const chat = await this.client().getChatById(chatId);
+      if (archive) {
+        await chat.archive();
+      } else {
+        await chat.unarchive();
+      }
+      // Chat.archive()/unarchive() resolve void — whatsapp-web.js gives no refusal signal for
+      // either direction, so the honest answer is "it did not throw".
+      return true;
+    } catch (error) {
+      this.host.logger.error(`Error archiving chat ${chatId}`, String(error));
+      return false;
+    }
+  }
+
+  async muteChat(chatId: string, muteUntil: number | null): Promise<void> {
+    this.host.ensureReady();
+    const chat = await this.client().getChatById(chatId);
+    if (muteUntil === null) {
+      await chat.unmute();
+      return;
+    }
+    await chat.mute(new Date(muteUntil));
+  }
+
+  async pinChat(chatId: string, pin: boolean): Promise<boolean> {
+    this.host.ensureReady();
+    try {
+      const chat = await this.client().getChatById(chatId);
+      if (!pin) {
+        // Chat.unpin() resolves the chat's NEW pin state, which is false for every successful
+        // unpin. Forwarding it would report every success as a refusal — discard it: an unpin that
+        // did not throw succeeded.
+        await chat.unpin();
+        return true;
+      }
+      // In this direction the return value IS information: WhatsApp caps pinned chats at three, and
+      // an over-cap pin resolves false without pinning rather than throwing.
+      return await chat.pin();
+    } catch (error) {
+      this.host.logger.error(`Error pinning chat ${chatId}`, String(error));
       return false;
     }
   }

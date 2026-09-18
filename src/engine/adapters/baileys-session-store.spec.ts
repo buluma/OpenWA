@@ -47,6 +47,10 @@ describe('BaileysSessionStore', () => {
         unreadCount: 2,
         timestamp: 200,
         lastMessage: 'newest',
+        archived: false,
+        pinned: false,
+        muted: false,
+        muteExpiration: undefined,
       },
     ]);
     expect(store.lastMessage('628111@s.whatsapp.net')).toEqual({
@@ -483,6 +487,89 @@ describe('BaileysSessionStore', () => {
       const s = storeWithCap('');
       s.upsertContacts(Array.from({ length: 5001 }, (_, i) => ({ id: `62${100000 + i}@s.whatsapp.net` })));
       expect(s.listContacts()).toHaveLength(5000);
+    });
+  });
+
+  describe('chat state (mute/archive/pin) persistence', () => {
+    type StateValue = { muteEndTime: number | null; archived: boolean; pinned: boolean };
+
+    const fakeStore = () => {
+      const states = new Map<string, StateValue>();
+      return {
+        get: jest.fn((sessionId: string, chatId: string) => states.get(`${sessionId} ${chatId}`)),
+        remember: jest.fn((sessionId: string, chatId: string, patch: Partial<StateValue>) => {
+          const key = `${sessionId} ${chatId}`;
+          const existing = states.get(key) ?? { muteEndTime: null, archived: false, pinned: false };
+          states.set(key, { ...existing, ...patch });
+          return Promise.resolve();
+        }),
+        reload: jest.fn().mockResolvedValue(undefined),
+        states,
+      };
+    };
+
+    it('writes archived/pinned/muteEndTime through to the store when a live update carries them', () => {
+      const chatStateStore = fakeStore();
+      const s = new BaileysSessionStore(undefined, 'sess-1', chatStateStore);
+      s.upsertChats([{ id: '628111@s.whatsapp.net', archived: true, pinned: true, muteEndTime: 1800000000000 }]);
+      expect(chatStateStore.remember).toHaveBeenCalledWith('sess-1', '628111@s.whatsapp.net', {
+        archived: true,
+        pinned: true,
+        muteEndTime: 1800000000000,
+      });
+    });
+
+    it('does not write keys the update omits (a name-only hydration must not reset mute/archive/pin)', () => {
+      const chatStateStore = fakeStore();
+      const s = new BaileysSessionStore(undefined, 'sess-1', chatStateStore);
+      s.upsertChats([{ id: '628111@s.whatsapp.net', name: 'Alice' }]);
+      expect(chatStateStore.remember).not.toHaveBeenCalled();
+    });
+
+    it('a live unmute (muteEndTime: null, key present) persists as null, not skipped', () => {
+      const chatStateStore = fakeStore();
+      const s = new BaileysSessionStore(undefined, 'sess-1', chatStateStore);
+      s.upsertChats([{ id: '628111@s.whatsapp.net', muteEndTime: null }]);
+      expect(chatStateStore.remember).toHaveBeenCalledWith('sess-1', '628111@s.whatsapp.net', { muteEndTime: null });
+    });
+
+    it('toNeutralChat prefers the persisted store state over the live record', () => {
+      const chatStateStore = fakeStore();
+      const s = new BaileysSessionStore(undefined, 'sess-1', chatStateStore);
+      // Live record says unarchived/unpinned/unmuted...
+      s.upsertChats([{ id: '628111@s.whatsapp.net', name: 'Alice', archived: false, pinned: false }]);
+      // ...but the persisted store (survived a reconnect Baileys couldn't resync) says otherwise.
+      chatStateStore.states.set('sess-1 628111@s.whatsapp.net', {
+        muteEndTime: 4102444800000, // far future
+        archived: true,
+        pinned: true,
+      });
+      const [summary] = s.listChats();
+      expect(summary).toMatchObject({ archived: true, pinned: true, muted: true, muteExpiration: 4102444800000 });
+    });
+
+    it('normalises a history-sync epoch-SECONDS muteEndTime to epoch-MILLISECONDS for isMuted/muteExpiration', () => {
+      const s = new BaileysSessionStore();
+      const futureSeconds = Math.floor(Date.now() / 1000) + 3600; // 1h from now, in seconds
+      s.upsertChats([{ id: '628111@s.whatsapp.net', muteEndTime: futureSeconds }]);
+      const [summary] = s.listChats();
+      expect(summary.muted).toBe(true);
+      expect(summary.muteExpiration).toBe(futureSeconds * 1000);
+    });
+
+    it('a past muteEndTime reports muted:false and muteExpiration:undefined', () => {
+      const s = new BaileysSessionStore();
+      s.upsertChats([{ id: '628111@s.whatsapp.net', muteEndTime: 1000 }]); // epoch ms, long past
+      const [summary] = s.listChats();
+      expect(summary.muted).toBe(false);
+      expect(summary.muteExpiration).toBeUndefined();
+    });
+
+    it('is a no-op when no chatStateStore or sessionId is wired (unit tests, wwjs)', () => {
+      const s = new BaileysSessionStore(); // no lidStore, no sessionId, no chatStateStore
+      expect(() => s.upsertChats([{ id: '628111@s.whatsapp.net', archived: true }])).not.toThrow();
+      const [summary] = s.listChats();
+      expect(summary.archived).toBe(true); // still reflects the live record
     });
   });
 });

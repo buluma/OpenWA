@@ -7,6 +7,9 @@ import {
   QRCodeResponseDto,
   MarkChatReadDto,
   DeleteChatDto,
+  ArchiveChatDto,
+  MuteChatDto,
+  PinChatDto,
   SendChatStateDto,
   RequestPairingCodeDto,
   PairingCodeResponseDto,
@@ -370,6 +373,81 @@ export class SessionController {
   @ApiResponse({ status: 404, description: 'Session not found' })
   async deleteChat(@Param('id', ParseUUIDPipe) id: string, @Body() dto: DeleteChatDto): Promise<{ success: boolean }> {
     const success = await this.sessionService.deleteChat(id, dto.chatId);
+    return { success };
+  }
+
+  @Delete(':id/chats/:chatId/messages')
+  @RequireRole(ApiKeyRole.OPERATOR)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Delete every message in a chat, keeping the chat itself' })
+  @ApiParam({ name: 'id', description: 'Session ID' })
+  @ApiParam({ name: 'chatId', description: "Chat JID, e.g. 1234567890-123@g.us (URL-encode the '@')" })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Returns `{ success }`. `false` means the engine declined to act — an unknown chat, or on the ' +
+      'Baileys engine a chat with no known history, since the change is keyed to its last message.',
+  })
+  @ApiResponse({ status: 400, description: 'Session not ready' })
+  @ApiResponse({ status: 404, description: 'Session not found' })
+  async clearChatMessages(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('chatId') chatId: string,
+  ): Promise<{ success: boolean }> {
+    const success = await this.sessionService.clearChatMessages(id, chatId);
+    return { success };
+  }
+
+  @Post(':id/chats/archive')
+  @RequireRole(ApiKeyRole.OPERATOR)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Archive or unarchive a chat' })
+  @ApiParam({ name: 'id', description: 'Session ID' })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Returns `{ success }`. `false` means the engine declined to act — on the Baileys engine a ' +
+      'chat with no known history cannot be archived, since the change is keyed to its last message.',
+  })
+  @ApiResponse({ status: 400, description: 'Session not ready' })
+  @ApiResponse({ status: 404, description: 'Session not found' })
+  async archiveChat(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ArchiveChatDto,
+  ): Promise<{ success: boolean }> {
+    const success = await this.sessionService.archiveChat(id, dto.chatId, dto.archive);
+    return { success };
+  }
+
+  @Post(':id/chats/mute')
+  @RequireRole(ApiKeyRole.OPERATOR)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Mute or unmute a chat' })
+  @ApiParam({ name: 'id', description: 'Session ID' })
+  @ApiResponse({ status: 200, description: 'Mute applied successfully' })
+  @ApiResponse({ status: 400, description: 'Session not ready, or an invalid chatId / muteUntil' })
+  @ApiResponse({ status: 404, description: 'Session not found' })
+  async muteChat(@Param('id', ParseUUIDPipe) id: string, @Body() dto: MuteChatDto): Promise<{ success: boolean }> {
+    await this.sessionService.muteChat(id, dto.chatId, dto.muteUntil);
+    return { success: true };
+  }
+
+  @Post(':id/chats/pin')
+  @RequireRole(ApiKeyRole.OPERATOR)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Pin or unpin a chat at the top of the chat list' })
+  @ApiParam({ name: 'id', description: 'Session ID' })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Returns `{ success }`. `false` means the engine declined, and only a pin can: WhatsApp allows ' +
+      'at most three pinned chats and the whatsapp-web.js engine reports the refusal. Unpinning always ' +
+      'succeeds, and the Baileys engine always reports success because it cannot observe the cap.',
+  })
+  @ApiResponse({ status: 400, description: 'Session not ready, or a chatId the session cannot resolve' })
+  @ApiResponse({ status: 404, description: 'Session not found' })
+  async pinChat(@Param('id', ParseUUIDPipe) id: string, @Body() dto: PinChatDto): Promise<{ success: boolean }> {
+    const success = await this.sessionService.pinChat(id, dto.chatId, dto.pin);
     return { success };
   }
 

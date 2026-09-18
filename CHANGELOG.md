@@ -25,6 +25,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   recipient per line, appended to the textarea), rejecting files over 2 MB before reading them.
 - Dashboard: the Chats page loads older history as you scroll up, paged by DB rows already fetched,
   holding the reading position when a page is prepended.
+- `POST /api/sessions/:id/chats/archive`, `.../mute` and `.../pin` archive/unarchive, mute/unmute
+  (absolute epoch-ms expiry, or `null` to unmute now) and pin/unpin a chat; `DELETE
+  /api/sessions/:id/chats/:chatId/messages` clears every message in a chat, keeping the chat itself.
+  `GET /api/sessions/:id/chats` now reports each chat's `archived`/`pinned`/`muted` state (plus
+  `muteExpiration` when muted). Baileys persists this state per chat (`chat_states` table) since the
+  engine cannot re-deliver it on reconnect; whatsapp-web.js reads it live from the engine.
 - `POST /api/sessions/:sessionId/messages/pin` and `.../unpin` pin/unpin a message in its chat for a
   bounded window (24h/7d/30d); `.../star` stars or unstars a message; `.../vote-poll` votes on a poll
   (`whatsapp-web.js` only — Baileys has no supported way to send an encrypted vote, `501`). Nothing is

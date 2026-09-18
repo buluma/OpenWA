@@ -345,12 +345,15 @@ Get active chats for a session, most-recent first (paginated).
     "kind": "individual",
     "unreadCount": 2,
     "timestamp": 1719306115,
-    "lastMessage": "See you tomorrow"
+    "lastMessage": "See you tomorrow",
+    "archived": false,
+    "pinned": false,
+    "muted": false
   }
 ]
 ```
 
-Sorted by `timestamp` DESC (most recent first) then paginated. `timestamp` is an epoch number (seconds). `kind` is the user-facing chat discriminator — one of `individual|group|channel|status|broadcast|unknown`; `isGroup` is retained for back-compat (true only for `kind: "group"`).
+Sorted by `timestamp` DESC (most recent first) then paginated. `timestamp` is an epoch number (seconds). `kind` is the user-facing chat discriminator — one of `individual|group|channel|status|broadcast|unknown`; `isGroup` is retained for back-compat (true only for `kind: "group"`). `archived`/`pinned`/`muted` reflect the state set via `.../chats/archive`, `.../chats/pin` and `.../chats/mute`; `muteExpiration` (epoch ms, `0` = indefinite) is present only when `muted` is `true`.
 
 **Errors:** `400` session not started · `401` · `403` · `404` session not found
 
@@ -741,6 +744,131 @@ Delete a chat from the chat list (e.g. a group you have left).
 ```
 
 Returns HTTP `200`, matching the OpenAPI contract.
+
+**Errors:** `400` validation, or session not started · `401` · `403` · `404` session not found
+
+#### DELETE /api/sessions/:id/chats/:chatId/messages
+
+Delete every message in a chat, keeping the chat itself.
+
+**Auth:** API key (OPERATOR)  ·  **Scope:** session-scoped
+
+**Path parameters**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| `id` | string | Session UUID |
+| `chatId` | string | Chat JID, e.g. `1234567890-123@g.us` (URL-encode the `@`) |
+
+**Response** `200`
+
+```json
+{ "success": true }
+```
+
+`success: false` means the engine declined to act — an unknown chat, or on the Baileys engine a chat
+with no known history, since the change is keyed to its last message.
+
+**Errors:** `400` session not started · `401` · `403` · `404` session not found
+
+#### POST /api/sessions/:id/chats/archive
+
+Archive or unarchive a chat.
+
+**Auth:** API key (OPERATOR)  ·  **Scope:** session-scoped
+
+**Path parameters**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| `id` | string | Session UUID |
+
+**Request body** — `ArchiveChatDto`
+
+| Field | Type | Required | Constraints | Description |
+| --- | --- | --- | --- | --- |
+| `chatId` | string | Yes | `@IsString`; `@IsNotEmpty`; `@Matches(/^[^\s@]+@[^\s@]+$/)` | Engine-native JID |
+| `archive` | boolean | Yes | `@IsBoolean` (strict — `"false"` is read as `false`, not truthy) | `true` to archive, `false` to unarchive |
+
+```json
+{ "chatId": "1234567890-123@g.us", "archive": true }
+```
+
+**Response** `200`
+
+```json
+{ "success": true }
+```
+
+`success: false` means the engine declined to act — on the Baileys engine a chat with no known history
+cannot be archived, since the change is keyed to its last message.
+
+**Errors:** `400` validation, or session not started · `401` · `403` · `404` session not found
+
+#### POST /api/sessions/:id/chats/mute
+
+Mute or unmute a chat.
+
+**Auth:** API key (OPERATOR)  ·  **Scope:** session-scoped
+
+**Path parameters**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| `id` | string | Session UUID |
+
+**Request body** — `MuteChatDto`
+
+| Field | Type | Required | Constraints | Description |
+| --- | --- | --- | --- | --- |
+| `chatId` | string | Yes | `@IsString`; `@IsNotEmpty`; `@Matches(/^[^\s@]+@[^\s@]+$/)` | Engine-native JID |
+| `muteUntil` | number \| null | Yes | `@IsInt`; `@Min(1)` when not null | Absolute epoch-**milliseconds** the mute expires at, or `null` to unmute now. Required — the field is never guessed. To mute indefinitely, send a far-future timestamp. |
+
+```json
+{ "chatId": "1234567890-123@g.us", "muteUntil": 1800000000000 }
+```
+
+**Response** `200`
+
+```json
+{ "success": true }
+```
+
+**Errors:** `400` validation (including a seconds-scale `muteUntil`, which is an instant in 1970), or
+session not started · `401` · `403` · `404` session not found
+
+#### POST /api/sessions/:id/chats/pin
+
+Pin or unpin a chat at the top of the chat list.
+
+**Auth:** API key (OPERATOR)  ·  **Scope:** session-scoped
+
+**Path parameters**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| `id` | string | Session UUID |
+
+**Request body** — `PinChatDto`
+
+| Field | Type | Required | Constraints | Description |
+| --- | --- | --- | --- | --- |
+| `chatId` | string | Yes | `@IsString`; `@IsNotEmpty`; `@Matches(/^[^\s@]+@[^\s@]+$/)` | Engine-native JID |
+| `pin` | boolean | Yes | `@IsBoolean` (strict) | `true` to pin, `false` to unpin |
+
+```json
+{ "chatId": "1234567890-123@g.us", "pin": true }
+```
+
+**Response** `200`
+
+```json
+{ "success": true }
+```
+
+`success: false` means the engine declined — only a pin can: WhatsApp allows at most three pinned
+chats and the whatsapp-web.js engine reports the refusal. Unpinning always succeeds, and the Baileys
+engine always reports success because it cannot observe the cap.
 
 **Errors:** `400` validation, or session not started · `401` · `403` · `404` session not found
 
