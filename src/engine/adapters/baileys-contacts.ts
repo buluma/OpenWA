@@ -14,6 +14,8 @@ export interface BaileysContactsHost {
   getSocket(): WASocket;
   readonly logger: ReturnType<typeof createLogger>;
   normalizedSelfJid(): string;
+  toNeutralJid(jid: string): string;
+  toEngineJid(jid: string): string;
   listContacts(): Contact[];
   findContact(contactId: string): Contact | null;
   resolvePhone(contactId: string): string | null;
@@ -51,6 +53,30 @@ export class BaileysContacts {
   async unblockContact(contactId: string): Promise<void> {
     this.host.ensureReady();
     await this.sock().updateBlockStatus(contactId, 'unblock');
+  }
+
+  async getBlockedContacts(): Promise<string[]> {
+    this.host.ensureReady();
+    const jids = await this.sock().fetchBlocklist();
+    return (jids ?? []).filter((jid): jid is string => Boolean(jid)).map(jid => this.host.toNeutralJid(jid));
+  }
+
+  // Baileys keys the addressbook app-state patch by the raw jid it is handed (no jidNormalizedUser,
+  // unlike the send path), so the neutral @c.us dialect the API speaks must be folded to the engine
+  // dialect first or the write silently targets a key WhatsApp never reads while reporting success.
+  async upsertContact(contactId: string, firstName: string, lastName = ''): Promise<void> {
+    this.host.ensureReady();
+    const fullName = [firstName, lastName].filter(Boolean).join(' ');
+    await this.sock().addOrEditContact(this.host.toEngineJid(contactId), {
+      firstName,
+      fullName,
+      saveOnPrimaryAddressbook: false,
+    });
+  }
+
+  async deleteContact(contactId: string): Promise<void> {
+    this.host.ensureReady();
+    await this.sock().removeContact(this.host.toEngineJid(contactId));
   }
 
   async setProfileName(name: string): Promise<void> {
@@ -133,5 +159,48 @@ export class BaileysContacts {
       chatId,
     );
     return true;
+  }
+
+  async clearChatMessages(chatId: string): Promise<boolean> {
+    this.host.ensureReady();
+    const last = this.host.lastMessage(chatId);
+    if (!last) {
+      return false; // Baileys' clear needs the last message; can't synthesize it
+    }
+    await this.sock().chatModify(
+      { clear: true, lastMessages: [{ key: last.key, messageTimestamp: last.timestamp }] },
+      chatId,
+    );
+    return true;
+  }
+
+  async archiveChat(chatId: string, archive: boolean): Promise<boolean> {
+    this.host.ensureReady();
+    const last = this.host.lastMessage(chatId);
+    if (!last) {
+      return false; // Baileys' archive toggle needs the last message; can't synthesize it
+    }
+    await this.sock().chatModify(
+      { archive, lastMessages: [{ key: last.key, messageTimestamp: last.timestamp }] },
+      chatId,
+    );
+    return true;
+  }
+
+  async pinChat(chatId: string, pin: boolean): Promise<boolean> {
+    this.host.ensureReady();
+    // No lastMessage lookup: the `pin` member of ChatModification carries no `lastMessages`, unlike
+    // archive/clear/delete, so a chat with no known history pins fine. Always true — Baileys writes
+    // the app-state patch and reports nothing back, so it has no equivalent of the whatsapp-web.js
+    // three-pin refusal to surface.
+    await this.sock().chatModify({ pin }, chatId);
+    return true;
+  }
+
+  async muteChat(chatId: string, muteUntil: number | null): Promise<void> {
+    this.host.ensureReady();
+    // Deliberately no lastMessage lookup: the `mute` member of ChatModification carries no
+    // `lastMessages`, unlike archive/clear/delete, so a chat with no known history mutes fine.
+    await this.sock().chatModify({ mute: muteUntil }, chatId);
   }
 }

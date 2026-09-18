@@ -306,7 +306,8 @@
       "reconnect": "התחברות מחדש",
       "unlink": "ביטול קישור",
       "delete": "מחיקה",
-      "killStuck": "סגור תקוע"
+      "killStuck": "סגור תקוע",
+      "proxy": "Proxy"
     },
     "toasts": {
       "readyTitle": "ה-Session מוכן",
@@ -367,6 +368,23 @@
     "start": {
       "teardownPendingTitle": "הפעלת סשן",
       "teardownPending": "פירוק אישורים לסשן זה עדיין מתבצע. המתן רגע ונסה שוב."
+    },
+    "proxy": {
+      "title": "Proxy Configuration",
+      "status": "Current",
+      "enabled": "Use proxy",
+      "url": "Proxy URL",
+      "urlPlaceholder": "http://user:pass@proxy.example.com:8080",
+      "urlKeepPlaceholder": "Enter new URL to replace {{host}} (credentials not shown)",
+      "configured": "{{host}} ({{type}})",
+      "noProxy": "No proxy configured",
+      "hasCredentials": "Credentials are stored but not shown. Enter a full URL to change them.",
+      "hint": "Changes apply on the next session start, not to a running connection. The proxy must be real and reachable — an unreachable value blocks QR delivery and start returns 504.",
+      "createHint": "Only needed when your network cannot reach WhatsApp directly. Must be a real, reachable proxy.",
+      "invalidUrl": "Enter a valid http, https, socks4, or socks5 proxy URL.",
+      "saveSuccessTitle": "Proxy Saved",
+      "saveSuccess": "Proxy settings saved. They apply on the next session start.",
+      "saveError": "Failed to save proxy settings"
     }
   },
   "webhooks": {
@@ -634,9 +652,11 @@
     "forwardMessageId": "מזהה הודעה",
     "forwardMessageIdHint": "מזהה ההודעה להעברה",
     "bulkRecipients": "נמענים",
+    "bulkRecipientsUpload": "Upload CSV/TXT",
     "bulkRecipientsPlaceholder": "+62812345678",
     "bulkRecipientsHint": "מספר טלפון או מזהה צ'אט אחד בכל שורה (עד 100)",
     "bulkRecipientsCount": "נמענים: {{count}}",
+    "recipientsFileTooLarge": "The recipients file is too large (max 2 MB)",
     "bulkDelay": "השהיה בין הודעות (אלפיות שנייה)",
     "bulkDelayHint": "1000–60000 אלפיות שנייה (ברירת מחדל 3000)",
     "send": "שליחת הודעה",

@@ -345,12 +345,15 @@ Get active chats for a session, most-recent first (paginated).
     "kind": "individual",
     "unreadCount": 2,
     "timestamp": 1719306115,
-    "lastMessage": "See you tomorrow"
+    "lastMessage": "See you tomorrow",
+    "archived": false,
+    "pinned": false,
+    "muted": false
   }
 ]
 ```
 
-Sorted by `timestamp` DESC (most recent first) then paginated. `timestamp` is an epoch number (seconds). `kind` is the user-facing chat discriminator — one of `individual|group|channel|status|broadcast|unknown`; `isGroup` is retained for back-compat (true only for `kind: "group"`).
+Sorted by `timestamp` DESC (most recent first) then paginated. `timestamp` is an epoch number (seconds). `kind` is the user-facing chat discriminator — one of `individual|group|channel|status|broadcast|unknown`; `isGroup` is retained for back-compat (true only for `kind: "group"`). `archived`/`pinned`/`muted` reflect the state set via `.../chats/archive`, `.../chats/pin` and `.../chats/mute`; `muteExpiration` (epoch ms, `0` = indefinite) is present only when `muted` is `true`.
 
 **Errors:** `400` session not started · `401` · `403` · `404` session not found
 
@@ -741,6 +744,131 @@ Delete a chat from the chat list (e.g. a group you have left).
 ```
 
 Returns HTTP `200`, matching the OpenAPI contract.
+
+**Errors:** `400` validation, or session not started · `401` · `403` · `404` session not found
+
+#### DELETE /api/sessions/:id/chats/:chatId/messages
+
+Delete every message in a chat, keeping the chat itself.
+
+**Auth:** API key (OPERATOR)  ·  **Scope:** session-scoped
+
+**Path parameters**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| `id` | string | Session UUID |
+| `chatId` | string | Chat JID, e.g. `1234567890-123@g.us` (URL-encode the `@`) |
+
+**Response** `200`
+
+```json
+{ "success": true }
+```
+
+`success: false` means the engine declined to act — an unknown chat, or on the Baileys engine a chat
+with no known history, since the change is keyed to its last message.
+
+**Errors:** `400` session not started · `401` · `403` · `404` session not found
+
+#### POST /api/sessions/:id/chats/archive
+
+Archive or unarchive a chat.
+
+**Auth:** API key (OPERATOR)  ·  **Scope:** session-scoped
+
+**Path parameters**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| `id` | string | Session UUID |
+
+**Request body** — `ArchiveChatDto`
+
+| Field | Type | Required | Constraints | Description |
+| --- | --- | --- | --- | --- |
+| `chatId` | string | Yes | `@IsString`; `@IsNotEmpty`; `@Matches(/^[^\s@]+@[^\s@]+$/)` | Engine-native JID |
+| `archive` | boolean | Yes | `@IsBoolean` (strict — `"false"` is read as `false`, not truthy) | `true` to archive, `false` to unarchive |
+
+```json
+{ "chatId": "1234567890-123@g.us", "archive": true }
+```
+
+**Response** `200`
+
+```json
+{ "success": true }
+```
+
+`success: false` means the engine declined to act — on the Baileys engine a chat with no known history
+cannot be archived, since the change is keyed to its last message.
+
+**Errors:** `400` validation, or session not started · `401` · `403` · `404` session not found
+
+#### POST /api/sessions/:id/chats/mute
+
+Mute or unmute a chat.
+
+**Auth:** API key (OPERATOR)  ·  **Scope:** session-scoped
+
+**Path parameters**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| `id` | string | Session UUID |
+
+**Request body** — `MuteChatDto`
+
+| Field | Type | Required | Constraints | Description |
+| --- | --- | --- | --- | --- |
+| `chatId` | string | Yes | `@IsString`; `@IsNotEmpty`; `@Matches(/^[^\s@]+@[^\s@]+$/)` | Engine-native JID |
+| `muteUntil` | number \| null | Yes | `@IsInt`; `@Min(1)` when not null | Absolute epoch-**milliseconds** the mute expires at, or `null` to unmute now. Required — the field is never guessed. To mute indefinitely, send a far-future timestamp. |
+
+```json
+{ "chatId": "1234567890-123@g.us", "muteUntil": 1800000000000 }
+```
+
+**Response** `200`
+
+```json
+{ "success": true }
+```
+
+**Errors:** `400` validation (including a seconds-scale `muteUntil`, which is an instant in 1970), or
+session not started · `401` · `403` · `404` session not found
+
+#### POST /api/sessions/:id/chats/pin
+
+Pin or unpin a chat at the top of the chat list.
+
+**Auth:** API key (OPERATOR)  ·  **Scope:** session-scoped
+
+**Path parameters**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| `id` | string | Session UUID |
+
+**Request body** — `PinChatDto`
+
+| Field | Type | Required | Constraints | Description |
+| --- | --- | --- | --- | --- |
+| `chatId` | string | Yes | `@IsString`; `@IsNotEmpty`; `@Matches(/^[^\s@]+@[^\s@]+$/)` | Engine-native JID |
+| `pin` | boolean | Yes | `@IsBoolean` (strict) | `true` to pin, `false` to unpin |
+
+```json
+{ "chatId": "1234567890-123@g.us", "pin": true }
+```
+
+**Response** `200`
+
+```json
+{ "success": true }
+```
+
+`success: false` means the engine declined — only a pin can: WhatsApp allows at most three pinned
+chats and the whatsapp-web.js engine reports the refusal. Unpinning always succeeds, and the Baileys
+engine always reports success because it cannot observe the cap.
 
 **Errors:** `400` validation, or session not started · `401` · `403` · `404` session not found
 
@@ -1854,6 +1982,81 @@ Resolve a contact id (e.g. an `@lid`) to a phone number (MSISDN digits), best-ef
 `phone` is `null` when the engine cannot map the id (e.g. an `@lid` the account has never seen).
 
 **Errors:** `400` session is not started · `401` missing/invalid API key
+
+#### GET /api/sessions/:sessionId/contacts/blocked
+
+List the contacts this account has blocked. The read half of the block/unblock endpoints below.
+
+**Auth:** API key
+
+**Path parameters**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| sessionId | string | Session ID. |
+
+**Response** `200`
+
+A bare array of neutral contact ids — ids only, because that is the honest common subset:
+whatsapp-web.js resolves full contact models but Baileys' blocklist query answers bare jids.
+
+```json
+["6281234567890@c.us", "6289876543210@c.us"]
+```
+
+**Errors:** `400` session is not started · `401` missing/invalid API key
+
+#### PUT /api/sessions/:sessionId/contacts/:contactId
+
+Save a contact to the account's addressbook, or edit an existing entry.
+
+**Auth:** API key (OPERATOR)
+
+**Path parameters**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| sessionId | string | Session ID. |
+| contactId | string | Contact id — must resolve to a phone number: a phone-based JID (`6281234567890@c.us`) or a bare number. A privacy id (`@lid`) with no known phone mapping is refused with `400`, since the addressbook is keyed by phone number, not JID. |
+
+**Request body**
+
+```json
+{ "firstName": "Ada", "lastName": "Lovelace" }
+```
+
+`firstName` is required (1–100 chars). `lastName` is optional (omit for a single-name contact).
+
+**Response** `200`
+
+```json
+{ "success": true, "message": "Contact saved" }
+```
+
+**Errors:** `400` session is not started, invalid body, or contactId does not name a phone-addressable person · `401` missing/invalid API key · `403` key role below OPERATOR
+
+#### DELETE /api/sessions/:sessionId/contacts/:contactId
+
+Remove a contact from the account's addressbook.
+
+**Auth:** API key (OPERATOR)
+
+**Path parameters**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| sessionId | string | Session ID. |
+| contactId | string | Contact id — same phone-addressability rule as the PUT above. |
+
+No request body.
+
+**Response** `200`
+
+```json
+{ "success": true, "message": "Contact deleted" }
+```
+
+**Errors:** `400` session is not started, or contactId does not name a phone-addressable person · `401` missing/invalid API key · `403` key role below OPERATOR
 
 #### POST /api/sessions/:sessionId/contacts/:contactId/block
 
@@ -5120,6 +5323,90 @@ Reject a currently ringing incoming call. Only a live call can be rejected — t
 **Errors:** `400` session is not started · `401` missing/invalid `X-API-Key` · `403` key lacks OPERATOR role · `404` call not found or no longer ringing
 
 > **Auto-reject per session.** Set `"config": { "autoRejectCalls": true }` when creating a session to have the server reject every incoming call automatically — the `call.received` event is still dispatched first, so automations keep full visibility.
+
+### 6.4.15 Automation Rules
+
+Single-message autoreply rules, managed under `/api/sessions/:sessionId/automation-rules`. Every route requires **OPERATOR** role or higher. A rule matches an inbound message using the same filter shape and evaluator as webhook `filters` (§6.4.8's `message` family: sender, recipient, body, type, isGroup, fromMe, hasMedia, mentions); omitted or empty `conditions` match every inbound message. On the first match, the rule's `replyText` is sent back into the chat through the ordinary send path (send pacing and plugin vetoes included). At most one rule replies per inbound message — first match in evaluation order (creation time, id as the same-second tiebreak) wins. After a rule replies in a chat it stays quiet there for `cooldownSeconds` (default 60; 0 disables the guard, knowingly — the point of the default is to bound two auto-repliers answering each other forever). A session may hold at most 32 rules.
+
+#### POST /api/sessions/:sessionId/automation-rules
+
+Create an autoreply rule.
+
+**Auth:** API key (OPERATOR)
+
+**Path parameters**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| sessionId | string | Session ID |
+
+**Request body**
+
+| Field | Type | Description |
+| --- | --- | --- |
+| name | string | Display name, max 100 chars. |
+| replyText | string | Text sent back into the chat when the rule matches, max 4096 chars. |
+| conditions | object \| null | Optional. Webhook filter shape (`message` family). Omitted/empty matches every inbound message. |
+| cooldownSeconds | integer | Optional, default 60, max 86400. Quiet period per chat after a reply. |
+| enabled | boolean | Optional, default true. |
+
+**Response** `201`
+
+```json
+{
+  "id": "f1e2d3c4-b5a6-7890-1234-567890abcdef",
+  "sessionId": "my-session",
+  "name": "Greet new enquiries",
+  "enabled": true,
+  "conditions": null,
+  "replyText": "Thanks for reaching out — we reply within the hour.",
+  "cooldownSeconds": 60,
+  "createdAt": "2026-06-25T10:00:00.000Z",
+  "updatedAt": "2026-06-25T10:00:00.000Z"
+}
+```
+
+**Errors:** `400` invalid rule (bad conditions, over-limit text) or the session already holds 32 rules · `401` missing/invalid `X-API-Key` · `403` key lacks OPERATOR role
+
+#### GET /api/sessions/:sessionId/automation-rules
+
+List the session's autoreply rules, in evaluation order.
+
+**Auth:** API key (OPERATOR)
+
+**Response** `200` — array of the same shape as the create response. Empty array if the session has no rules.
+
+**Errors:** `401` missing/invalid `X-API-Key` · `403` key lacks OPERATOR role
+
+#### GET /api/sessions/:sessionId/automation-rules/:ruleId
+
+Get one autoreply rule.
+
+**Auth:** API key (OPERATOR)
+
+**Response** `200` — same shape as the create response.
+
+**Errors:** `401` missing/invalid `X-API-Key` · `403` key lacks OPERATOR role · `404` no such rule in this session
+
+#### PUT /api/sessions/:sessionId/automation-rules/:ruleId
+
+Update an autoreply rule. Every field is optional; an omitted field keeps its current value.
+
+**Auth:** API key (OPERATOR)
+
+**Response** `200` — the updated rule, same shape as the create response.
+
+**Errors:** `401` missing/invalid `X-API-Key` · `403` key lacks OPERATOR role · `404` no such rule in this session
+
+#### DELETE /api/sessions/:sessionId/automation-rules/:ruleId
+
+Delete an autoreply rule.
+
+**Auth:** API key (OPERATOR)
+
+**Response** `204` — no body.
+
+**Errors:** `401` missing/invalid `X-API-Key` · `403` key lacks OPERATOR role · `404` no such rule in this session
 
 ## 6.5 Real-time API (WebSocket)
 

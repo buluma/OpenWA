@@ -13,11 +13,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Single-message autoreply rules under `/api/sessions/:sessionId/automation-rules` (create, list, get,
+  update, delete — all OPERATOR). A rule matches an inbound message using the same filter shape as
+  webhook `filters` and replies with `replyText` through the ordinary send path; at most one rule
+  replies per message, and a per-chat `cooldownSeconds` (default 60) bounds two auto-repliers
+  answering each other forever. A session may hold at most 32 rules.
+- Dashboard: the Sessions page can set a proxy when creating a session, and view, change or clear it
+  afterward, against the `GET`/`PATCH :sessionId/proxy` routes. Credentials are never round-tripped
+  back by the read.
+- Dashboard: the Message Tester's bulk-recipients box accepts a `.txt`/`.csv` file upload (one
+  recipient per line, appended to the textarea), rejecting files over 2 MB before reading them.
+- Dashboard: the Chats page loads older history as you scroll up, paged by DB rows already fetched,
+  holding the reading position when a page is prepended.
+- `POST /api/sessions/:id/chats/archive`, `.../mute` and `.../pin` archive/unarchive, mute/unmute
+  (absolute epoch-ms expiry, or `null` to unmute now) and pin/unpin a chat; `DELETE
+  /api/sessions/:id/chats/:chatId/messages` clears every message in a chat, keeping the chat itself.
+  `GET /api/sessions/:id/chats` now reports each chat's `archived`/`pinned`/`muted` state (plus
+  `muteExpiration` when muted). Baileys persists this state per chat (`chat_states` table) since the
+  engine cannot re-deliver it on reconnect; whatsapp-web.js reads it live from the engine.
 - `POST /api/sessions/:sessionId/messages/pin` and `.../unpin` pin/unpin a message in its chat for a
   bounded window (24h/7d/30d); `.../star` stars or unstars a message; `.../vote-poll` votes on a poll
   (`whatsapp-web.js` only — Baileys has no supported way to send an encrypted vote, `501`). Nothing is
   persisted locally for pin/star: both are WhatsApp-owned chat/account state. Available in all five
   SDKs (`messages.pin`/`.unpin`/`.star`/`.votePoll`, snake_case in Python).
+- `GET /api/sessions/:sessionId/contacts/blocked` lists the contacts this account has blocked, the
+  read half of the existing block/unblock endpoints. `PUT` and `DELETE
+  /api/sessions/:sessionId/contacts/:contactId` save/edit or remove a contact from the account's
+  addressbook. The addressbook is keyed by phone number, so a privacy id (`@lid`) with no known
+  phone mapping is refused with `400` on both writes.
 
 ### Fixed
 

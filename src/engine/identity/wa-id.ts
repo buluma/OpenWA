@@ -28,6 +28,8 @@ export type WaIdKind = 'user' | 'group' | 'lid' | 'status' | 'newsletter' | 'bro
 /** Domains that denote a phone-addressed user (the two are the same entity, different dialects). */
 const USER_DOMAINS = new Set(['c.us', 's.whatsapp.net']);
 
+const NUMERIC_ID = /^\d{5,}$/;
+
 export interface ParsedWaId {
   kind: WaIdKind;
   /** The local part with the device suffix and domain stripped (phone digits, lid number, or group id). */
@@ -68,6 +70,12 @@ export function parseWaId(jid: string): ParsedWaId {
             ? 'broadcast'
             : 'unknown';
   return { kind, userPart: local, device, raw };
+}
+
+/** Whether a JID names an individual (a phone-addressed user or a privacy-id user), not a group/channel/etc. */
+export function isIndividualWid(value: string): boolean {
+  const { kind, userPart } = parseWaId(value.trim());
+  return (kind === 'user' || kind === 'lid') && NUMERIC_ID.test(userPart);
 }
 
 /**

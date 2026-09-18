@@ -27,6 +27,7 @@ import {
 import { createLogger } from '../../common/services/logger.service';
 import { EventsGateway } from '../events/events.gateway';
 import { WebhookService } from '../webhook/webhook.service';
+import { AutomationRulesService } from '../automation/automation-rules.service';
 import { HookManager } from '../../core/hooks';
 import {
   deliveryStatusToMessageStatus,
@@ -98,6 +99,8 @@ export class MessageProjector {
     private readonly hookManager: HookManager,
     private readonly statusStore: StatusStoreService,
     private readonly lidResolver: SessionLidResolver,
+    @Optional()
+    private readonly automationRules?: AutomationRulesService,
     @Optional()
     private readonly configService?: ConfigService,
   ) {
@@ -319,6 +322,9 @@ export class MessageProjector {
 
     // Dispatch to webhooks with potentially modified message
     void this.webhookService.dispatch(id, 'message.received', finalMessage);
+    // Evaluate autoreply rules against the same payload webhooks got. Fire-and-forget like the
+    // dispatch above — the service already swallows its own failures (see evaluateInbound's docs).
+    void this.automationRules?.evaluateInbound(id, finalMessage);
     // Emit real-time event to WebSocket clients
     this.eventsGateway.emitMessage(id, finalMessage);
   }

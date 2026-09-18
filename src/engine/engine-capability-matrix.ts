@@ -62,10 +62,13 @@ export const ENGINE_CAPABILITY_MATRIX: Record<string, MethodCapability> = {
     evidence:
       "wwjs GroupChat.addParticipants → per-participant {code,message} object, or a reason STRING on batch refusal (index.d.ts:2184; GroupChat.js:78-264) — both mapped at the adapter; baileys groupParticipantsUpdate(jid,pids,'add') → per-jid [{status:'200'|error}] (Socket/groups.js:140-156); per-participant results surface on the HTTP `results` field, a total refusal throws",
   },
+  archiveChat: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
   blockContact: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
   checkNumberExists: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
+  clearChatMessages: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
   createGroup: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
   deleteChat: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
+  deleteContact: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
   deleteMessage: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
   deleteStatus: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
   demoteParticipants: {
@@ -84,6 +87,7 @@ export const ENGINE_CAPABILITY_MATRIX: Record<string, MethodCapability> = {
   },
   forceDestroy: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
   forwardMessage: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
+  getBlockedContacts: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
   getCatalog: {
     wwjs: { status: 'not-available', rootCause: 'library-limitation' },
     baileys: { status: 'not-available', rootCause: 'adapter-gap' },
@@ -178,6 +182,8 @@ export const ENGINE_CAPABILITY_MATRIX: Record<string, MethodCapability> = {
   leaveGroup: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
   logout: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
   markUnread: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
+  muteChat: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
+  pinChat: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
   pinMessage: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
   postImageStatus: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
   postTextStatus: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
@@ -292,6 +298,7 @@ export const ENGINE_CAPABILITY_MATRIX: Record<string, MethodCapability> = {
     evidence:
       'wwjs Client.unsubscribeFromChannel(channelId, options?) → boolean (index.d.ts:74; Client.js:2556; false → adapter throws EngineRefusedError); baileys newsletterUnfollow(jid) (Socket/newsletter.d.ts)',
   },
+  upsertContact: { wwjs: { status: 'supported' }, baileys: { status: 'supported' } },
   votePoll: {
     wwjs: { status: 'supported' },
     baileys: { status: 'not-available', rootCause: 'library-limitation' },

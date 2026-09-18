@@ -162,6 +162,7 @@ if (dashboardServingEnabled && dashboardBuildPresent) {
             __dirname + '/engine/**/*.entity{.ts,.js}',
             __dirname + '/modules/integration/**/*.entity{.ts,.js}',
             __dirname + '/modules/status-store/**/*.entity{.ts,.js}',
+            __dirname + '/modules/automation/**/*.entity{.ts,.js}',
           ],
           migrations: [__dirname + '/database/migrations/*{.ts,.js}'],
           logging: configService.get<boolean>('dataDatabase.logging', false),

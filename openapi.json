@@ -946,6 +946,169 @@
         ]
       }
     },
+    "/api/sessions/{id}/chats/{chatId}/messages": {
+      "delete": {
+        "operationId": "SessionController_clearChatMessages",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Session ID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "chatId",
+            "required": true,
+            "in": "path",
+            "description": "Chat JID, e.g. 1234567890-123@g.us (URL-encode the '@')",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Returns `{ success }`. `false` means the engine declined to act — an unknown chat, or on the Baileys engine a chat with no known history, since the change is keyed to its last message."
+          },
+          "400": {
+            "description": "Session not ready"
+          },
+          "404": {
+            "description": "Session not found"
+          }
+        },
+        "summary": "Delete every message in a chat, keeping the chat itself",
+        "tags": [
+          "sessions"
+        ]
+      }
+    },
+    "/api/sessions/{id}/chats/archive": {
+      "post": {
+        "operationId": "SessionController_archiveChat",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Session ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ArchiveChatDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Returns `{ success }`. `false` means the engine declined to act — on the Baileys engine a chat with no known history cannot be archived, since the change is keyed to its last message."
+          },
+          "400": {
+            "description": "Session not ready"
+          },
+          "404": {
+            "description": "Session not found"
+          }
+        },
+        "summary": "Archive or unarchive a chat",
+        "tags": [
+          "sessions"
+        ]
+      }
+    },
+    "/api/sessions/{id}/chats/mute": {
+      "post": {
+        "operationId": "SessionController_muteChat",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Session ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MuteChatDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Mute applied successfully"
+          },
+          "400": {
+            "description": "Session not ready, or an invalid chatId / muteUntil"
+          },
+          "404": {
+            "description": "Session not found"
+          }
+        },
+        "summary": "Mute or unmute a chat",
+        "tags": [
+          "sessions"
+        ]
+      }
+    },
+    "/api/sessions/{id}/chats/pin": {
+      "post": {
+        "operationId": "SessionController_pinChat",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Session ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PinChatDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Returns `{ success }`. `false` means the engine declined, and only a pin can: WhatsApp allows at most three pinned chats and the whatsapp-web.js engine reports the refusal. Unpinning always succeeds, and the Baileys engine always reports success because it cannot observe the cap."
+          },
+          "400": {
+            "description": "Session not ready, or a chatId the session cannot resolve"
+          },
+          "404": {
+            "description": "Session not found"
+          }
+        },
+        "summary": "Pin or unpin a chat at the top of the chat list",
+        "tags": [
+          "sessions"
+        ]
+      }
+    },
     "/api/sessions/{id}/chats/typing": {
       "post": {
         "operationId": "SessionController_sendChatState",
@@ -1326,6 +1489,215 @@
         "summary": "List webhooks visible to the calling key (scoped to its allowed sessions)",
         "tags": [
           "webhooks"
+        ]
+      }
+    },
+    "/api/sessions/{sessionId}/automation-rules": {
+      "post": {
+        "operationId": "AutomationRuleController_create",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": true,
+            "in": "path",
+            "description": "Session ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAutomationRuleDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Rule created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutomationRuleResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid rule (bad conditions, over-limit text)."
+          }
+        },
+        "summary": "Create an autoreply rule",
+        "tags": [
+          "automation"
+        ]
+      },
+      "get": {
+        "operationId": "AutomationRuleController_findAll",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": true,
+            "in": "path",
+            "description": "Session ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Rules in evaluation order: creation time, id as the same-second tiebreak.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AutomationRuleResponseDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "List the session's autoreply rules",
+        "tags": [
+          "automation"
+        ]
+      }
+    },
+    "/api/sessions/{sessionId}/automation-rules/{ruleId}": {
+      "get": {
+        "operationId": "AutomationRuleController_findOne",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": true,
+            "in": "path",
+            "description": "Session ID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ruleId",
+            "required": true,
+            "in": "path",
+            "description": "Rule ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The rule.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutomationRuleResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such rule in this session."
+          }
+        },
+        "summary": "Get one autoreply rule",
+        "tags": [
+          "automation"
+        ]
+      },
+      "put": {
+        "operationId": "AutomationRuleController_update",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": true,
+            "in": "path",
+            "description": "Session ID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ruleId",
+            "required": true,
+            "in": "path",
+            "description": "Rule ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAutomationRuleDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated rule.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutomationRuleResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such rule in this session."
+          }
+        },
+        "summary": "Update an autoreply rule",
+        "tags": [
+          "automation"
+        ]
+      },
+      "delete": {
+        "operationId": "AutomationRuleController_remove",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": true,
+            "in": "path",
+            "description": "Session ID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ruleId",
+            "required": true,
+            "in": "path",
+            "description": "Rule ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Rule deleted."
+          },
+          "404": {
+            "description": "No such rule in this session."
+          }
+        },
+        "summary": "Delete an autoreply rule",
+        "tags": [
+          "automation"
         ]
       }
     },
@@ -3069,6 +3441,32 @@
         ]
       }
     },
+    "/api/sessions/{sessionId}/contacts/blocked": {
+      "get": {
+        "description": "The read half of the block/unblock endpoints. A bare array of neutral contact ids — ids only, because that is the honest common subset: whatsapp-web.js resolves full contact models but Baileys' blocklist query answers bare jids, and inventing the other fields on one engine would make the two engines claim different things about the same account.",
+        "operationId": "ContactController_getBlockedContacts",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": true,
+            "in": "path",
+            "description": "Session ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Blocked contact ids"
+          }
+        },
+        "summary": "List the contacts this account has blocked",
+        "tags": [
+          "contacts"
+        ]
+      }
+    },
     "/api/sessions/{sessionId}/contacts/{contactId}": {
       "get": {
         "operationId": "ContactController_findOne",
@@ -3101,6 +3499,86 @@
           }
         },
         "summary": "Get a specific contact by ID",
+        "tags": [
+          "contacts"
+        ]
+      },
+      "put": {
+        "operationId": "ContactController_upsertContact",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": true,
+            "in": "path",
+            "description": "Session ID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "contactId",
+            "required": true,
+            "in": "path",
+            "description": "Contact ID (e.g., 628xxx@c.us)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertContactDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Contact saved"
+          },
+          "400": {
+            "description": "Session not active, or contactId does not name a phone-addressable person"
+          }
+        },
+        "summary": "Save a contact to the account's addressbook, or edit an existing entry",
+        "tags": [
+          "contacts"
+        ]
+      },
+      "delete": {
+        "operationId": "ContactController_deleteContact",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": true,
+            "in": "path",
+            "description": "Session ID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "contactId",
+            "required": true,
+            "in": "path",
+            "description": "Contact ID (e.g., 628xxx@c.us)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Contact deleted"
+          },
+          "400": {
+            "description": "Session not active, or contactId does not name a phone-addressable person"
+          }
+        },
+        "summary": "Remove a contact from the account's addressbook",
         "tags": [
           "contacts"
         ]
@@ -6644,6 +7122,26 @@
           "lastMessage": {
             "type": "string",
             "example": "hi"
+          },
+          "archived": {
+            "type": "boolean",
+            "description": "Archived state, as set via POST .../chats/archive.",
+            "example": false
+          },
+          "pinned": {
+            "type": "boolean",
+            "description": "Pinned state, as set via POST .../chats/pin.",
+            "example": false
+          },
+          "muted": {
+            "type": "boolean",
+            "description": "Muted state, as set via POST .../chats/mute.",
+            "example": false
+          },
+          "muteExpiration": {
+            "type": "number",
+            "description": "Epoch milliseconds the mute ends, present only when `muted` is true (0 = indefinite).",
+            "example": 1800000000000
           }
         },
         "required": [
@@ -6652,7 +7150,10 @@
           "isGroup",
           "kind",
           "unreadCount",
-          "timestamp"
+          "timestamp",
+          "archived",
+          "pinned",
+          "muted"
         ]
       },
       "MarkChatReadDto": {
@@ -6679,6 +7180,62 @@
         },
         "required": [
           "chatId"
+        ]
+      },
+      "ArchiveChatDto": {
+        "type": "object",
+        "properties": {
+          "chatId": {
+            "type": "string",
+            "description": "Chat ID in the active engine's native format (e.g. 1234567890-123@g.us on whatsapp-web.js)",
+            "example": "1234567890-123@g.us"
+          },
+          "archive": {
+            "type": "boolean",
+            "description": "true to archive, false to unarchive."
+          }
+        },
+        "required": [
+          "chatId",
+          "archive"
+        ]
+      },
+      "MuteChatDto": {
+        "type": "object",
+        "properties": {
+          "chatId": {
+            "type": "string",
+            "description": "Chat ID in the active engine's native format (e.g. 1234567890-123@g.us on whatsapp-web.js)",
+            "example": "1234567890-123@g.us"
+          },
+          "muteUntil": {
+            "type": "number",
+            "description": "Absolute epoch-MILLISECONDS timestamp at which the mute expires, or `null` to unmute now. Required — omitting it is rejected rather than guessed, because the two plausible readings (unmute vs mute forever) are opposites. To mute indefinitely, send a far-future timestamp. Milliseconds, not seconds: a seconds-scale value is an instant in 1970, so the mute expires immediately while the request still answers 200.",
+            "example": 1800000000000,
+            "nullable": true
+          }
+        },
+        "required": [
+          "chatId",
+          "muteUntil"
+        ]
+      },
+      "PinChatDto": {
+        "type": "object",
+        "properties": {
+          "chatId": {
+            "type": "string",
+            "description": "Chat ID in the active engine's native format (e.g. 1234567890-123@g.us on whatsapp-web.js)",
+            "example": "1234567890-123@g.us"
+          },
+          "pin": {
+            "type": "boolean",
+            "description": "true to pin the chat to the top of the list, false to unpin it."
+          }
+        },
+        "required": [
+          "chatId",
+          "pin"
         ]
       },
       "SendChatStateDto": {
@@ -6926,6 +7483,118 @@
           "retryCount": {
             "type": "number",
             "description": "Retry count"
+          }
+        }
+      },
+      "CreateAutomationRuleDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Display name for the rule",
+            "example": "Greet new enquiries",
+            "maxLength": 100
+          },
+          "replyText": {
+            "type": "string",
+            "description": "Text sent back into the chat when the rule matches",
+            "example": "Thanks for reaching out — we reply within the hour.",
+            "maxLength": 4096
+          },
+          "conditions": {
+            "type": "object",
+            "description": "Match conditions in the webhook filter format (message family: sender, recipient, body, type, isGroup, fromMe, hasMedia, mentions). All conditions must match (AND). Omitted or empty means the rule matches every inbound message."
+          },
+          "cooldownSeconds": {
+            "type": "number",
+            "description": "Quiet period per chat, in seconds: after the rule replies in a chat it stays silent there for this long (default 60, 0 disables). This is the guard against two auto-repliers answering each other forever, so disable it knowingly.",
+            "default": 60,
+            "minimum": 0,
+            "maximum": 86400
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether the rule is active",
+            "default": true
+          }
+        },
+        "required": [
+          "name",
+          "replyText"
+        ]
+      },
+      "AutomationRuleResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sessionId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "conditions": {
+            "type": "object",
+            "description": "Match conditions in the webhook filter format (message family: sender, recipient, body, type, isGroup, fromMe, hasMedia, mentions). All conditions must match (AND). Omitted or empty means the rule matches every inbound message.",
+            "nullable": true
+          },
+          "replyText": {
+            "type": "string"
+          },
+          "cooldownSeconds": {
+            "type": "number"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "sessionId",
+          "name",
+          "enabled",
+          "replyText",
+          "cooldownSeconds",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "UpdateAutomationRuleDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Display name for the rule",
+            "maxLength": 100
+          },
+          "replyText": {
+            "type": "string",
+            "description": "Text sent back into the chat when the rule matches",
+            "maxLength": 4096
+          },
+          "conditions": {
+            "type": "object",
+            "description": "Match conditions in the webhook filter format (message family: sender, recipient, body, type, isGroup, fromMe, hasMedia, mentions). All conditions must match (AND). Omitted or empty means the rule matches every inbound message."
+          },
+          "cooldownSeconds": {
+            "type": "number",
+            "description": "Quiet period per chat, in seconds: after the rule replies in a chat it stays silent there for this long (default 60, 0 disables). This is the guard against two auto-repliers answering each other forever, so disable it knowingly.",
+            "minimum": 0,
+            "maximum": 86400
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether the rule is active"
           }
         }
       },
@@ -7825,6 +8494,24 @@
             }
           }
         }
+      },
+      "UpsertContactDto": {
+        "type": "object",
+        "properties": {
+          "firstName": {
+            "type": "string",
+            "description": "The contact's first name.",
+            "maxLength": 100
+          },
+          "lastName": {
+            "type": "string",
+            "description": "The contact's last name. Omit for a single-name contact — WhatsApp allows those.",
+            "maxLength": 100
+          }
+        },
+        "required": [
+          "firstName"
+        ]
       },
       "JoinGroupDto": {
         "type": "object",

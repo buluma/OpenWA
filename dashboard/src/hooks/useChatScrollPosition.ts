@@ -76,6 +76,7 @@ export function useChatScrollPosition(
   containerRef: RefObject<HTMLDivElement | null>;
   onMessageAppended: (direction: ScrollDirection) => void;
   onMediaLoad: () => void;
+  onOlderMessagesPrepended: (prevScrollHeight: number, prevScrollTop: number) => void;
 } {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const scrollMap = useRef<Map<string, number>>(new Map());
@@ -193,5 +194,24 @@ export function useChatScrollPosition(
     });
   }, [pinToBottom, writeScrollTop]);
 
-  return { containerRef, onMessageAppended, onMediaLoad };
+  // An older page is prepended ABOVE the current viewport, so the container's scrollHeight grows
+  // without the visible content moving — left alone, the browser keeps scrollTop numerically fixed,
+  // which yanks the reading position down by the height of everything just inserted above it. The
+  // caller snapshots scrollHeight/scrollTop before the prepend commits; once React has rendered the
+  // new rows (next frame), the delta between the old and new scrollHeight is added back to scrollTop
+  // so the same message stays under the viewport's top edge. Routed through writeScrollTop so the
+  // pin-tracking listener above treats this as our own write, not a user scroll.
+  const onOlderMessagesPrepended = useCallback(
+    (prevScrollHeight: number, prevScrollTop: number) => {
+      requestAnimationFrame(() => {
+        const cur = containerRef.current;
+        if (!cur) return;
+        const delta = cur.scrollHeight - prevScrollHeight;
+        writeScrollTop(cur, prevScrollTop + delta);
+      });
+    },
+    [writeScrollTop],
+  );
+
+  return { containerRef, onMessageAppended, onMediaLoad, onOlderMessagesPrepended };
 }

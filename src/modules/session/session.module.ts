@@ -11,11 +11,13 @@ import { SessionErrorStore } from './session-error-store.service';
 import { SessionController } from './session.controller';
 import { WebhookModule } from '../webhook/webhook.module';
 import { StatusStoreModule } from '../status-store/status-store.module';
+import { AutomationModule } from '../automation/automation.module';
 
 @Module({
-  // WebhookModule/StatusStoreModule do not import SessionModule back, so the dependency is
-  // one-directional — no forwardRef() needed.
-  imports: [TypeOrmModule.forFeature([Session, Message], 'data'), WebhookModule, StatusStoreModule],
+  // WebhookModule/StatusStoreModule/AutomationModule do not import SessionModule back, so the
+  // dependency is one-directional — no forwardRef() needed. AutomationModule resolves its own
+  // MessageService dependency lazily (ModuleRef) instead of a module import, for the same reason.
+  imports: [TypeOrmModule.forFeature([Session, Message], 'data'), WebhookModule, StatusStoreModule, AutomationModule],
   controllers: [SessionController],
   providers: [
     SessionService,

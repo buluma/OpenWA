@@ -1,9 +1,10 @@
-import { Controller, Get, Post, Delete, Param, Query, HttpCode, HttpStatus, Res } from '@nestjs/common';
+import { Body, Controller, Get, Post, Put, Delete, Param, Query, HttpCode, HttpStatus, Res } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { ContactService } from './contact.service';
 import { RequireRole } from '../auth/decorators/auth.decorators';
 import { ApiKeyRole } from '../auth/entities/api-key.entity';
+import { UpsertContactDto } from './dto/upsert-contact.dto';
 
 @ApiTags('contacts')
 @Controller('sessions/:sessionId/contacts')
@@ -49,6 +50,22 @@ export class ContactController {
       .filter(Boolean);
     const pictures = await this.contactService.getProfilePictures(sessionId, list);
     return { pictures };
+  }
+
+  @Get('blocked')
+  @ApiOperation({
+    summary: 'List the contacts this account has blocked',
+    description:
+      'The read half of the block/unblock endpoints. A bare array of neutral contact ids — ids ' +
+      'only, because that is the honest common subset: whatsapp-web.js resolves full contact ' +
+      "models but Baileys' blocklist query answers bare jids, and inventing the other fields on " +
+      'one engine would make the two engines claim different things about the same account.',
+  })
+  @ApiParam({ name: 'sessionId', description: 'Session ID' })
+  @ApiResponse({ status: 200, description: 'Blocked contact ids' })
+  // NOTE: declared BEFORE @Get(':contactId') so the literal segment wins over the param route.
+  async getBlockedContacts(@Param('sessionId') sessionId: string) {
+    return this.contactService.getBlockedContacts(sessionId);
   }
 
   @Get(':contactId')
@@ -141,6 +158,43 @@ export class ContactController {
   async resolvePhone(@Param('sessionId') sessionId: string, @Param('contactId') contactId: string) {
     const phone = await this.contactService.resolveContactPhone(sessionId, contactId);
     return { contactId, phone };
+  }
+
+  @Put(':contactId')
+  @RequireRole(ApiKeyRole.OPERATOR)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Save a contact to the account's addressbook, or edit an existing entry" })
+  @ApiParam({ name: 'sessionId', description: 'Session ID' })
+  @ApiParam({ name: 'contactId', description: 'Contact ID (e.g., 628xxx@c.us)' })
+  @ApiResponse({ status: 200, description: 'Contact saved' })
+  @ApiResponse({
+    status: 400,
+    description: 'Session not active, or contactId does not name a phone-addressable person',
+  })
+  async upsertContact(
+    @Param('sessionId') sessionId: string,
+    @Param('contactId') contactId: string,
+    @Body() dto: UpsertContactDto,
+  ) {
+    await this.contactService.upsertContact(sessionId, contactId, dto.firstName, dto.lastName);
+    return { success: true, message: 'Contact saved' };
+  }
+
+  // Two path segments on the sibling route (`:contactId/block`) keep this single-segment DELETE
+  // from shadowing the unblock route, whichever order they are declared in.
+  @Delete(':contactId')
+  @RequireRole(ApiKeyRole.OPERATOR)
+  @ApiOperation({ summary: "Remove a contact from the account's addressbook" })
+  @ApiParam({ name: 'sessionId', description: 'Session ID' })
+  @ApiParam({ name: 'contactId', description: 'Contact ID (e.g., 628xxx@c.us)' })
+  @ApiResponse({ status: 200, description: 'Contact deleted' })
+  @ApiResponse({
+    status: 400,
+    description: 'Session not active, or contactId does not name a phone-addressable person',
+  })
+  async deleteContact(@Param('sessionId') sessionId: string, @Param('contactId') contactId: string) {
+    await this.contactService.deleteContact(sessionId, contactId);
+    return { success: true, message: 'Contact deleted' };
   }
 
   @Post(':contactId/block')

@@ -299,7 +299,8 @@
       "reconnect": "重新連線",
       "unlink": "解除連結",
       "delete": "刪除",
-      "killStuck": "強制終止"
+      "killStuck": "強制終止",
+      "proxy": "Proxy"
     },
     "toasts": {
       "readyTitle": "工作階段就緒",
@@ -360,6 +361,23 @@
     "start": {
       "teardownPendingTitle": "工作階段啟動中",
       "teardownPending": "此工作階段的憑證拆除仍在進行中。請稍候再試。"
+    },
+    "proxy": {
+      "title": "Proxy Configuration",
+      "status": "Current",
+      "enabled": "Use proxy",
+      "url": "Proxy URL",
+      "urlPlaceholder": "http://user:pass@proxy.example.com:8080",
+      "urlKeepPlaceholder": "Enter new URL to replace {{host}} (credentials not shown)",
+      "configured": "{{host}} ({{type}})",
+      "noProxy": "No proxy configured",
+      "hasCredentials": "Credentials are stored but not shown. Enter a full URL to change them.",
+      "hint": "Changes apply on the next session start, not to a running connection. The proxy must be real and reachable — an unreachable value blocks QR delivery and start returns 504.",
+      "createHint": "Only needed when your network cannot reach WhatsApp directly. Must be a real, reachable proxy.",
+      "invalidUrl": "Enter a valid http, https, socks4, or socks5 proxy URL.",
+      "saveSuccessTitle": "Proxy Saved",
+      "saveSuccess": "Proxy settings saved. They apply on the next session start.",
+      "saveError": "Failed to save proxy settings"
     }
   },
   "webhooks": {
@@ -625,9 +643,11 @@
     "forwardMessageId": "訊息 ID",
     "forwardMessageIdHint": "要轉發的訊息 ID",
     "bulkRecipients": "收件人",
+    "bulkRecipientsUpload": "Upload CSV/TXT",
     "bulkRecipientsPlaceholder": "+62812345678",
     "bulkRecipientsHint": "每行一個電話號碼或對話 ID（最多 100 個）",
     "bulkRecipientsCount": "收件人：{{count}}",
+    "recipientsFileTooLarge": "The recipients file is too large (max 2 MB)",
     "bulkDelay": "訊息之間的延遲（毫秒）",
     "bulkDelayHint": "1000–60000 毫秒（預設 3000）",
     "send": "傳送訊息",

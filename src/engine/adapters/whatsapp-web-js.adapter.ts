@@ -1473,6 +1473,21 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
     return this.contacts.unblockContact(contactId);
   }
 
+  // The read half of block/unblock
+  getBlockedContacts(): Promise<string[]> {
+    return this.contacts.getBlockedContacts();
+  }
+
+  // Save/edit an addressbook entry
+  upsertContact(contactId: string, firstName: string, lastName?: string): Promise<void> {
+    return this.contacts.upsertContact(contactId, firstName, lastName);
+  }
+
+  // Remove an addressbook entry
+  deleteContact(contactId: string): Promise<void> {
+    return this.contacts.deleteContact(contactId);
+  }
+
   // ========== Profile (own account) ==========
 
   setProfileName(name: string): Promise<void> {
@@ -1583,6 +1598,22 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
 
   deleteChat(chatId: string): Promise<boolean> {
     return this.chats.deleteChat(chatId);
+  }
+
+  clearChatMessages(chatId: string): Promise<boolean> {
+    return this.chats.clearChatMessages(chatId);
+  }
+
+  archiveChat(chatId: string, archive: boolean): Promise<boolean> {
+    return this.chats.archiveChat(chatId, archive);
+  }
+
+  pinChat(chatId: string, pin: boolean): Promise<boolean> {
+    return this.chats.pinChat(chatId, pin);
+  }
+
+  muteChat(chatId: string, muteUntil: number | null): Promise<void> {
+    return this.chats.muteChat(chatId, muteUntil);
   }
 
   sendChatState(chatId: string, state: ChatState): Promise<void> {

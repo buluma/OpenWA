@@ -744,6 +744,124 @@ describe('WhatsAppWebJsAdapter channel-JID guard (#554 — wwebjs Channel lacks 
     });
   });
 
+  describe('clearChatMessages', () => {
+    it('clears a user chat (returns the underlying clearMessages result)', async () => {
+      const clearMessages = jest.fn().mockResolvedValue(true);
+      const getChatById = jest.fn().mockResolvedValue({ clearMessages });
+      await expect(readyAdapter({ getChatById }).clearChatMessages(USER)).resolves.toBe(true);
+      expect(clearMessages).toHaveBeenCalled();
+    });
+
+    it('returns false when getChatById throws (unknown chat)', async () => {
+      const getChatById = jest.fn().mockRejectedValue(new Error('not found'));
+      await expect(readyAdapter({ getChatById }).clearChatMessages('bogus@c.us')).resolves.toBe(false);
+    });
+  });
+
+  describe('archiveChat', () => {
+    it('archives a user chat and reports success (archive() resolves void with no refusal signal)', async () => {
+      const archive = jest.fn().mockResolvedValue(undefined);
+      const unarchive = jest.fn();
+      const getChatById = jest.fn().mockResolvedValue({ archive, unarchive });
+      await expect(readyAdapter({ getChatById }).archiveChat(USER, true)).resolves.toBe(true);
+      expect(archive).toHaveBeenCalled();
+      expect(unarchive).not.toHaveBeenCalled();
+    });
+
+    it('unarchives when archive=false', async () => {
+      const archive = jest.fn();
+      const unarchive = jest.fn().mockResolvedValue(undefined);
+      const getChatById = jest.fn().mockResolvedValue({ archive, unarchive });
+      await expect(readyAdapter({ getChatById }).archiveChat(USER, false)).resolves.toBe(true);
+      expect(unarchive).toHaveBeenCalled();
+      expect(archive).not.toHaveBeenCalled();
+    });
+
+    it('returns false when getChatById throws (unknown chat)', async () => {
+      const getChatById = jest.fn().mockRejectedValue(new Error('not found'));
+      await expect(readyAdapter({ getChatById }).archiveChat('bogus@c.us', true)).resolves.toBe(false);
+    });
+  });
+
+  describe('pinChat', () => {
+    it('discards unpin()\'s "new state" return (always true on success, matching the archive/delete trap)', async () => {
+      const pin = jest.fn();
+      const unpin = jest.fn().mockResolvedValue(false); // library reports the (unpinned) new state, not success
+      const getChatById = jest.fn().mockResolvedValue({ pin, unpin });
+      await expect(readyAdapter({ getChatById }).pinChat(USER, false)).resolves.toBe(true);
+      expect(unpin).toHaveBeenCalled();
+      expect(pin).not.toHaveBeenCalled();
+    });
+
+    it("forwards pin()'s return value — false is a real refusal (three-pin cap)", async () => {
+      const pin = jest.fn().mockResolvedValue(false);
+      const getChatById = jest.fn().mockResolvedValue({ pin });
+      await expect(readyAdapter({ getChatById }).pinChat(USER, true)).resolves.toBe(false);
+      expect(pin).toHaveBeenCalled();
+    });
+
+    it('reports success when pin() resolves true', async () => {
+      const pin = jest.fn().mockResolvedValue(true);
+      const getChatById = jest.fn().mockResolvedValue({ pin });
+      await expect(readyAdapter({ getChatById }).pinChat(USER, true)).resolves.toBe(true);
+    });
+  });
+
+  describe('muteChat', () => {
+    it('mutes with the given Date when muteUntil is a finite epoch-ms timestamp', async () => {
+      const mute = jest.fn().mockResolvedValue({ isMuted: true, muteExpiration: 1800000000 });
+      const getChatById = jest.fn().mockResolvedValue({ mute });
+      await readyAdapter({ getChatById }).muteChat(USER, 1800000000000);
+      expect(mute).toHaveBeenCalledWith(new Date(1800000000000));
+    });
+
+    it('unmutes when muteUntil is null', async () => {
+      const unmute = jest.fn().mockResolvedValue({ isMuted: false, muteExpiration: 0 });
+      const getChatById = jest.fn().mockResolvedValue({ unmute });
+      await readyAdapter({ getChatById }).muteChat(USER, null);
+      expect(unmute).toHaveBeenCalled();
+    });
+  });
+
+  describe('getChats archived/pinned/muted/muteExpiration mapping', () => {
+    const chat = (overrides: Record<string, unknown>) => ({
+      id: { _serialized: USER },
+      name: 'Alice',
+      isGroup: false,
+      unreadCount: 0,
+      timestamp: 100,
+      archived: false,
+      pinned: false,
+      isMuted: false,
+      muteExpiration: 0,
+      ...overrides,
+    });
+
+    it('reports archived/pinned booleans as-is', async () => {
+      const getChats = jest.fn().mockResolvedValue([chat({ archived: true, pinned: true })]);
+      const [summary] = await readyAdapter({ getChats }).getChats();
+      expect(summary).toMatchObject({ archived: true, pinned: true });
+    });
+
+    it('an unmuted chat reports muted:false and muteExpiration:undefined', async () => {
+      const getChats = jest.fn().mockResolvedValue([chat({ isMuted: false, muteExpiration: 0 })]);
+      const [summary] = await readyAdapter({ getChats }).getChats();
+      expect(summary).toMatchObject({ muted: false, muteExpiration: undefined });
+    });
+
+    it('converts a finite wwjs epoch-SECONDS muteExpiration to epoch-MILLISECONDS', async () => {
+      const getChats = jest.fn().mockResolvedValue([chat({ isMuted: true, muteExpiration: 1800000000 })]);
+      const [summary] = await readyAdapter({ getChats }).getChats();
+      expect(summary).toMatchObject({ muted: true, muteExpiration: 1800000000000 });
+    });
+
+    it('an indefinite mute (wwjs -1 sentinel) reports muteExpiration:0', async () => {
+      const getChats = jest.fn().mockResolvedValue([chat({ isMuted: true, muteExpiration: -1 })]);
+      const [summary] = await readyAdapter({ getChats }).getChats();
+      expect(summary).toMatchObject({ muted: true, muteExpiration: 0 });
+    });
+  });
+
   describe('getChatLabels', () => {
     it('returns [] on a newsletter JID instead of throwing (was an unguarded HTTP 500)', async () => {
       const getChatById = jest.fn();
@@ -4930,6 +5048,37 @@ describe('WhatsAppWebJsAdapter honest outcomes (no phantom success)', () => {
         getProfilePicUrl: jest.fn().mockRejectedValue(new Error("Server returned error: couldn't get profile picture")),
       });
       await expect(adapter.getProfilePicture('12345@c.us')).resolves.toBeNull();
+    });
+  });
+
+  describe('addressbook + blocklist (getBlockedContacts / upsertContact / deleteContact)', () => {
+    it('getBlockedContacts maps the blocked-contacts list to bare ids', async () => {
+      const getBlockedContacts = jest
+        .fn()
+        .mockResolvedValue([{ id: { _serialized: '628111@c.us' } }, { id: { _serialized: '628222@c.us' } }]);
+      const adapter = readyAdapter({ getBlockedContacts });
+      await expect(adapter.getBlockedContacts()).resolves.toEqual(['628111@c.us', '628222@c.us']);
+    });
+
+    it('upsertContact saves under the phone number (user-part), passing lastName positionally', async () => {
+      const saveOrEditAddressbookContact = jest.fn().mockResolvedValue(undefined);
+      const adapter = readyAdapter({ saveOrEditAddressbookContact });
+      await adapter.upsertContact('628111@c.us', 'Ada', 'Lovelace');
+      expect(saveOrEditAddressbookContact).toHaveBeenCalledWith('628111', 'Ada', 'Lovelace');
+    });
+
+    it('upsertContact passes an empty string, not undefined, when lastName is omitted', async () => {
+      const saveOrEditAddressbookContact = jest.fn().mockResolvedValue(undefined);
+      const adapter = readyAdapter({ saveOrEditAddressbookContact });
+      await adapter.upsertContact('628111@c.us', 'Ada');
+      expect(saveOrEditAddressbookContact).toHaveBeenCalledWith('628111', 'Ada', '');
+    });
+
+    it('deleteContact removes by the phone number (user-part)', async () => {
+      const deleteAddressbookContact = jest.fn().mockResolvedValue(undefined);
+      const adapter = readyAdapter({ deleteAddressbookContact });
+      await adapter.deleteContact('628111@c.us');
+      expect(deleteAddressbookContact).toHaveBeenCalledWith('628111');
     });
   });
 
