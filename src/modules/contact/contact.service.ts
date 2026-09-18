@@ -1,9 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
 import { EngineRegistry } from '../../engine/engine-registry.service';
 import { IWhatsAppEngine } from '../../engine/interfaces/whatsapp-engine.interface';
 import { paginate, ListOptions } from '../../common/utils/paginate';
+import { isIndividualWid, parseWaId, toNeutralJid } from '../../engine/identity/wa-id';
 
 /**
  * Owns engine access for contact operations so the "session not started" guard and
@@ -99,12 +100,59 @@ export class ContactService {
     return pictures;
   }
 
+  /** The read half of block/unblock — neutral ids only (the honest common subset of both engines). */
+  getBlockedContacts(sessionId: string) {
+    return this.getEngine(sessionId).getBlockedContacts();
+  }
+
   blockContact(sessionId: string, contactId: string) {
     return this.getEngine(sessionId).blockContact(contactId);
   }
 
   unblockContact(sessionId: string, contactId: string) {
     return this.getEngine(sessionId).unblockContact(contactId);
+  }
+
+  upsertContact(sessionId: string, contactId: string, firstName: string, lastName?: string) {
+    this.assertAddressable(contactId);
+    return this.getEngine(sessionId).upsertContact(this.toAddressableId(contactId), firstName, lastName);
+  }
+
+  deleteContact(sessionId: string, contactId: string) {
+    this.assertAddressable(contactId);
+    return this.getEngine(sessionId).deleteContact(this.toAddressableId(contactId));
+  }
+
+  /**
+   * An addressbook entry is keyed by a PHONE NUMBER, so a privacy-id (`@lid`) contact cannot be
+   * saved or removed: the lid's digits are not a phone number, and whatsapp-web.js — which takes a
+   * bare number rather than a JID — would happily store them as one, silently creating an
+   * addressbook entry for a number that does not exist. Refused rather than forward-resolved through
+   * the lid mapping: the mapping is best-effort, and a write that lands under the wrong number is
+   * worse than one the caller is told to redo with a phone-based id.
+   */
+  private assertAddressable(contactId: string): void {
+    const kind = parseWaId(contactId).kind;
+    if ((kind === 'user' && isIndividualWid(contactId)) || this.isBareNumber(contactId)) return;
+    if (kind === 'lid') {
+      throw new BadRequestException(
+        `Contact ${contactId} is a privacy id (@lid) with no known phone number; the addressbook is keyed by phone number, so pass a phone-based contact id instead`,
+      );
+    }
+    throw new BadRequestException(
+      `Contact ${contactId} does not name a person; the addressbook is keyed by phone number, so pass a phone-based contact id instead`,
+    );
+  }
+
+  /** A digits-only id, e.g. `628123456789` — accepted for convenience and qualified below. */
+  private isBareNumber(contactId: string): boolean {
+    return parseWaId(contactId).kind === 'unknown' && /^\d{5,}$/.test(contactId.trim());
+  }
+
+  /** Qualify a bare number to the neutral `@c.us` dialect before it reaches an engine. */
+  private toAddressableId(contactId: string): string {
+    const trimmed = contactId.trim();
+    return this.isBareNumber(trimmed) ? `${trimmed}@c.us` : toNeutralJid(trimmed);
   }
 
   /**

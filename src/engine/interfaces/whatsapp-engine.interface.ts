@@ -738,6 +738,12 @@ export interface IWhatsAppEngine {
   getProfilePicture(contactId: string): Promise<string | null>;
   blockContact(contactId: string): Promise<void>;
   unblockContact(contactId: string): Promise<void>;
+  /** The read half of block/unblockContact — bare ids, the neutral common subset of both engines. */
+  getBlockedContacts(): Promise<string[]>;
+  /** Save a contact to the account's addressbook, or edit an existing entry. Keyed by phone number. */
+  upsertContact(contactId: string, firstName: string, lastName?: string): Promise<void>;
+  /** Remove a contact from the account's addressbook. Keyed by phone number. */
+  deleteContact(contactId: string): Promise<void>;
 
   // Profile (own account)
   /** Set the account's display name. */

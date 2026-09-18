@@ -1,6 +1,7 @@
 import { type Client } from 'whatsapp-web.js';
 import { Contact } from '../interfaces/whatsapp-engine.interface';
 import { EngineTransportError } from '../../common/errors/engine-transport.error';
+import { userPart } from '../identity/wa-id';
 import { type WwebjsEngineHost } from './wwebjs-host';
 
 /**
@@ -97,6 +98,27 @@ export class WwebjsContacts {
     const contact = await this.client().getContactById(contactId);
     await contact.unblock();
     this.host.logger.log(`Unblocked contact ${contactId}`);
+  }
+
+  async getBlockedContacts(): Promise<string[]> {
+    this.host.ensureReady();
+    const contacts = await this.client().getBlockedContacts();
+    return contacts.map(c => c.id._serialized).filter((id): id is string => Boolean(id));
+  }
+
+  // wwebjs addresses the addressbook entry by PHONE NUMBER, not JID; lastName is positional and
+  // required by the library, so an absent one is passed as an empty string rather than undefined,
+  // which would land in the page-side payload as the literal string "undefined".
+  async upsertContact(contactId: string, firstName: string, lastName = ''): Promise<void> {
+    this.host.ensureReady();
+    await this.client().saveOrEditAddressbookContact(userPart(contactId), firstName, lastName);
+    this.host.logger.log(`Saved addressbook contact ${contactId}`);
+  }
+
+  async deleteContact(contactId: string): Promise<void> {
+    this.host.ensureReady();
+    await this.client().deleteAddressbookContact(userPart(contactId));
+    this.host.logger.log(`Deleted addressbook contact ${contactId}`);
   }
 
   async getProfilePicture(contactId: string): Promise<string | null> {

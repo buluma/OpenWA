@@ -49,6 +49,9 @@ class FakeSock extends EventEmitter {
   public updateProfileStatus = jest.fn().mockResolvedValue(undefined);
   public updateProfilePicture = jest.fn().mockResolvedValue(undefined);
   public updateBlockStatus = jest.fn().mockResolvedValue(undefined);
+  public fetchBlocklist = jest.fn().mockResolvedValue([]);
+  public addOrEditContact = jest.fn().mockResolvedValue(undefined);
+  public removeContact = jest.fn().mockResolvedValue(undefined);
   public readMessages = jest.fn().mockResolvedValue(undefined);
   public chatModify = jest.fn().mockResolvedValue(undefined);
   public addChatLabel = jest.fn().mockResolvedValue(undefined);
@@ -3573,6 +3576,37 @@ describe('BaileysAdapter profile + block', () => {
     expect(fakeSock.updateBlockStatus).toHaveBeenCalledWith('628111@s.whatsapp.net', 'block');
     await adapter.unblockContact('628111@s.whatsapp.net');
     expect(fakeSock.updateBlockStatus).toHaveBeenCalledWith('628111@s.whatsapp.net', 'unblock');
+  });
+
+  it('getBlockedContacts fetches the blocklist and folds ids to the neutral dialect', async () => {
+    fakeSock.fetchBlocklist.mockResolvedValueOnce(['628111@s.whatsapp.net', undefined, '628222@s.whatsapp.net']);
+    const adapter = await ready();
+    await expect(adapter.getBlockedContacts()).resolves.toEqual(['628111@c.us', '628222@c.us']);
+  });
+
+  it('upsertContact folds the neutral id to the engine dialect and joins first/last into fullName', async () => {
+    const adapter = await ready();
+    await adapter.upsertContact('628111@c.us', 'Ada', 'Lovelace');
+    expect(fakeSock.addOrEditContact).toHaveBeenCalledWith('628111@s.whatsapp.net', {
+      firstName: 'Ada',
+      fullName: 'Ada Lovelace',
+      saveOnPrimaryAddressbook: false,
+    });
+  });
+
+  it('upsertContact omits lastName from fullName when absent', async () => {
+    const adapter = await ready();
+    await adapter.upsertContact('628111@c.us', 'Ada');
+    expect(fakeSock.addOrEditContact).toHaveBeenCalledWith(
+      '628111@s.whatsapp.net',
+      expect.objectContaining({ firstName: 'Ada', fullName: 'Ada' }),
+    );
+  });
+
+  it('deleteContact folds the neutral id to the engine dialect', async () => {
+    const adapter = await ready();
+    await adapter.deleteContact('628111@c.us');
+    expect(fakeSock.removeContact).toHaveBeenCalledWith('628111@s.whatsapp.net');
   });
 });
 
