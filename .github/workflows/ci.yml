@@ -107,11 +107,15 @@ jobs:
         # suggestion) dodges the ESM issue but reintroduces bugs fixed in 1.34.3-1.34.7 (auth
         # timeout, disconnected event, sendSeen/sticker sends, group admin settings). Accepted risk,
         # tracked in .github#34 — remove this allow-list once a CJS-compatible fix lands upstream.
+        #
+        # GHSA-7pqw-9j4j-h8q3 (extract-zip arbitrary file writes through symlink archive entries,
+        # advisory id 1193685) is the same package and the same unfixed-upstream situation as above;
+        # allow-listed alongside it for the same reason.
         run: |
           npm audit --audit-level=high --json > audit.json || true
           node -e '
             const a = require("./audit.json");
-            const allowed = new Set([1139346]); // GHSA-jmr9-qjv8-65gv / extract-zip
+            const allowed = new Set([1139346, 1193685]); // GHSA-jmr9-qjv8-65gv, GHSA-7pqw-9j4j-h8q3 / extract-zip
             const offenders = Object.entries(a.vulnerabilities || {}).filter(([, v]) => {
               if (v.severity !== "high" && v.severity !== "critical") return false;
               const ids = (v.via || []).filter(x => typeof x === "object").map(x => x.source);
