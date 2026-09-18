@@ -4,6 +4,7 @@ import {
   sessionNameIssues,
   canCreateSession,
   isValidPairingPhone,
+  isValidProxyUrl,
   matchesStatusFilter,
   filterSessions,
 } from './sessionForm.ts';
@@ -51,6 +52,17 @@ test('pairing accepts a bare international number and nothing else', () => {
   assert.equal(isValidPairingPhone('62812-3456'), false, 'no separators');
   assert.equal(isValidPairingPhone('12345'), false, 'too short');
   assert.equal(isValidPairingPhone('1234567890123456'), false, 'too long');
+});
+
+test('proxy URL validation accepts only the gateway-supported schemes', () => {
+  assert.equal(isValidProxyUrl('http://proxy.example.com:8080'), true);
+  assert.equal(isValidProxyUrl('https://proxy.example.com:8443'), true);
+  assert.equal(isValidProxyUrl('socks4://proxy.example.com:1080'), true);
+  assert.equal(isValidProxyUrl('socks5://user:pass@proxy.example.com:1080'), true);
+  assert.equal(isValidProxyUrl('  http://proxy.example.com  '), true, 'trimmed');
+  assert.equal(isValidProxyUrl('ftp://proxy.example.com'), false, 'unsupported scheme');
+  assert.equal(isValidProxyUrl('not a url'), false, 'unparseable');
+  assert.equal(isValidProxyUrl(''), false, 'empty');
 });
 
 test('the status groups follow the operator model, not the engine states', () => {

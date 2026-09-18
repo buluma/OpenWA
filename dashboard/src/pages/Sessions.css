@@ -532,6 +532,41 @@
   border-radius: 6px;
 }
 
+/* Proxy config: a toggle row shares a label with its checkbox, so the two live in the same
+   flex row rather than sharing one definition. */
+.sessions-page .detail-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.sessions-page .detail-hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.sessions-page .proxy-form-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.sessions-page .proxy-form-section input[type='text'] {
+  width: 100%;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-white);
+  color: var(--text-primary);
+  font-size: 0.9375rem;
+  box-sizing: border-box;
+}
+
 /* Close Button - Always Visible */
 .sessions-page .btn-close {
   display: flex;

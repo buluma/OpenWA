@@ -310,7 +310,8 @@
       "reconnect": "إعادة الاتصال",
       "unlink": "إلغاء الربط",
       "delete": "حذف",
-      "killStuck": "إنهاء العالقة"
+      "killStuck": "إنهاء العالقة",
+      "proxy": "Proxy"
     },
     "toasts": {
       "readyTitle": "الجلسة جاهزة",
@@ -371,6 +372,23 @@
     "start": {
       "teardownPendingTitle": "بدء الجلسة",
       "teardownPending": "لا يزال تفكيك بيانات الاعتماد لهذه الجلسة قيد التسوية. انتظر لحظة وحاول مرة أخرى."
+    },
+    "proxy": {
+      "title": "Proxy Configuration",
+      "status": "Current",
+      "enabled": "Use proxy",
+      "url": "Proxy URL",
+      "urlPlaceholder": "http://user:pass@proxy.example.com:8080",
+      "urlKeepPlaceholder": "Enter new URL to replace {{host}} (credentials not shown)",
+      "configured": "{{host}} ({{type}})",
+      "noProxy": "No proxy configured",
+      "hasCredentials": "Credentials are stored but not shown. Enter a full URL to change them.",
+      "hint": "Changes apply on the next session start, not to a running connection. The proxy must be real and reachable — an unreachable value blocks QR delivery and start returns 504.",
+      "createHint": "Only needed when your network cannot reach WhatsApp directly. Must be a real, reachable proxy.",
+      "invalidUrl": "Enter a valid http, https, socks4, or socks5 proxy URL.",
+      "saveSuccessTitle": "Proxy Saved",
+      "saveSuccess": "Proxy settings saved. They apply on the next session start.",
+      "saveError": "Failed to save proxy settings"
     }
   },
   "webhooks": {
@@ -640,9 +658,11 @@
     "forwardMessageId": "معرّف الرسالة",
     "forwardMessageIdHint": "معرّف الرسالة المراد إعادة توجيهها",
     "bulkRecipients": "المستلمون",
+    "bulkRecipientsUpload": "Upload CSV/TXT",
     "bulkRecipientsPlaceholder": "+62812345678",
     "bulkRecipientsHint": "رقم هاتف أو معرّف دردشة واحد في كل سطر (100 كحد أقصى)",
     "bulkRecipientsCount": "المستلمون: {{count}}",
+    "recipientsFileTooLarge": "The recipients file is too large (max 2 MB)",
     "bulkDelay": "التأخير بين الرسائل (مللي ثانية)",
     "bulkDelayHint": "1000–60000 مللي ثانية (الافتراضي 3000)",
     "send": "إرسال الرسالة",

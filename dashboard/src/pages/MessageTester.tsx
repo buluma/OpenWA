@@ -12,7 +12,7 @@ import {
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useRole } from '../hooks/useRole';
 import { useSessionsQuery, useSessionGroupsQuery } from '../hooks/queries';
-import { parseBulkRecipients, BULK_MAX_RECIPIENTS } from '../utils/bulkRecipients';
+import { parseBulkRecipients, BULK_MAX_RECIPIENTS, BULK_RECIPIENTS_FILE_MAX_BYTES } from '../utils/bulkRecipients';
 import { PageHeader } from '../components/PageHeader';
 import './MessageTester.css';
 
@@ -103,6 +103,7 @@ export function MessageTester() {
   // exclusive with mediaUrl: picking a file clears the URL field; typing a URL drops the file.
   const [mediaFile, setMediaFile] = useState<{ base64: string; mimetype: string; filename: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const bulkFileInputRef = useRef<HTMLInputElement>(null);
   // Monotonic token invalidating an in-flight FileReader: a second pick, a URL edit, a removal,
   // or an unmount before `onload` fires must win over the late-arriving bytes — otherwise the
   // slower read overwrites the newer state (and re-clears a URL the user just typed).
@@ -234,6 +235,32 @@ export function MessageTester() {
       setResponse({ success: false, timestamp: new Date().toISOString(), error: t('messageTester.fileReadError') });
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleBulkFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // allow re-picking the same file after it's removed
+    if (!file) return;
+    // Reject before reading, mirroring the media pick above: FileReader would materialize the whole
+    // file as a string before any backend cap could weigh in.
+    if (file.size > BULK_RECIPIENTS_FILE_MAX_BYTES) {
+      setResponse({
+        success: false,
+        timestamp: new Date().toISOString(),
+        error: t('messageTester.recipientsFileTooLarge'),
+      });
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = reader.result;
+      if (typeof text !== 'string') return;
+      setBulkRecipients(prev => (prev.trim() ? `${prev.trimEnd()}\n` : '') + text.trim());
+    };
+    reader.onerror = () => {
+      setResponse({ success: false, timestamp: new Date().toISOString(), error: t('messageTester.fileReadError') });
+    };
+    reader.readAsText(file);
   };
 
   const isMediaMessageType = mediaMessageTypes.includes(messageType);
@@ -766,7 +793,26 @@ export function MessageTester() {
           {messageType === 'bulk' && (
             <>
               <div className="form-group">
-                <label>{t('messageTester.bulkRecipients')}</label>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: '0.5rem',
+                  }}
+                >
+                  <label style={{ marginBottom: 0 }}>{t('messageTester.bulkRecipients')}</label>
+                  <button type="button" className="browse-btn" onClick={() => bulkFileInputRef.current?.click()}>
+                    <Upload size={14} /> {t('messageTester.bulkRecipientsUpload')}
+                  </button>
+                  <input
+                    ref={bulkFileInputRef}
+                    type="file"
+                    accept=".txt,.csv"
+                    style={{ display: 'none' }}
+                    onChange={handleBulkFileChange}
+                  />
+                </div>
                 <textarea
                   value={bulkRecipients}
                   onChange={e => setBulkRecipients(e.target.value)}

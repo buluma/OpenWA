@@ -303,7 +303,8 @@
       "reconnect": "Reconnect",
       "unlink": "Unlink",
       "delete": "Delete",
-      "killStuck": "Kill Stuck"
+      "killStuck": "Kill Stuck",
+      "proxy": "Proxy"
     },
     "toasts": {
       "readyTitle": "Session Ready",
@@ -360,6 +361,23 @@
       "step3": "<strong>3.</strong> Tap <strong>Link a Device</strong>, then tap <strong>Link with phone number instead</strong>",
       "step4": "<strong>4.</strong> Enter the 8-character code shown above on your phone",
       "waitingConnection": "Waiting for your phone to link…"
+    },
+    "proxy": {
+      "title": "Proxy Configuration",
+      "status": "Current",
+      "enabled": "Use proxy",
+      "url": "Proxy URL",
+      "urlPlaceholder": "http://user:pass@proxy.example.com:8080",
+      "urlKeepPlaceholder": "Enter new URL to replace {{host}} (credentials not shown)",
+      "configured": "{{host}} ({{type}})",
+      "noProxy": "No proxy configured",
+      "hasCredentials": "Credentials are stored but not shown. Enter a full URL to change them.",
+      "hint": "Changes apply on the next session start, not to a running connection. The proxy must be real and reachable — an unreachable value blocks QR delivery and start returns 504.",
+      "createHint": "Only needed when your network cannot reach WhatsApp directly. Must be a real, reachable proxy.",
+      "invalidUrl": "Enter a valid http, https, socks4, or socks5 proxy URL.",
+      "saveSuccessTitle": "Proxy Saved",
+      "saveSuccess": "Proxy settings saved. They apply on the next session start.",
+      "saveError": "Failed to save proxy settings"
     }
   },
   "webhooks": {
@@ -625,9 +643,11 @@
     "forwardMessageId": "Message ID",
     "forwardMessageIdHint": "ID of the message to forward",
     "bulkRecipients": "Recipients",
+    "bulkRecipientsUpload": "Upload CSV/TXT",
     "bulkRecipientsPlaceholder": "+62812345678",
     "bulkRecipientsHint": "One phone number or chat ID per line (max 100)",
     "bulkRecipientsCount": "Recipients: {{count}}",
+    "recipientsFileTooLarge": "The recipients file is too large (max 2 MB)",
     "bulkDelay": "Delay Between Messages (ms)",
     "bulkDelayHint": "1000–60000 ms (default 3000)",
     "send": "Send Message",

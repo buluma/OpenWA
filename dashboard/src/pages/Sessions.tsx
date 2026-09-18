@@ -14,8 +14,9 @@ import {
   Filter,
   Skull,
   Unlink,
+  Globe,
 } from 'lucide-react';
-import { sessionApi, type Session } from '../services/api';
+import { sessionApi, type Session, type SessionProxy } from '../services/api';
 import { queryKeys } from '../hooks/queries';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import {
@@ -26,7 +27,13 @@ import {
   replaceSession,
 } from '../utils/sessionActions';
 import { invalidateSessionQueries, reconcileSessionCache } from '../utils/sessionMutation';
-import { canCreateSession, filterSessions, isValidPairingPhone, sessionNameIssues } from '../utils/sessionForm';
+import {
+  canCreateSession,
+  filterSessions,
+  isValidPairingPhone,
+  isValidProxyUrl,
+  sessionNameIssues,
+} from '../utils/sessionForm';
 import { useToast } from '../hooks/useToast';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { useRole } from '../hooks/useRole';
@@ -52,6 +59,18 @@ export function Sessions() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newSessionName, setNewSessionName] = useState('');
   const [creating, setCreating] = useState(false);
+  const [useProxy, setUseProxy] = useState(false);
+  const [createProxyUrl, setCreateProxyUrl] = useState('');
+  const [proxySession, setProxySession] = useState<Session | null>(null);
+  const [proxyInfo, setProxyInfo] = useState<SessionProxy | null>(null);
+  const [proxyLoading, setProxyLoading] = useState(false);
+  const [proxySaving, setProxySaving] = useState(false);
+  const [proxyEnabled, setProxyEnabled] = useState(false);
+  const [proxyUrl, setProxyUrl] = useState('');
+  const [proxyUrlError, setProxyUrlError] = useState<string | null>(null);
+  // A failed read must not look like "no proxy configured": saving from that state would clear a
+  // proxy, and the credentials with it, that the operator never got to see.
+  const [proxyLoadFailed, setProxyLoadFailed] = useState(false);
   const [qrData, setQrData] = useState<{ sessionId: string; sessionName: string; qrCode: string } | null>(null);
   const [pairingMode, setPairingMode] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -302,12 +321,17 @@ export function Sessions() {
     if (!newSessionName.trim()) return;
     try {
       setCreating(true);
-      const newSession = await sessionApi.create(newSessionName);
+      const newSession = await sessionApi.create(
+        newSessionName,
+        useProxy && createProxyUrl.trim() ? { proxyUrl: createProxyUrl.trim() } : undefined,
+      );
       // Functional append: never capture a stale `sessions` (a WS or fetch between the await and the
       // setState would otherwise drop a row). Then invalidate the prefix so stats/groups/chats refresh.
       setSessions(current => [...current, newSession]);
       await invalidateSessionQueries(queryClient, queryKeys.sessions);
       setNewSessionName('');
+      setUseProxy(false);
+      setCreateProxyUrl('');
       setShowCreateModal(false);
       toast.success(t('sessions.create.successTitle'), t('sessions.create.successDesc', { name: newSession.name }));
     } catch (err) {
@@ -316,6 +340,66 @@ export function Sessions() {
       toast.error(t('sessions.create.errorTitle'), msg);
     } finally {
       setCreating(false);
+    }
+  };
+
+  const proxySessionId = proxySession?.id ?? null;
+  useEffect(() => {
+    let cancelled = false;
+    setProxyInfo(null);
+    setProxyEnabled(false);
+    setProxyUrl('');
+    setProxyUrlError(null);
+    setProxyLoadFailed(false);
+    if (!proxySessionId) return;
+
+    setProxyLoading(true);
+    sessionApi
+      .getProxy(proxySessionId)
+      .then(data => {
+        if (cancelled) return;
+        setProxyInfo(data);
+        setProxyEnabled(data.enabled);
+      })
+      .catch(() => {
+        if (!cancelled) setProxyLoadFailed(true);
+      })
+      .finally(() => {
+        if (!cancelled) setProxyLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [proxySessionId]);
+
+  const handleProxySave = async () => {
+    if (!proxySession) return;
+    if (proxyEnabled) {
+      const trimmed = proxyUrl.trim();
+      if (!trimmed && !proxyInfo?.enabled) {
+        setProxyUrlError(t('sessions.proxy.invalidUrl'));
+        return;
+      }
+      if (trimmed && !isValidProxyUrl(trimmed)) {
+        setProxyUrlError(t('sessions.proxy.invalidUrl'));
+        return;
+      }
+    }
+    setProxyUrlError(null);
+    setProxySaving(true);
+    try {
+      if (!proxyEnabled) {
+        await sessionApi.updateProxy(proxySession.id, { proxyUrl: null });
+      } else if (proxyUrl.trim()) {
+        await sessionApi.updateProxy(proxySession.id, { proxyUrl: proxyUrl.trim() });
+      }
+      toast.success(t('sessions.proxy.saveSuccessTitle'), t('sessions.proxy.saveSuccess'));
+      setProxySession(null);
+    } catch (err) {
+      toast.error(t('sessions.proxy.saveError'), err instanceof Error ? err.message : t('common.errorGeneric'));
+    } finally {
+      setProxySaving(false);
     }
   };
 
@@ -476,6 +560,8 @@ export function Sessions() {
   const existingSessionNames = sessions.map(s => s.name);
   // Empty is a disabled button, not a message: the form stays quiet until the user types something.
   const nameIssues = newSessionName ? sessionNameIssues(newSessionName, existingSessionNames) : [];
+  // isValidProxyUrl rejects '' too, so an unset URL blocks create the same way a malformed one does.
+  const createProxyInvalid = useProxy && !isValidProxyUrl(createProxyUrl.trim());
 
   if (loading) {
     return (
@@ -557,7 +643,7 @@ export function Sessions() {
               <button
                 className="btn-primary"
                 onClick={handleCreate}
-                disabled={creating || !canCreateSession(newSessionName, existingSessionNames)}
+                disabled={creating || !canCreateSession(newSessionName, existingSessionNames) || createProxyInvalid}
               >
                 {creating ? <Loader2 className="animate-spin" size={16} /> : t('common.create')}
               </button>
@@ -583,6 +669,34 @@ export function Sessions() {
             <p className="input-error">{t('sessions.create.tooLong', { length: newSessionName.length })}</p>
           )}
           {nameIssues.includes('duplicate') && <p className="input-error">{t('sessions.create.duplicate')}</p>}
+
+          <div className="proxy-form-section">
+            <label className="detail-toggle-row" htmlFor="create-use-proxy">
+              <span>{t('sessions.proxy.enabled')}</span>
+              <input
+                id="create-use-proxy"
+                type="checkbox"
+                checked={useProxy}
+                onChange={e => setUseProxy(e.target.checked)}
+              />
+            </label>
+            {useProxy && (
+              <>
+                <label htmlFor="create-proxy-url">{t('sessions.proxy.url')}</label>
+                <input
+                  id="create-proxy-url"
+                  type="text"
+                  placeholder={t('sessions.proxy.urlPlaceholder')}
+                  value={createProxyUrl}
+                  onChange={e => setCreateProxyUrl(e.target.value)}
+                />
+                {createProxyInvalid && createProxyUrl.trim() && (
+                  <p className="input-error">{t('sessions.proxy.invalidUrl')}</p>
+                )}
+                <p className="input-hint">{t('sessions.proxy.createHint')}</p>
+              </>
+            )}
+          </div>
         </Modal>
       )}
 
@@ -739,6 +853,102 @@ export function Sessions() {
               </div>
             )}
           </div>
+        </Modal>
+      )}
+
+      {proxySession && (
+        <Modal
+          open
+          onClose={() => setProxySession(null)}
+          closeLabel={t('common.close')}
+          title={
+            <>
+              {t('sessions.proxy.title')}
+              <span className="session-name">{proxySession.name}</span>
+            </>
+          }
+          footer={
+            <>
+              <button className="btn-secondary" onClick={() => setProxySession(null)}>
+                {t('common.close')}
+              </button>
+              {canWrite && !proxyLoadFailed && (
+                <button
+                  className="btn-primary"
+                  onClick={() => void handleProxySave()}
+                  disabled={proxySaving || proxyLoading}
+                >
+                  {proxySaving ? <Loader2 className="animate-spin" size={16} /> : t('common.save')}
+                </button>
+              )}
+            </>
+          }
+        >
+          {proxyLoading ? (
+            <p>{t('common.loading')}</p>
+          ) : proxyLoadFailed ? (
+            // No fallback rendering here on purpose: showing "No proxy configured" over a failed read
+            // would let a Save silently clear a real proxy nobody could see.
+            <div className="detail-grid proxy-form-section">
+              <p className="input-error">{t('common.errorGeneric')}</p>
+            </div>
+          ) : (
+            <div className="detail-grid proxy-form-section">
+              <div className="detail-item">
+                <span className="detail-label">{t('sessions.proxy.status')}</span>
+                <span className="detail-value">
+                  {proxyInfo?.enabled
+                    ? t('sessions.proxy.configured', {
+                        host: proxyInfo.proxyHost ?? '—',
+                        type: proxyInfo.proxyType ?? 'http',
+                      })
+                    : t('sessions.proxy.noProxy')}
+                </span>
+                {proxyInfo?.hasCredentials ? (
+                  <small className="detail-hint">{t('sessions.proxy.hasCredentials')}</small>
+                ) : null}
+              </div>
+
+              <label className="detail-toggle-row" htmlFor="proxy-enabled">
+                <span className="detail-label" id="proxy-enabled-label">
+                  {t('sessions.proxy.enabled')}
+                </span>
+                <input
+                  id="proxy-enabled"
+                  type="checkbox"
+                  aria-labelledby="proxy-enabled-label"
+                  checked={proxyEnabled}
+                  disabled={!canWrite || proxySaving}
+                  onChange={e => setProxyEnabled(e.target.checked)}
+                />
+              </label>
+
+              {proxyEnabled && (
+                <div className="detail-item">
+                  <label className="detail-label" htmlFor="proxy-url">
+                    {t('sessions.proxy.url')}
+                  </label>
+                  <input
+                    id="proxy-url"
+                    type="text"
+                    placeholder={
+                      proxyInfo?.enabled
+                        ? t('sessions.proxy.urlKeepPlaceholder', { host: proxyInfo.proxyHost ?? '' })
+                        : t('sessions.proxy.urlPlaceholder')
+                    }
+                    value={proxyUrl}
+                    disabled={!canWrite || proxySaving}
+                    onChange={e => {
+                      setProxyUrl(e.target.value);
+                      setProxyUrlError(null);
+                    }}
+                  />
+                  {proxyUrlError ? <p className="input-error">{proxyUrlError}</p> : null}
+                </div>
+              )}
+              <p className="input-hint">{t('sessions.proxy.hint')}</p>
+            </div>
+          )}
         </Modal>
       )}
 
@@ -936,6 +1146,10 @@ export function Sessions() {
                 <button className="btn-action" onClick={() => setSelectedSession(session)}>
                   <Eye size={16} />
                   {t('sessions.actions.view')}
+                </button>
+                <button className="btn-action" onClick={() => setProxySession(session)}>
+                  <Globe size={16} />
+                  {t('sessions.actions.proxy')}
                 </button>
                 {canWrite && isSessionStarted(session) ? (
                   <button className="btn-action" onClick={() => handleStop(session.id)}>
