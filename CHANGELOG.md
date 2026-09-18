@@ -34,6 +34,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The group invite-code read, over REST or the MCP `GroupGetInviteCode` tool, requires the
   OPERATOR role; the code is a transferable join capability, so a VIEWER key can no longer extract
   it.
+- The dashboard Logs page and its sidebar entry are shown to admin keys only, matching the
+  ADMIN-only `GET /api/audit` it reads. The Sessions page hides Show QR for viewer keys, since the
+  QR is operator-only.
+
+### Dependencies
+
+- `multer` pinned to `^2.3.0` via override, closing three high-severity multipart denial-of-service
+  advisories (GHSA-wc9g-mqfw-jrwm, GHSA-qfvm-cv95-jqjf, GHSA-535w-7cp7-47q4). No
+  `@nestjs/platform-express` release carries the patched version yet.
 
 ## [0.12.4] - 2026-08-02
 
