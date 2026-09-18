@@ -496,9 +496,9 @@ describe('BaileysSessionStore', () => {
     const fakeStore = () => {
       const states = new Map<string, StateValue>();
       return {
-        get: jest.fn((sessionId: string, chatId: string) => states.get(`${sessionId} ${chatId}`)),
+        get: jest.fn((sessionId: string, chatId: string) => states.get(`${sessionId} ${chatId}`)),
         remember: jest.fn((sessionId: string, chatId: string, patch: Partial<StateValue>) => {
-          const key = `${sessionId} ${chatId}`;
+          const key = `${sessionId} ${chatId}`;
           const existing = states.get(key) ?? { muteEndTime: null, archived: false, pinned: false };
           states.set(key, { ...existing, ...patch });
           return Promise.resolve();
@@ -511,7 +511,8 @@ describe('BaileysSessionStore', () => {
     it('writes archived/pinned/muteEndTime through to the store when a live update carries them', () => {
       const chatStateStore = fakeStore();
       const s = new BaileysSessionStore(undefined, 'sess-1', chatStateStore);
-      s.upsertChats([{ id: '628111@s.whatsapp.net', archived: true, pinned: true, muteEndTime: 1800000000000 }]);
+      // pinned is Baileys' raw wire type: a truthy order number, not a boolean (see toNeutralChat).
+      s.upsertChats([{ id: '628111@s.whatsapp.net', archived: true, pinned: 1, muteEndTime: 1800000000000 }]);
       expect(chatStateStore.remember).toHaveBeenCalledWith('sess-1', '628111@s.whatsapp.net', {
         archived: true,
         pinned: true,
@@ -537,9 +538,9 @@ describe('BaileysSessionStore', () => {
       const chatStateStore = fakeStore();
       const s = new BaileysSessionStore(undefined, 'sess-1', chatStateStore);
       // Live record says unarchived/unpinned/unmuted...
-      s.upsertChats([{ id: '628111@s.whatsapp.net', name: 'Alice', archived: false, pinned: false }]);
+      s.upsertChats([{ id: '628111@s.whatsapp.net', name: 'Alice', archived: false, pinned: 0 }]);
       // ...but the persisted store (survived a reconnect Baileys couldn't resync) says otherwise.
-      chatStateStore.states.set('sess-1 628111@s.whatsapp.net', {
+      chatStateStore.states.set('sess-1 628111@s.whatsapp.net', {
         muteEndTime: 4102444800000, // far future
         archived: true,
         pinned: true,
