@@ -3441,6 +3441,32 @@
         ]
       }
     },
+    "/api/sessions/{sessionId}/contacts/blocked": {
+      "get": {
+        "description": "The read half of the block/unblock endpoints. A bare array of neutral contact ids — ids only, because that is the honest common subset: whatsapp-web.js resolves full contact models but Baileys' blocklist query answers bare jids, and inventing the other fields on one engine would make the two engines claim different things about the same account.",
+        "operationId": "ContactController_getBlockedContacts",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": true,
+            "in": "path",
+            "description": "Session ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Blocked contact ids"
+          }
+        },
+        "summary": "List the contacts this account has blocked",
+        "tags": [
+          "contacts"
+        ]
+      }
+    },
     "/api/sessions/{sessionId}/contacts/{contactId}": {
       "get": {
         "operationId": "ContactController_findOne",
@@ -3473,6 +3499,86 @@
           }
         },
         "summary": "Get a specific contact by ID",
+        "tags": [
+          "contacts"
+        ]
+      },
+      "put": {
+        "operationId": "ContactController_upsertContact",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": true,
+            "in": "path",
+            "description": "Session ID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "contactId",
+            "required": true,
+            "in": "path",
+            "description": "Contact ID (e.g., 628xxx@c.us)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertContactDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Contact saved"
+          },
+          "400": {
+            "description": "Session not active, or contactId does not name a phone-addressable person"
+          }
+        },
+        "summary": "Save a contact to the account's addressbook, or edit an existing entry",
+        "tags": [
+          "contacts"
+        ]
+      },
+      "delete": {
+        "operationId": "ContactController_deleteContact",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": true,
+            "in": "path",
+            "description": "Session ID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "contactId",
+            "required": true,
+            "in": "path",
+            "description": "Contact ID (e.g., 628xxx@c.us)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Contact deleted"
+          },
+          "400": {
+            "description": "Session not active, or contactId does not name a phone-addressable person"
+          }
+        },
+        "summary": "Remove a contact from the account's addressbook",
         "tags": [
           "contacts"
         ]
@@ -8388,6 +8494,24 @@
             }
           }
         }
+      },
+      "UpsertContactDto": {
+        "type": "object",
+        "properties": {
+          "firstName": {
+            "type": "string",
+            "description": "The contact's first name.",
+            "maxLength": 100
+          },
+          "lastName": {
+            "type": "string",
+            "description": "The contact's last name. Omit for a single-name contact — WhatsApp allows those.",
+            "maxLength": 100
+          }
+        },
+        "required": [
+          "firstName"
+        ]
       },
       "JoinGroupDto": {
         "type": "object",
