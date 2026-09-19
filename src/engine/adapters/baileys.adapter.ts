@@ -80,9 +80,6 @@ export class BaileysAdapter implements IWhatsAppEngine {
   }
   /** Unix-seconds timestamp of the last 'open' connection.update — the events delegate's
    *  live-vs-history discriminator, read live; the value is owned by the lifecycle delegate. */
-  private get connectedAt(): number {
-    return this.lifecycle.connectedAt;
-  }
   /** Live-call cache handle — the map is owned by the events delegate (call events + rejectCall);
    *  lifecycle teardown clears it so a late rejectCall() reports not-found on a dead socket. The
    *  adapter keeps this alias for the unmodified spec, which reads `adapter.liveCalls` via a cast. */
@@ -101,9 +98,6 @@ export class BaileysAdapter implements IWhatsAppEngine {
     this.sessionStore = new BaileysSessionStore(config.lidMappingStore, config.sessionId, config.chatStateStore);
     // Constructed before messaging: the messaging delegate's own-send echo maps through
     // events.mapMessage (and the lifecycle delegate clears that same live-call cache on teardown).
-    // An object-literal getter's `this` is the literal itself, so the live connectedAt read goes
-    // through an arrow closure that captures the adapter.
-    const connectedAt = (): number => this.connectedAt;
     this.events = new BaileysEvents({
       getSocket: () => this.sock!,
       getSocketOrNull: () => this.sock,
@@ -111,9 +105,6 @@ export class BaileysAdapter implements IWhatsAppEngine {
       toNeutralJid: jid => this.sessionStore.toNeutralJid(jid),
       normalizedSelfJid: () => this.normalizedSelfJid(),
       loadLib: () => this.loadLib(),
-      get connectedAt() {
-        return connectedAt();
-      },
       inboundLimiter: this.inboundLimiter,
       recordKeyLidMappings: key => this.sessionStore.recordKeyLidMappings(key),
       recordMessage: msg => this.sessionStore.recordMessage(msg),
