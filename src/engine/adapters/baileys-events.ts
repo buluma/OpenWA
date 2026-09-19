@@ -59,6 +59,10 @@ export interface BaileysEventsHost {
   recordMessageEdit(chatId: string, messageId: string, text: string): void;
   /** Persist an inbound message to the store; undefined when no store is configured. */
   putStoredMessage(msg: WAMessage): Promise<void> | undefined;
+  /** True once for an API-send echo; false for phone-sent messages. */
+  consumeOwnSend?(id: string | null | undefined): boolean;
+  /** Read the message store to deduplicate a replayed fromMe message. */
+  getStoredMessage?(messageId: string): Promise<WAMessage | null> | undefined;
   /** The currently-registered onMessage callback, if any (assigned at initialize()). */
   getOnMessage(): EngineEventCallbacks['onMessage'];
   /** The currently-registered onMessageCreate callback, if any (assigned at initialize()). */
@@ -94,11 +98,13 @@ export class BaileysEvents {
       if (!msg.message || !msg.key?.remoteJid) {
         continue; // protocol/empty messages carry no neutral content
       }
-      // Baileys uses `append` for messages replayed from WhatsApp's offline queue. Bulk history
-      // arrives separately via `messaging-history.set`, so an append message is live traffic even
-      // when its timestamp predates this connection. Keep skipping our own API-send echoes here;
-      // sendContent already emits those through onMessageCreate.
-      if (event.type !== 'notify' && msg.key.fromMe === true) {
+      // Skip only echoes of this session's own API sends. A phone-sent message replayed after the
+      // gateway was down also arrives as `append`/fromMe, but has a different, unregistered id.
+      if (msg.key.fromMe === true && this.host.consumeOwnSend?.(msg.key.id)) {
+        this.host.logger.debug('Skipping the echo of a message this session sent', {
+          msgId: msg.key.id ?? 'unknown',
+          type: event.type,
+        });
         continue;
       }
       // Throttle through the limiter so a burst of media messages can't run unbounded parallel
@@ -238,6 +244,12 @@ export class BaileysEvents {
       }
 
       // --- Normal message: enrich + emit ---
+      if (msg.key.fromMe === true && msg.key.id && (await this.host.getStoredMessage?.(msg.key.id))) {
+        this.host.logger.debug('Skipping a re-delivered message this session already recorded', {
+          msgId: msg.key.id,
+        });
+        return;
+      }
       const incoming = await this.mapMessage(msg, contentType, { skipMediaDownload: opts?.skipMedia });
       if (msg.key.fromMe === true) {
         this.host.getOnMessageCreate()?.(incoming);

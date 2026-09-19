@@ -6,6 +6,7 @@ import { BaileysContacts } from './baileys-contacts';
 import { BaileysEvents } from './baileys-events';
 import { BaileysGroups } from './baileys-groups';
 import { BaileysHistory, toUnixSeconds } from './baileys-history';
+import { OwnSendRegistry } from './baileys-own-sends';
 import { BaileysLifecycle } from './baileys-lifecycle';
 import { BaileysMessaging } from './baileys-messaging';
 import { BaileysStatus } from './baileys-status';
@@ -69,6 +70,7 @@ export class BaileysAdapter implements IWhatsAppEngine {
   private readonly events: BaileysEvents;
   private readonly lifecycle: BaileysLifecycle;
   private callbacks: EngineEventCallbacks = {};
+  private readonly ownSends = new OwnSendRegistry();
   /** Connection-lifecycle state is owned by the lifecycle delegate; these accessors alias it by
    *  reference so delegate host closures (and an unmodified spec poking `adapter.sock` via a cast)
    *  keep working byte-identically — the liveCalls precedent below. */
@@ -110,6 +112,8 @@ export class BaileysAdapter implements IWhatsAppEngine {
       recordMessage: msg => this.sessionStore.recordMessage(msg),
       recordMessageEdit: (chatId, messageId, text) => this.sessionStore.recordMessageEdit(chatId, messageId, text),
       putStoredMessage: msg => this.config.messageStore?.put(this.config.dbSessionId, msg),
+      consumeOwnSend: id => this.ownSends.consume(id),
+      getStoredMessage: id => this.config.messageStore?.getMessage(this.config.dbSessionId, id),
       getOnMessage: () => this.callbacks.onMessage,
       getOnMessageCreate: () => this.callbacks.onMessageCreate,
       getOnMessageRevoked: () => this.callbacks.onMessageRevoked,
@@ -137,6 +141,7 @@ export class BaileysAdapter implements IWhatsAppEngine {
       toUnixSeconds,
       loadLib: () => this.loadLib(),
       putStoredMessage: msg => this.config.messageStore?.put(this.config.dbSessionId, msg),
+      rememberOwnSend: id => this.ownSends.remember(id),
       getStoredMessage: messageId => this.config.messageStore?.getMessage(this.config.dbSessionId, messageId),
       getOnMessageCreate: () => this.callbacks.onMessageCreate,
       mapMessage: (msg, contentType, opts) => this.events.mapMessage(msg, contentType, opts),
@@ -160,6 +165,7 @@ export class BaileysAdapter implements IWhatsAppEngine {
       toEngineJid: jid => this.sessionStore.toEngineJid(jid),
       normalizedSelfJid: () => this.normalizedSelfJid(),
       toUnixSeconds,
+      rememberOwnSend: id => this.ownSends.remember(id),
     });
     this.channels = new BaileysChannels({
       ensureReady: () => this.ensureReady(),

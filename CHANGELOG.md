@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Baileys now dispatches messages WhatsApp replays from its offline queue after reconnecting; bulk history remains handled separately.
+- Baileys now delivers messages sent from the linked phone during a gateway outage while suppressing API-send echoes and duplicate replays.
 
 ### Security
 
