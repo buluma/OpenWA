@@ -25,6 +25,36 @@ describe('BaileysSessionStore', () => {
     expect(store.listContacts()).toHaveLength(1);
   });
 
+  it('does not let a later history row without a saved name erase the address-book name', () => {
+    store.upsertContacts([{ id: '628111@s.whatsapp.net', name: 'Alice', notify: 'Al' }]);
+    store.upsertContacts([{ id: '628111@s.whatsapp.net', name: undefined, notify: 'Al' }]);
+    expect(store.findContact('628111@s.whatsapp.net')).toMatchObject({ name: 'Alice', pushName: 'Al' });
+  });
+
+  it('finds a saved contact keyed by LID through its phone number', () => {
+    store.upsertContacts([{ lid: '111@lid', phoneNumber: '628111@s.whatsapp.net', name: 'Ada' }]);
+    expect(store.findContact('111@lid')?.name).toBe('Ada');
+    expect(store.findContact('628111@c.us')?.name).toBe('Ada');
+  });
+
+  it('keeps groups, newsletters and status out of the address book', () => {
+    store.upsertContacts([
+      { id: '120363-9@g.us', name: 'Team' },
+      { id: '123@newsletter', name: 'Channel' },
+      { id: 'status@broadcast' },
+      { id: '628111@s.whatsapp.net', name: 'Alice' },
+    ]);
+    expect(store.listContacts()).toHaveLength(1);
+    expect(store.findContact('120363-9@g.us')).toBeNull();
+  });
+
+  it('does not turn a chat partner into a saved contact', () => {
+    store.upsertChats([{ id: '628111@s.whatsapp.net', name: 'Alice' }]);
+    expect(store.findContact('628111@c.us')).toBeNull();
+    expect(store.listContacts()).toHaveLength(0);
+    expect(store.listChats()).toHaveLength(1);
+  });
+
   it('records the newest message per chat and surfaces it in getChats', () => {
     store.upsertChats([{ id: '628111@s.whatsapp.net', name: 'Alice', unreadCount: 2 }]);
     store.recordMessage({
@@ -470,14 +500,14 @@ describe('BaileysSessionStore', () => {
     it('treats 0 as unbounded (legacy behaviour)', () => {
       const s = storeWithCap('0');
       for (let i = 0; i < 100; i++) {
-        s.upsertContacts([{ id: `62${1000 + i}@s.whatsapp.net` }]);
+        s.upsertContacts([{ id: `62${1000 + i}@s.whatsapp.net`, name: 'x' }]);
       }
       expect(s.listContacts()).toHaveLength(100);
     });
 
     it('falls back to the 5000 default for a garbage override', () => {
       const s = storeWithCap('not-a-number');
-      s.upsertContacts(Array.from({ length: 5001 }, (_, i) => ({ id: `62${100000 + i}@s.whatsapp.net` })));
+      s.upsertContacts(Array.from({ length: 5001 }, (_, i) => ({ id: `62${100000 + i}@s.whatsapp.net`, name: 'x' })));
       expect(s.listContacts()).toHaveLength(5000);
       expect(s.findContact('62100000@s.whatsapp.net')).toBeNull(); // the oldest went first
       expect(s.findContact('62105000@s.whatsapp.net')).not.toBeNull();
@@ -485,7 +515,7 @@ describe('BaileysSessionStore', () => {
 
     it('treats a blank override as unset, not as 0 (unbounded)', () => {
       const s = storeWithCap('');
-      s.upsertContacts(Array.from({ length: 5001 }, (_, i) => ({ id: `62${100000 + i}@s.whatsapp.net` })));
+      s.upsertContacts(Array.from({ length: 5001 }, (_, i) => ({ id: `62${100000 + i}@s.whatsapp.net`, name: 'x' })));
       expect(s.listContacts()).toHaveLength(5000);
     });
   });

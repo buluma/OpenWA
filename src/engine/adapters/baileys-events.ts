@@ -49,8 +49,6 @@ export interface BaileysEventsHost {
   normalizedSelfJid(): string;
   /** Lazily loaded @whiskeysockets/baileys module (ESM-only; loaded on first connect, not at boot). */
   loadLib(): Promise<typeof BaileysLib>;
-  /** Unix-seconds timestamp of the last 'open' connection.update — the live-vs-history discriminator. */
-  readonly connectedAt: number;
   /** The adapter's inbound media download gate (shared so the bound holds across all inbound paths). */
   readonly inboundLimiter: ConcurrencyLimiter;
   /** Learn any lid->pn pair a message key carries (also writes through to the persistent table). */
@@ -61,6 +59,10 @@ export interface BaileysEventsHost {
   recordMessageEdit(chatId: string, messageId: string, text: string): void;
   /** Persist an inbound message to the store; undefined when no store is configured. */
   putStoredMessage(msg: WAMessage): Promise<void> | undefined;
+  /** True once for an API-send echo; false for phone-sent messages. */
+  consumeOwnSend?(id: string | null | undefined): boolean;
+  /** Read the message store to deduplicate a replayed fromMe message. */
+  getStoredMessage?(messageId: string): Promise<WAMessage | null> | undefined;
   /** The currently-registered onMessage callback, if any (assigned at initialize()). */
   getOnMessage(): EngineEventCallbacks['onMessage'];
   /** The currently-registered onMessageCreate callback, if any (assigned at initialize()). */
@@ -88,6 +90,8 @@ export class BaileysEvents {
    *  call event is long gone by the time a reject arrives, so it must be cached at event time.
    *  Readonly reference, owned here; the adapter's lifecycle clears it on teardown. */
   readonly liveCalls = new Map<string, { callFrom: string; expiresAt: number }>();
+  /** Message ids currently being processed, reserved synchronously before async media mapping. */
+  private readonly processingMessageIds = new Set<string>();
 
   constructor(private readonly host: BaileysEventsHost) {}
 
@@ -96,25 +100,22 @@ export class BaileysEvents {
       if (!msg.message || !msg.key?.remoteJid) {
         continue; // protocol/empty messages carry no neutral content
       }
-      if (event.type !== 'notify') {
-        // Baileys echoes back OUR OWN just-sent messages through this same 'append' path too, and
-        // sendContent() already emits onMessageCreate for those via emitOwnSendEcho() — always
-        // exclude fromMe here (unconditionally, regardless of timestamp) so that echo doesn't fire
-        // onMessageCreate a second time.
-        if (msg.key.fromMe === true) {
-          continue;
-        }
-        // For everyone else: gate on the message's own timestamp vs. this connection's open time,
-        // not the upsert batch's `type` tag. `type: 'append'` usually means real history-sync
-        // backfill, but Baileys can also tag a genuinely new CUSTOMER message 'append' when it
-        // arrives in the same window as a reconnect's state-sync handshake — a strict
-        // `type !== 'notify'` filter silently drops that message (observed as "the first message
-        // after a reconnect gets ignored"). A message sent AFTER this connection opened is live
-        // regardless of which tag the batch carries; true backfill always predates it.
-        if (toUnixSeconds(msg.messageTimestamp) < this.host.connectedAt) {
-          continue;
-        }
+      // Skip only echoes of this session's own API sends. A phone-sent message replayed after the
+      // gateway was down also arrives as `append`/fromMe, but has a different, unregistered id.
+      if (msg.key.fromMe === true && this.host.consumeOwnSend?.(msg.key.id)) {
+        this.host.logger.debug('Skipping the echo of a message this session sent', {
+          msgId: msg.key.id ?? 'unknown',
+          type: event.type,
+        });
+        continue;
       }
+      const messageId = msg.key.id;
+      const processingKey = messageId ? `${msg.key.remoteJid}:${messageId}` : undefined;
+      if (processingKey && this.processingMessageIds.has(processingKey)) {
+        this.host.logger.debug('Skipping a duplicate message still being processed', { msgId: messageId });
+        continue;
+      }
+      if (processingKey) this.processingMessageIds.add(processingKey);
       // Throttle through the limiter so a burst of media messages can't run unbounded parallel
       // downloads (each a full decrypted buffer in heap). Ordering stays correct — the message store
       // keeps the newest by timestamp. When the waiter queue is saturated we REJECT instead of parking
@@ -127,6 +128,9 @@ export class BaileysEvents {
             msgId: msg.key?.id ?? 'unknown',
           });
           return this.processInboundMessage(msg, { skipMedia: true });
+        })
+        .finally(() => {
+          if (processingKey) this.processingMessageIds.delete(processingKey);
         });
     }
   }
@@ -252,17 +256,33 @@ export class BaileysEvents {
       }
 
       // --- Normal message: enrich + emit ---
+      if (msg.key.id) {
+        try {
+          if (await this.host.getStoredMessage?.(msg.key.id)) {
+            this.host.logger.debug('Skipping a re-delivered message this session already recorded', {
+              msgId: msg.key.id,
+            });
+            return;
+          }
+        } catch (err) {
+          // Message persistence is best-effort; a temporary store read failure must not drop delivery.
+          this.host.logger.warn('Failed to check for a re-delivered message; dispatching it', {
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+      // Start persistence before announcing the message. Reads of this id wait for the in-flight write.
+      void this.host.putStoredMessage(msg)?.catch(err =>
+        this.host.logger.warn('Failed to persist message to store', {
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
       const incoming = await this.mapMessage(msg, contentType, { skipMediaDownload: opts?.skipMedia });
       if (msg.key.fromMe === true) {
         this.host.getOnMessageCreate()?.(incoming);
       } else {
         this.host.getOnMessage()?.(incoming);
       }
-      void this.host.putStoredMessage(msg)?.catch(err =>
-        this.host.logger.warn('Failed to persist message to store', {
-          error: err instanceof Error ? err.message : String(err),
-        }),
-      );
       this.host.recordMessage(msg);
     } catch (err) {
       this.host.logger.error(

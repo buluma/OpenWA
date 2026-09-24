@@ -37,6 +37,8 @@ export interface BaileysMessagingHost {
   loadLib(): Promise<typeof BaileysLib>;
   /** Persist a just-sent message to the store; undefined when no store is configured. */
   putStoredMessage(msg: WAMessage): Promise<void> | undefined;
+  /** Record a send id so the matching Baileys echo is not dispatched twice. */
+  rememberOwnSend?(id: string | null | undefined): void;
   /** Look up a previously-seen message from the store (the reply/forward/react/delete handle). */
   getStoredMessage(messageId: string): Promise<WAMessage | null> | undefined;
   /** The currently-registered onMessageCreate callback, if any (assigned at initialize()). */
@@ -79,9 +81,7 @@ export class BaileysMessaging {
     const jid = await this.toDeliverableJid(chatId);
     const options = this.withEphemeral(jid);
     const content = { text, ...this.withMentions(mentions) };
-    const sent = options
-      ? await this.sock().sendMessage(jid, content, options)
-      : await this.sock().sendMessage(jid, content);
+    const sent = await this.send(jid, content, options);
     if (sent) {
       void this.host.putStoredMessage(sent)?.catch(err =>
         this.host.logger.warn('Failed to persist sent message to store', {
@@ -219,14 +219,14 @@ export class BaileysMessaging {
   async reactToMessage(chatId: string, messageId: string, emoji: string): Promise<void> {
     this.host.ensureReady();
     const target = await this.requireStored(messageId);
-    await this.sock().sendMessage(chatId, { react: { text: emoji, key: target.key } });
+    await this.send(chatId, { react: { text: emoji, key: target.key } });
   }
 
   async deleteMessage(chatId: string, messageId: string, forEveryone = true): Promise<void> {
     this.host.ensureReady();
     const target = await this.requireStored(messageId);
     if (forEveryone) {
-      await this.sock().sendMessage(chatId, { delete: target.key });
+      await this.send(chatId, { delete: target.key });
       return;
     }
     // Delete-for-me (revoke on this device only): Baileys exposes it as a chat modification, not a
@@ -264,7 +264,7 @@ export class BaileysMessaging {
     // The destination is resolved like any other send: a lid-migrated contact rejects PN-addressed
     // sends with ack error 463 (see toDeliverableJid).
     const jid = await this.toDeliverableJid(chatId);
-    const sent = await this.sock().sendMessage(jid, { text: body, edit: target.key });
+    const sent = await this.send(jid, { text: body, edit: target.key });
     return { id: sent?.key?.id ?? messageId, timestamp: this.host.toUnixSeconds(sent?.messageTimestamp) };
   }
 
@@ -306,7 +306,7 @@ export class BaileysMessaging {
     // Read the enum through the LAZY loader rather than a static import — @whiskeysockets/baileys is
     // pure ESM and every other site in this module defers it to first connect.
     const { proto } = await this.host.loadLib();
-    await this.sock().sendMessage(await this.toDeliverableJid(chatId), {
+    await this.send(await this.toDeliverableJid(chatId), {
       pin: target.key,
       type: proto.PinInChat.Type.PIN_FOR_ALL,
       // WhatsApp recognises only these three windows; the DTO rejects anything else before we get
@@ -321,7 +321,7 @@ export class BaileysMessaging {
     this.assertStoredInChat(target, chatId, messageId);
     const { proto } = await this.host.loadLib();
     // `time` is meaningless for an unpin and is omitted rather than sent as a dummy value.
-    await this.sock().sendMessage(await this.toDeliverableJid(chatId), {
+    await this.send(await this.toDeliverableJid(chatId), {
       pin: target.key,
       type: proto.PinInChat.Type.UNPIN_FOR_ALL,
     });
@@ -384,9 +384,7 @@ export class BaileysMessaging {
   ): Promise<MessageResult> {
     const jid = await this.toDeliverableJid(chatId);
     const merged = this.withEphemeral(jid, options);
-    const sent = merged
-      ? await this.sock().sendMessage(jid, content, merged)
-      : await this.sock().sendMessage(jid, content);
+    const sent = await this.send(jid, content, merged);
     if (sent) {
       void this.host.putStoredMessage(sent)?.catch(err =>
         this.host.logger.warn('Failed to persist sent message to store', {
@@ -433,5 +431,18 @@ export class BaileysMessaging {
       throw new MessageNotFoundError(messageId);
     }
     return found;
+  }
+
+  /** Record an API send before Baileys publishes its buffered `append` echo. */
+  private async send(
+    jid: string,
+    content: Parameters<WASocket['sendMessage']>[1],
+    options?: Parameters<WASocket['sendMessage']>[2],
+  ): Promise<WAMessage | undefined> {
+    const sent = options
+      ? await this.sock().sendMessage(jid, content, options)
+      : await this.sock().sendMessage(jid, content);
+    this.host.rememberOwnSend?.(sent?.key?.id);
+    return sent;
   }
 }

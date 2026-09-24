@@ -16,6 +16,8 @@ export interface BaileysStatusHost {
   normalizedSelfJid(): string;
   /** Baileys timestamps are `number | Long`; normalize to unix seconds. */
   toUnixSeconds(ts: number | { toNumber(): number } | null | undefined): number;
+  /** Record the id of a message this session just sent, so its library echo is recognised as ours. */
+  rememberOwnSend(id: string | null | undefined): void;
 }
 
 export class BaileysStatus {
@@ -60,7 +62,7 @@ export class BaileysStatus {
    */
   async deleteStatus(statusId: string): Promise<void> {
     this.host.ensureReady();
-    await this.sock().sendMessage('status@broadcast', {
+    const sent = await this.sock().sendMessage('status@broadcast', {
       delete: {
         remoteJid: 'status@broadcast',
         fromMe: true,
@@ -68,13 +70,14 @@ export class BaileysStatus {
         participant: this.host.toEngineJid(this.host.normalizedSelfJid()),
       },
     });
+    this.host.rememberOwnSend(sent?.key?.id);
   }
 
   /**
    * Post a status (story) to `status@broadcast` with a denormalized `statusJidList` (the allow-list of
    * neutral recipients folded back to the engine dialect). Image/video variants route through here too.
-   * The outbound status echo is NOT persisted — status isn't a chat message (the inbound filter in
-   * handleMessagesUpsert already skips `type:'append'` echoes).
+   * The outbound status echo is NOT persisted — status isn't a chat message (its id is recorded below
+   * so handleMessagesUpsert skips the `type:'append'` echo as ours).
    */
   private async postStatus(content: AnyMessageContent, options: StatusPostOptions): Promise<StatusResult> {
     this.host.ensureReady();
@@ -90,6 +93,7 @@ export class BaileysStatus {
       backgroundColor: options.backgroundColor,
       font: options.font,
     });
+    this.host.rememberOwnSend(sent?.key?.id);
     return this.toStatusResult(sent);
   }
 

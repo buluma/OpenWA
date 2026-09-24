@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Baileys now dispatches messages WhatsApp replays from its offline queue after reconnecting; bulk history remains handled separately.
+- Baileys now delivers messages sent from the linked phone during a gateway outage while suppressing API-send echoes and duplicate replays.
+- Baileys repopulates its saved address book after a process restart; chat peers known only by pushname remain available by lookup without being listed as saved contacts.
+- Baileys now persists inbound messages before announcing them, so immediate quoted replies and other lookups wait for the write to finish.
+
 ### Security
 
 - The `session.qr` WebSocket event reaches only OPERATOR and ADMIN keys, matching `GET /api/sessions/{sessionId}/qr`; a VIEWER key subscribed by name or through a wildcard no longer receives the pairing QR.
