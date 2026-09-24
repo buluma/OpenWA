@@ -251,16 +251,17 @@ export class BaileysEvents {
         return;
       }
       const incoming = await this.mapMessage(msg, contentType, { skipMediaDownload: opts?.skipMedia });
-      if (msg.key.fromMe === true) {
-        this.host.getOnMessageCreate()?.(incoming);
-      } else {
-        this.host.getOnMessage()?.(incoming);
-      }
+      // Start persistence before announcing the message. Reads of this id wait for the in-flight write.
       void this.host.putStoredMessage(msg)?.catch(err =>
         this.host.logger.warn('Failed to persist message to store', {
           error: err instanceof Error ? err.message : String(err),
         }),
       );
+      if (msg.key.fromMe === true) {
+        this.host.getOnMessageCreate()?.(incoming);
+      } else {
+        this.host.getOnMessage()?.(incoming);
+      }
       this.host.recordMessage(msg);
     } catch (err) {
       this.host.logger.error(
