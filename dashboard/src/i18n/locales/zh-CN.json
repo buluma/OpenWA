@@ -186,6 +186,7 @@
       "activeSessions": "已连接会话",
       "sessionsDetail": "{{running}} 运行中 · 共 {{total}}",
       "messagesToday": "今日消息",
+      "failedMessages": "发送失败的消息",
       "webhooksConfigured": "已配置 Webhook",
       "totalMessages": "消息总数"
     },
