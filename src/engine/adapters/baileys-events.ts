@@ -90,6 +90,8 @@ export class BaileysEvents {
    *  call event is long gone by the time a reject arrives, so it must be cached at event time.
    *  Readonly reference, owned here; the adapter's lifecycle clears it on teardown. */
   readonly liveCalls = new Map<string, { callFrom: string; expiresAt: number }>();
+  /** Message ids currently being processed, reserved synchronously before async media mapping. */
+  private readonly processingMessageIds = new Set<string>();
 
   constructor(private readonly host: BaileysEventsHost) {}
 
@@ -107,6 +109,13 @@ export class BaileysEvents {
         });
         continue;
       }
+      const messageId = msg.key.id;
+      const processingKey = messageId ? `${msg.key.remoteJid}:${messageId}` : undefined;
+      if (processingKey && this.processingMessageIds.has(processingKey)) {
+        this.host.logger.debug('Skipping a duplicate message still being processed', { msgId: messageId });
+        continue;
+      }
+      if (processingKey) this.processingMessageIds.add(processingKey);
       // Throttle through the limiter so a burst of media messages can't run unbounded parallel
       // downloads (each a full decrypted buffer in heap). Ordering stays correct — the message store
       // keeps the newest by timestamp. When the waiter queue is saturated we REJECT instead of parking
@@ -119,6 +128,9 @@ export class BaileysEvents {
             msgId: msg.key?.id ?? 'unknown',
           });
           return this.processInboundMessage(msg, { skipMedia: true });
+        })
+        .finally(() => {
+          if (processingKey) this.processingMessageIds.delete(processingKey);
         });
     }
   }
@@ -244,19 +256,28 @@ export class BaileysEvents {
       }
 
       // --- Normal message: enrich + emit ---
-      if (msg.key.fromMe === true && msg.key.id && (await this.host.getStoredMessage?.(msg.key.id))) {
-        this.host.logger.debug('Skipping a re-delivered message this session already recorded', {
-          msgId: msg.key.id,
-        });
-        return;
+      if (msg.key.id) {
+        try {
+          if (await this.host.getStoredMessage?.(msg.key.id)) {
+            this.host.logger.debug('Skipping a re-delivered message this session already recorded', {
+              msgId: msg.key.id,
+            });
+            return;
+          }
+        } catch (err) {
+          // Message persistence is best-effort; a temporary store read failure must not drop delivery.
+          this.host.logger.warn('Failed to check for a re-delivered message; dispatching it', {
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
       }
-      const incoming = await this.mapMessage(msg, contentType, { skipMediaDownload: opts?.skipMedia });
       // Start persistence before announcing the message. Reads of this id wait for the in-flight write.
       void this.host.putStoredMessage(msg)?.catch(err =>
         this.host.logger.warn('Failed to persist message to store', {
           error: err instanceof Error ? err.message : String(err),
         }),
       );
+      const incoming = await this.mapMessage(msg, contentType, { skipMediaDownload: opts?.skipMedia });
       if (msg.key.fromMe === true) {
         this.host.getOnMessageCreate()?.(incoming);
       } else {

@@ -154,7 +154,6 @@ export class BaileysAdapter implements IWhatsAppEngine {
       toNeutralJid: jid => this.sessionStore.toNeutralJid(jid),
       toEngineJid: jid => this.sessionStore.toEngineJid(jid),
       listContacts: () => this.sessionStore.listContacts(),
-      contactCount: () => this.sessionStore.listContacts().length,
       findContact: contactId => this.sessionStore.findContact(contactId),
       resolvePhone: contactId => this.sessionStore.resolvePhone(contactId),
       listChats: () => this.sessionStore.listChats(),
@@ -181,6 +180,7 @@ export class BaileysAdapter implements IWhatsAppEngine {
       recordMessage: msg => this.sessionStore.recordMessage(msg),
       upsertContacts: records => this.sessionStore.upsertContacts(records),
       upsertChats: records => this.sessionStore.upsertChats(records),
+      contactCount: () => this.sessionStore.listContacts().length,
       extractEphemeralDuration: msg => this.sessionStore.extractEphemeralDuration(msg),
       getOnHistoryMessages: () => this.callbacks.onHistoryMessages,
     });

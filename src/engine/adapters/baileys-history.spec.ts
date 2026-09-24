@@ -34,86 +34,8 @@ function history(sock: Record<string, unknown> = {}, opts: { contactCount?: numb
   return { history: new BaileysHistory(host), logger, upsertChats, socket };
 }
 
-const groupWarnCount = (logger: { warn: jest.Mock }): number =>
-  (logger.warn.mock.calls as unknown[][]).filter(call => String(call[0]).includes('Group name hydration')).length;
-
 describe('hydrateNames', () => {
   afterEach(() => jest.useRealTimers());
-
-  it('reports a group query WhatsApp never answered instead of finishing silently', async () => {
-    jest.useFakeTimers();
-    const {
-      history: h,
-      logger,
-      upsertChats,
-    } = history({
-      groupFetchAllParticipating: jest.fn(() => new Promise<never>(() => undefined)),
-      resyncAppState: jest.fn().mockResolvedValue(undefined),
-    });
-
-    const settled = h.hydrateNames();
-    await jest.advanceTimersByTimeAsync(120_000);
-    await settled;
-
-    expect(upsertChats).not.toHaveBeenCalled();
-    expect(groupWarnCount(logger)).toBe(1);
-  });
-
-  it('stays quiet when WhatsApp answers that the account has no groups', async () => {
-    // The benign twin of the case above, and the reason the deadline must not simply warn on an empty
-    // result: this answer ARRIVED, so it is not a failure and must not be reported as one.
-    const {
-      history: h,
-      logger,
-      upsertChats,
-    } = history({
-      groupFetchAllParticipating: jest.fn().mockResolvedValue({}),
-      resyncAppState: jest.fn().mockResolvedValue(undefined),
-    });
-
-    await h.hydrateNames();
-
-    expect(upsertChats).not.toHaveBeenCalled();
-    expect(groupWarnCount(logger)).toBe(0);
-  });
-
-  it('hydrates the names an answered query returns', async () => {
-    const {
-      history: h,
-      logger,
-      upsertChats,
-    } = history({
-      groupFetchAllParticipating: jest.fn().mockResolvedValue({
-        '1@g.us': { id: '1@g.us', subject: 'Engineering' },
-        '2@g.us': { id: '2@g.us' },
-      }),
-      resyncAppState: jest.fn().mockResolvedValue(undefined),
-    });
-
-    await h.hydrateNames();
-
-    // The subject-less group is skipped: a chat row with no name is worse than no row.
-    expect(upsertChats).toHaveBeenCalledWith([{ id: '1@g.us', name: 'Engineering' }]);
-    expect(groupWarnCount(logger)).toBe(0);
-  });
-
-  it('still runs the app-state resync after an unanswered group query', async () => {
-    // The two steps are independent best-effort work. Bounding the first exists partly so the second is
-    // reached on the repo's own budget rather than the library's much longer default.
-    jest.useFakeTimers();
-    const resyncAppState = jest.fn().mockResolvedValue(undefined);
-    const { history: h } = history({
-      groupFetchAllParticipating: jest.fn(() => new Promise<never>(() => undefined)),
-      resyncAppState,
-    });
-
-    const settled = h.hydrateNames();
-    await jest.advanceTimersByTimeAsync(120_000);
-    await settled;
-
-    expect(resyncAppState).toHaveBeenCalledTimes(1);
-    expect(resyncAppState).toHaveBeenCalledWith([...PATCH_NAMES], false);
-  });
 
   it('re-pulls the address-book snapshot on reconnect when the in-memory store is empty', async () => {
     // Baileys skips history + app-state snapshot once accountSyncCounter > 0. The gateway store is

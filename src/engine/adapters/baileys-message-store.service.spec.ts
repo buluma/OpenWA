@@ -199,7 +199,10 @@ describe('BaileysMessageStoreService', () => {
 
     it('round-trips binary fields the same way getMessage does', async () => {
       await seedSession('s1');
-      await service.put('s1', msg('M1'));
+      await service.put('s1', {
+        ...msg('M1'),
+        mediaKey: Buffer.from('media-key'),
+      } as unknown as Parameters<BaileysMessageStoreService['put']>[1]);
       const [found] = await service.getMessages('s1', ['M1']);
       // mediaKey is off the public WAMessage type, like the fixture that wrote it.
       expect(Buffer.isBuffer((found as unknown as { mediaKey: unknown }).mediaKey)).toBe(true);
