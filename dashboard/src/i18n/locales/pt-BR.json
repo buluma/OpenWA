@@ -186,6 +186,7 @@
       "activeSessions": "Sessões conectadas",
       "sessionsDetail": "{{running}} em execução · {{total}} no total",
       "messagesToday": "Mensagens hoje",
+      "failedMessages": "Mensagens com falha",
       "webhooksConfigured": "Webhooks configurados",
       "totalMessages": "Total de mensagens"
     },

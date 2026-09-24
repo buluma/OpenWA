@@ -186,6 +186,7 @@
       "activeSessions": "కనెక్ట్ అయిన సెషన్లు",
       "sessionsDetail": "{{running}} నడుస్తోంది · మొత్తం {{total}}",
       "messagesToday": "ఈరోజు సందేశాలు",
+      "failedMessages": "విఫలమైన సందేశాలు",
       "webhooksConfigured": "కాన్ఫిగర్ చేసిన వెబ్‌హుక్స్",
       "totalMessages": "మొత్తం సందేశాలు"
     },
