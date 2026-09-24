@@ -187,7 +187,7 @@
       "sessionsDetail": "{{running}} running · {{total}} total",
       "messagesToday": "Messages Today",
       "failedMessages": "Failed Messages",
-      "webhooksConfigured": "Webhooks Configured",
+      "webhooksConfigured": "Hooks Configured",
       "totalMessages": "Total Messages"
     },
     "sessionsOverview": "Sessions Overview",
