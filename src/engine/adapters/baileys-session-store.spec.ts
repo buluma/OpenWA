@@ -534,6 +534,7 @@ describe('BaileysSessionStore', () => {
           return Promise.resolve();
         }),
         reload: jest.fn().mockResolvedValue(undefined),
+        clearSession: jest.fn().mockResolvedValue(undefined),
         states,
       };
     };
