@@ -5,7 +5,7 @@ import { EngineFactory } from './engine.factory';
 import { ConfigService } from '@nestjs/config';
 import { PluginLoaderService, PluginType } from '../core/plugins';
 import { BaileysMessageStoreService } from './adapters/baileys-message-store.service';
-import { BaileysChatStateStoreService } from './adapters/baileys-chat-state-store.service';
+import { ChatStateStoreService } from './adapters/baileys-chat-state-store.service';
 import { LidMappingStoreService } from './identity/lid-mapping-store.service';
 
 describe('EngineFactory', () => {
@@ -37,12 +37,12 @@ describe('EngineFactory', () => {
       remember: jest.fn().mockResolvedValue(undefined),
     }) as unknown as LidMappingStoreService;
 
-  const buildChatStateStore = (): BaileysChatStateStoreService =>
+  const buildChatStateStore = (): ChatStateStoreService =>
     ({
       get: jest.fn(),
       remember: jest.fn().mockResolvedValue(undefined),
       reload: jest.fn().mockResolvedValue(undefined),
-    }) as unknown as BaileysChatStateStoreService;
+    }) as unknown as ChatStateStoreService;
 
   it('refuses to create an engine for an unsafe session name (path-traversal into the auth dir)', () => {
     const createEngine = jest.fn().mockReturnValue({});

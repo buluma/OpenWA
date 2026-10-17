@@ -13,7 +13,7 @@ import { Column, Entity, PrimaryColumn, UpdateDateColumn } from 'typeorm';
  * number rather than the string a bigint column otherwise reads back as.
  */
 @Entity('chat_states')
-export class BaileysChatState {
+export class ChatState {
   /** `Session.id` of the session that owns this chat state. */
   @PrimaryColumn()
   sessionId!: string;

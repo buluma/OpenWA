@@ -2,7 +2,7 @@ import type { Chat, Contact as BaileysContact, WAMessage, WAMessageKey } from '@
 import { ChatSummary, Contact } from '../interfaces/whatsapp-engine.interface';
 import { chatKind, parseWaId, toNeutralJid as canonicalizeWaId, userPart } from '../identity/wa-id';
 import type { LidMappingStore } from '../identity/lid-mapping-store.service';
-import type { BaileysChatStateStore, BaileysChatStateValue } from './baileys-chat-state-store.service';
+import type { ChatStateStore, ChatStateValue } from './baileys-chat-state-store.service';
 import { resolveNonNegativeIntEnv } from '../../config/configuration';
 
 interface LastMessage {
@@ -106,7 +106,7 @@ export class BaileysSessionStore {
   constructor(
     private readonly lidStore?: LidMappingStore,
     private readonly sessionId?: string,
-    private readonly chatStateStore?: BaileysChatStateStore,
+    private readonly chatStateStore?: ChatStateStore,
   ) {
     // Mirrors LidMappingStoreService: a finite default, 0 opts back into unbounded, garbage falls back.
     const maxEntries = resolveNonNegativeIntEnv(
@@ -184,7 +184,7 @@ export class BaileysSessionStore {
    */
   private persistChatState(id: string, r: Partial<Chat>): void {
     if (!this.chatStateStore || !this.sessionId) return;
-    const patch: Partial<BaileysChatStateValue> = {};
+    const patch: Partial<ChatStateValue> = {};
     if ('muteEndTime' in r) patch.muteEndTime = this.normalizeMuteEndTime(r.muteEndTime);
     if ('archived' in r) patch.archived = Boolean(r.archived);
     if ('pinned' in r) patch.pinned = Boolean(r.pinned);
