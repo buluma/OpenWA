@@ -34,12 +34,21 @@ export interface BaileysHistoryHost {
   getOnHistoryMessages(): EngineEventCallbacks['onHistoryMessages'];
 }
 
-/** Baileys timestamps are `number | Long`; normalize to unix seconds. */
-export function toUnixSeconds(ts: number | { toNumber(): number } | null | undefined): number {
+/** Baileys timestamps are `number | Long`; a stored message revived from JSON can carry a numeric string. Normalize to unix seconds. */
+export function toUnixSeconds(ts: number | string | { toNumber(): number } | null | undefined): number {
+  const now = (): number => Math.floor(Date.now() / 1000);
   if (ts == null) {
-    return Math.floor(Date.now() / 1000);
+    return now();
   }
-  return typeof ts === 'number' ? ts : ts.toNumber();
+  if (typeof ts === 'number') {
+    return Number.isFinite(ts) ? ts : now();
+  }
+  if (typeof ts === 'string') {
+    const parsed = Number(ts);
+    return Number.isFinite(parsed) ? parsed : now();
+  }
+  const converted = ts.toNumber();
+  return Number.isFinite(converted) ? converted : now();
 }
 
 export class BaileysHistory {

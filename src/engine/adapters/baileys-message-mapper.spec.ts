@@ -4,6 +4,7 @@ import {
   extractBaileysBody,
   mapBaileysMessageType,
   mapBaileysStatus,
+  setBaileysText,
 } from './baileys-message-mapper';
 
 describe('mapBaileysMessageType (baileys content-type -> neutral MessageType)', () => {
@@ -261,5 +262,31 @@ describe('buildIncomingMessageFromBaileys', () => {
   it('omits mentionedIds when absent or empty', () => {
     expect(buildIncomingMessageFromBaileys(base).mentionedIds).toBeUndefined();
     expect(buildIncomingMessageFromBaileys({ ...base, mentionedJids: [] }).mentionedIds).toBeUndefined();
+  });
+});
+
+describe('setBaileysText (write edited text where extractBaileysBody reads it)', () => {
+  it('replaces a plain conversation', () => {
+    const content = { conversation: 'before' };
+    expect(setBaileysText(content, 'after')).toBe(true);
+    expect(content).toEqual({ conversation: 'after' });
+  });
+
+  it('replaces extended text and keeps the link preview fields', () => {
+    const content = { extendedTextMessage: { text: 'before', matchedText: 'https://example.com' } };
+    expect(setBaileysText(content, 'after')).toBe(true);
+    expect(content.extendedTextMessage).toEqual({ text: 'after', matchedText: 'https://example.com' });
+  });
+
+  it.each(['imageMessage', 'videoMessage', 'documentMessage'] as const)('replaces the caption of a %s', key => {
+    const content = { [key]: { caption: 'before', mimetype: 'x/y' } };
+    expect(setBaileysText(content, 'after')).toBe(true);
+    expect(content[key]).toEqual({ caption: 'after', mimetype: 'x/y' });
+  });
+
+  it('changes nothing and reports false when the content has no text slot', () => {
+    const content = {};
+    expect(setBaileysText(content, 'after')).toBe(false);
+    expect(content).toEqual({});
   });
 });

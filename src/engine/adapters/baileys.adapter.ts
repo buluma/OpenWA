@@ -114,6 +114,8 @@ export class BaileysAdapter implements IWhatsAppEngine {
       putStoredMessage: msg => this.config.messageStore?.put(this.config.dbSessionId, msg),
       consumeOwnSend: id => this.ownSends.consume(id),
       getStoredMessage: id => this.config.messageStore?.getMessage(this.config.dbSessionId, id),
+      updateStoredMessage: (messageId, change) =>
+        this.config.messageStore?.update(this.config.dbSessionId, messageId, change),
       getOnMessage: () => this.callbacks.onMessage,
       getOnMessageCreate: () => this.callbacks.onMessageCreate,
       getOnMessageRevoked: () => this.callbacks.onMessageRevoked,
@@ -143,6 +145,10 @@ export class BaileysAdapter implements IWhatsAppEngine {
       putStoredMessage: msg => this.config.messageStore?.put(this.config.dbSessionId, msg),
       rememberOwnSend: id => this.ownSends.remember(id),
       getStoredMessage: messageId => this.config.messageStore?.getMessage(this.config.dbSessionId, messageId),
+      updateStoredMessage: (messageId, change) =>
+        this.config.messageStore?.update(this.config.dbSessionId, messageId, change),
+      wasDeletedForEveryone: messageId => this.events.wasDeletedForEveryone(messageId),
+      markDeletedForEveryone: messageId => this.events.markDeletedForEveryone(messageId),
       getOnMessageCreate: () => this.callbacks.onMessageCreate,
       mapMessage: (msg, contentType, opts) => this.events.mapMessage(msg, contentType, opts),
     });

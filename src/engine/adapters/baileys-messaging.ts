@@ -12,6 +12,7 @@ import {
 } from '../interfaces/whatsapp-engine.interface';
 import { toEngineParticipants } from './baileys-groups';
 import { buildVCard } from './vcard';
+import { setBaileysText } from './baileys-message-mapper';
 import { loadRemoteMediaBuffer } from '../../common/media/load-remote-media';
 import { EngineRefusedError } from '../../common/errors/engine-refused.error';
 import { MessageNotFoundError } from '../../common/errors/message-not-found.error';
@@ -41,6 +42,12 @@ export interface BaileysMessagingHost {
   rememberOwnSend?(id: string | null | undefined): void;
   /** Look up a previously-seen message from the store (the reply/forward/react/delete handle). */
   getStoredMessage(messageId: string): Promise<WAMessage | null> | undefined;
+  /** Rewrite a stored message in place (see BaileysMessageStore.update); undefined without a store. */
+  updateStoredMessage(messageId: string, change: (stored: WAMessage) => WAMessage | null): Promise<void> | undefined;
+  /** Whether this message was deleted for everyone, even where the stored copy does not show it yet. */
+  wasDeletedForEveryone(messageId: string): boolean;
+  /** Record a delete for everyone this session just made (see wasDeletedForEveryone). */
+  markDeletedForEveryone(messageId: string): void;
   /** The currently-registered onMessageCreate callback, if any (assigned at initialize()). */
   getOnMessageCreate(): EngineEventCallbacks['onMessageCreate'];
   /** Map a WAMessage to its neutral shape (the adapter's inbound mapper). */
@@ -224,9 +231,16 @@ export class BaileysMessaging {
 
   async deleteMessage(chatId: string, messageId: string, forEveryone = true): Promise<void> {
     this.host.ensureReady();
-    const target = await this.requireStored(messageId);
+    // A message already deleted for everyone can still be deleted for me: that clears its placeholder.
+    const target = await this.requireStored(messageId, true);
     if (forEveryone) {
       await this.send(chatId, { delete: target.key });
+      // The echo of this delete is skipped as an own send, so the stored copy is emptied here, as
+      // processInboundMessage does for a delete made from the phone or by the other side. Recorded
+      // first, so the message stays deleted even if the store write fails or a repeat delivery of the
+      // original is stored after it.
+      this.host.markDeletedForEveryone(messageId);
+      await this.changeStored(messageId, stored => ({ ...stored, message: null }));
       return;
     }
     // Delete-for-me (revoke on this device only): Baileys exposes it as a chat modification, not a
@@ -266,7 +280,14 @@ export class BaileysMessaging {
     // The destination is resolved like any other send: a lid-migrated contact rejects PN-addressed
     // sends with ack error 463 (see toDeliverableJid).
     const jid = await this.toDeliverableJid(chatId);
+    const b = await this.host.loadLib();
     const sent = await this.send(jid, { text: body, edit: target.key });
+    // Same reason as deleteMessage: the stored copy is what a later quote carries, and this edit's
+    // echo never reaches processInboundMessage.
+    await this.changeStored(messageId, stored => {
+      const content = b.normalizeMessageContent(stored.message ?? undefined);
+      return content && setBaileysText(content, body) ? stored : null;
+    });
     return { id: sent?.key?.id ?? messageId, timestamp: this.host.toUnixSeconds(sent?.messageTimestamp) };
   }
 
@@ -427,13 +448,34 @@ export class BaileysMessaging {
     }
   }
 
-  /** Resolve a previously-seen message from the store, or throw a clear not-found error. */
-  private async requireStored(messageId: string): Promise<WAMessage> {
+  /**
+   * Resolve a previously-seen message from the store, or throw a clear not-found error.
+   *
+   * A message deleted for everyone is kept with its content removed, and is not found here unless
+   * `allowDeleted`: quoting it would hand WhatsApp the deleted content again (Baileys copies the
+   * quoted message into the reply's contextInfo), and there is nothing left to forward, react to or
+   * edit. A message the session knows was deleted is treated the same while its stored copy still
+   * holds the content, as it can when the delete overtook the original's own store write.
+   */
+  private async requireStored(messageId: string, allowDeleted = false): Promise<WAMessage> {
     const found = await this.host.getStoredMessage(messageId);
-    if (!found?.key) {
+    const deleted = !found?.message || this.host.wasDeletedForEveryone(messageId);
+    if (!found?.key || (deleted && !allowDeleted)) {
       throw new MessageNotFoundError(messageId);
     }
     return found;
+  }
+
+  /** Apply a change this session just made to the stored copy. Best-effort: the change already went out. */
+  private async changeStored(messageId: string, change: (stored: WAMessage) => WAMessage | null): Promise<void> {
+    try {
+      await this.host.updateStoredMessage(messageId, change);
+    } catch (err) {
+      this.host.logger.warn('Failed to apply an edit or delete to the message store', {
+        msgId: messageId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   /** Record an API send before Baileys publishes its buffered `append` echo. */
