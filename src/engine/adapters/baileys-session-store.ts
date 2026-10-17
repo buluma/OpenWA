@@ -2,8 +2,13 @@ import type { Chat, Contact as BaileysContact, WAMessage, WAMessageKey } from '@
 import { ChatSummary, Contact } from '../interfaces/whatsapp-engine.interface';
 import { chatKind, parseWaId, toNeutralJid as canonicalizeWaId, userPart } from '../identity/wa-id';
 import type { LidMappingStore } from '../identity/lid-mapping-store.service';
-import type { BaileysChatStateStore, BaileysChatStateValue } from './baileys-chat-state-store.service';
+import { mergeTwinStates, type ChatStateStore, type ChatStateValue } from './baileys-chat-state-store.service';
 import { resolveNonNegativeIntEnv } from '../../config/configuration';
+
+/** Whether a raw chat id is in a phone dialect, as opposed to a lid or a group. */
+function isPhoneKeyed(rawId: string): boolean {
+  return rawId.endsWith('@s.whatsapp.net') || rawId.endsWith('@c.us');
+}
 
 interface LastMessage {
   key: WAMessageKey;
@@ -58,6 +63,11 @@ class LruMap<K, V> {
   values(): IterableIterator<V> {
     return this.map.values();
   }
+
+  /** LIVE iterator with the same caveat as {@link values}. */
+  entries(): IterableIterator<[K, V]> {
+    return this.map.entries();
+  }
 }
 
 /**
@@ -101,7 +111,7 @@ export class BaileysSessionStore {
   constructor(
     private readonly lidStore?: LidMappingStore,
     private readonly sessionId?: string,
-    private readonly chatStateStore?: BaileysChatStateStore,
+    private readonly chatStateStore?: ChatStateStore,
   ) {
     // Mirrors LidMappingStoreService: a finite default, 0 opts back into unbounded, garbage falls back.
     const maxEntries = resolveNonNegativeIntEnv(
@@ -137,10 +147,12 @@ export class BaileysSessionStore {
       // Capture a lid->phone pair from the merged record (lid + phone can arrive in separate updates).
       // `phoneNumber` is the authoritative PN field; fall back to `id` itself only when it's already
       // in the phone dialect (a lid-only contact's `id` is `<lid>@lid`, which is not a usable phone).
+      // A record keyed by its lid carries the lid side in `id` and usually has no `lid` field.
       const phone = merged.phoneNumber ?? (merged.id.endsWith('@s.whatsapp.net') ? merged.id : undefined);
-      if (merged.lid && phone) {
-        this.lidToPn.set(merged.lid, phone);
-        this.persistLidMapping(merged.lid, phone);
+      const lid = merged.lid ?? (parseWaId(merged.id).kind === 'lid' ? merged.id : undefined);
+      if (lid && phone) {
+        this.lidToPn.set(lid, phone);
+        this.persistLidMapping(lid, phone);
       }
     }
   }
@@ -171,27 +183,110 @@ export class BaileysSessionStore {
   }
 
   /**
-   * Write mute/archive/pin through to the persisted store when a chat update carries them. Key
-   * presence, not truthiness, is the trigger: a history-sync or name-hydration partial that omits
-   * these keys must not overwrite persisted state, and a live unmute arrives as `muteEndTime: null`
-   * (key present) that must persist as null. A no-op when this session has no store wired (unit
-   * tests, whatsapp-web.js).
+   * Write mute/archive/pin through to the persisted store when a chat update carries them. Own-key
+   * presence, not truthiness, is the trigger: a history-sync or name-hydration partial that omits these
+   * keys must not overwrite persisted state, and a live unmute arrives as `muteEndTime: null` (an own
+   * key) that must persist as null. It has to be an OWN key: history sync hands over decoded
+   * `proto.Conversation` instances, whose prototype defaults all three fields to null, so the `in`
+   * operator would read every history chunk as a reset to unpinned, unarchived and unmuted. A no-op
+   * when this session has no store wired (unit tests, wwjs).
    */
   private persistChatState(id: string, r: Partial<Chat>): void {
     if (!this.chatStateStore || !this.sessionId) return;
-    const patch: Partial<BaileysChatStateValue> = {};
-    if ('muteEndTime' in r) patch.muteEndTime = this.normalizeMuteEndTime(r.muteEndTime);
-    if ('archived' in r) patch.archived = Boolean(r.archived);
-    if ('pinned' in r) patch.pinned = Boolean(r.pinned);
+    const patch: Partial<ChatStateValue> = {};
+    if (Object.hasOwn(r, 'muteEndTime')) patch.muteEndTime = this.normalizeMuteEndTime(r.muteEndTime);
+    if (Object.hasOwn(r, 'archived')) patch.archived = Boolean(r.archived);
+    if (Object.hasOwn(r, 'pinned')) patch.pinned = Boolean(r.pinned);
     if (Object.keys(patch).length) {
-      void this.chatStateStore.remember(this.sessionId, id, patch);
+      // A row still filed under a lid twin is folded onto the state key here, on a real change, never
+      // on a read: the store picks the newest row from the table, so a twin the cache happens to hold
+      // cannot overwrite a newer row it does not.
+      const key = this.stateKey(id);
+      const twins = this.stateTwins([id], key);
+      // Only an app-state action (the update holds the state fields alone) may create a row to hold a
+      // default, like an unpin that must outweigh a pin on a twin row. A message carries `archived:
+      // false` when the account unarchives on new messages, and a history chat carries its other fields
+      // too; a default in either creating a row would leave one row per chat ever messaged.
+      const create = Object.keys(r).every(f => f === 'id' || f === 'conditional' || Object.hasOwn(patch, f));
+      void (twins.length
+        ? this.chatStateStore.fold(this.sessionId, key, twins, patch, create)
+        : this.chatStateStore.remember(this.sessionId, key, patch, create));
     }
   }
 
-  /** Normalise a raw muteEndTime to canonical epoch ms, or null (0/absent = unmuted). See {@link isMuted}. */
+  /**
+   * The one key a chat's persisted state lives under, whatever spelling the update carried: the phone
+   * JID once the lid resolves, else the device-stripped lid, and anything else (a group) as is.
+   * WhatsApp syncs a lid-migrated contact's pin, mute and archive under the lid while the chat record
+   * may be keyed by phone, so keying the row by the raw id split one chat's state across two rows and
+   * the listing read the one that never changed.
+   */
+  private stateKey(id: string): string {
+    const parsed = parseWaId(id);
+    if (parsed.kind === 'lid') {
+      const phone = this.resolvePhone(id);
+      return phone ? `${phone}@s.whatsapp.net` : `${parsed.userPart}@lid`;
+    }
+    return this.toEngineJid(id);
+  }
+
+  /**
+   * The chat's persisted state. A row may still sit under a lid twin of the state key: written before
+   * the mapping was learned, or by an earlier version that keyed rows by the raw id. The rows merge
+   * field by field, as the fold does (see {@link mergeTwinStates}). A read never writes: the twin rows
+   * are folded onto the state key on the chat's next change (see {@link persistChatState}). `recordIds`
+   * are the raw ids of every chat record merged into the row, whose lids are twins too.
+   */
+  private chatState(rawId: string, recordIds: string[], lidIndex: Map<string, string[]>): ChatStateValue | undefined {
+    const store = this.chatStateStore;
+    const sid = this.sessionId;
+    if (!store || !sid) return undefined;
+    const key = this.stateKey(rawId);
+    return mergeTwinStates([key, ...this.stateTwins(recordIds, key, lidIndex)].flatMap(k => store.get(sid, k) ?? []));
+  }
+
+  /**
+   * The lid spellings of a phone-keyed state key: the lids among the chat's own record ids, and the
+   * ones this session's mappings and the persisted table pair with the phone. The own lids matter when
+   * only the contact record resolves them, which neither mapping source holds.
+   */
+  private stateTwins(rawIds: string[], key: string, lidIndex?: Map<string, string[]>): string[] {
+    const parsed = parseWaId(key);
+    if (parsed.kind !== 'user') return [];
+    // A single update scans the mappings for this one phone; building the whole index per update
+    // blocked the event loop for seconds when a first sync carried thousands of state fields.
+    const twins = new Set(lidIndex?.get(parsed.userPart));
+    if (!lidIndex) {
+      for (const [lid, pn] of this.lidToPn.entries()) {
+        if (userPart(pn) === parsed.userPart) twins.add(`${userPart(lid)}@lid`);
+      }
+    }
+    for (const lid of this.lidStore?.lidsForPhone(parsed.userPart) ?? []) twins.add(`${lid}@lid`);
+    for (const rawId of rawIds) {
+      const raw = parseWaId(rawId);
+      if (raw.kind === 'lid') twins.add(`${raw.userPart}@lid`);
+    }
+    return [...twins];
+  }
+
+  /** Phone digits to the lid JIDs this session maps to them, built once per listing. */
+  private lidsByPhone(): Map<string, string[]> {
+    const index = new Map<string, string[]>();
+    for (const [lid, pn] of [...this.lidToPn.entries()]) {
+      const phone = userPart(pn);
+      index.set(phone, [...(index.get(phone) ?? []), `${userPart(lid)}@lid`]);
+    }
+    return index;
+  }
+
+  /**
+   * Normalise a raw muteEndTime to canonical epoch ms, or null (0/absent = unmuted). A mute with no end
+   * keeps the -1 sentinel rather than scaling it. See {@link isMuted}.
+   */
   private normalizeMuteEndTime(v: number | { toNumber(): number } | null | undefined): number | null {
     const n = this.toUnixSeconds(v);
     if (!n) return null;
+    if (n < 0) return -1;
     return n < 1e12 ? n * 1000 : n;
   }
 
@@ -199,22 +294,26 @@ export class BaileysSessionStore {
    * Whether a Baileys `muteEndTime` is still in the future. The value arrives in two units: an
    * app-state `chatModify({ mute })` write echoes epoch MILLISECONDS, while a history-sync
    * `Conversation.muteEndTime` is seconds like the `conversationTimestamp` beside it. Normalised by
-   * magnitude: below 1e12 is seconds (an epoch-ms stamp below 1e12 predates 2001-09).
+   * magnitude: below 1e12 is seconds (an epoch-ms stamp below 1e12 predates 2001-09). A negative value
+   * is WhatsApp's "Always" sentinel (-1, the value WhatsApp Web sends too), a mute with no end.
    */
   private isMuted(muteEndTime: number | { toNumber(): number } | null | undefined): boolean {
     const raw = this.toUnixSeconds(muteEndTime);
     if (!raw) return false;
+    if (raw < 0) return true;
     const endMs = raw < 1e12 ? raw * 1000 : raw;
     return endMs > Date.now();
   }
 
   /**
    * The expiry instant (epoch ms) for {@link ChatSummary.muteExpiration}, or undefined when the chat
-   * is not muted. Same normalisation as {@link isMuted}, so the two agree.
+   * is not muted. Same normalisation as {@link isMuted}, so the two agree. A mute with no end reads 0,
+   * the contract's "muted indefinitely".
    */
   private muteExpirationMs(muteEndTime: number | { toNumber(): number } | null | undefined): number | undefined {
     const raw = this.toUnixSeconds(muteEndTime);
     if (!raw) return undefined;
+    if (raw < 0) return 0;
     const endMs = raw < 1e12 ? raw * 1000 : raw;
     return endMs > Date.now() ? endMs : undefined;
   }
@@ -271,13 +370,14 @@ export class BaileysSessionStore {
     // newest-message guard so every inbound refreshes it; the timer is cached under both the raw and
     // neutral JID so an outbound send addressed in either dialect (phone or @lid) finds it.
     this.recordEphemeralFromMessage(chatId, msg);
+    const key = this.chatKey(chatId);
     const timestamp = this.toUnixSeconds(msg.messageTimestamp);
-    const existing = this.lastMessages.get(chatId);
+    const existing = this.lastMessages.get(key);
     if (existing && existing.timestamp >= timestamp) {
       return; // keep the newest
     }
     const text = msg.message?.conversation ?? msg.message?.extendedTextMessage?.text ?? '';
-    this.lastMessages.set(chatId, { key: msg.key, timestamp, text });
+    this.lastMessages.set(key, { key: msg.key, timestamp, text });
   }
 
   /**
@@ -286,10 +386,42 @@ export class BaileysSessionStore {
    */
   recordMessageEdit(chatId: string, messageId: string, text: string): void {
     if (!messageId) return;
-    const rawChatId = this.lastMessages.has(chatId) ? chatId : this.toEngineJid(chatId);
-    const existing = this.lastMessages.get(rawChatId);
+    const key = this.chatKey(chatId);
+    const existing = this.lastMessages.get(key);
     if (!existing || existing.key.id !== messageId) return;
-    this.lastMessages.set(rawChatId, { ...existing, text });
+    this.lastMessages.set(key, { ...existing, text });
+  }
+
+  /**
+   * The key a chat's preview is kept under, for an id in any dialect. One conversation reaches this
+   * store as `<phone>@c.us` (the API and the listing), `<phone>@s.whatsapp.net` and `<lid>@lid`
+   * (Baileys, which addresses a lid-migrated contact by its lid and sends to whatever it is given).
+   * Keying each spelling separately left an API send or an inbound message on a twin the chat row
+   * never reads, so the chat showed no preview and chat actions found no history. The chat record
+   * decides: the twin Baileys keyed the chat under wins, then a twin that already holds a preview,
+   * and a chat known under neither falls back to the engine dialect.
+   */
+  private chatKey(jid: string): string {
+    if (this.chats.has(jid)) return jid;
+    const twins = this.chatTwins(jid);
+    return twins.find(k => this.chats.has(k)) ?? twins.find(k => this.lastMessages.has(k)) ?? this.toEngineJid(jid);
+  }
+
+  /** Every spelling of one chat this session can connect: the id, its engine form, and its lid or phone twin. */
+  private chatTwins(jid: string): string[] {
+    const parsed = parseWaId(jid);
+    const twins = [jid, this.toEngineJid(jid)];
+    if (parsed.kind === 'lid') {
+      twins.push(`${parsed.userPart}@lid`);
+      const phone = this.resolvePhone(jid);
+      if (phone) twins.push(`${phone}@s.whatsapp.net`);
+    } else if (parsed.kind === 'user') {
+      for (const [lid, pn] of this.lidToPn.entries()) {
+        if (userPart(pn) === parsed.userPart) twins.push(lid);
+      }
+      for (const lid of this.lidStore?.lidsForPhone(parsed.userPart) ?? []) twins.push(`${lid}@lid`);
+    }
+    return twins;
   }
 
   /**
@@ -387,13 +519,70 @@ export class BaileysSessionStore {
     return null;
   }
 
+  /**
+   * One row per conversation. A contact WhatsApp migrated to a lid can hold two records, one keyed by
+   * phone and one by lid (Baileys files an update under whichever id its source carried, and a record
+   * created before the lid->phone mapping was learned stays where it is), and both project to the same
+   * neutral id; listing each put two rows sharing one id into the answer. They fold like contacts do:
+   * the phone-keyed record is primary, the twin {@link chatJid} routes app-state writes to, and a field
+   * the primary lacks comes from the other. The preview is the newest message filed under any key that
+   * projects to the row, indexed in one pass rather than a twin scan per chat.
+   *
+   * Every loop is over a SNAPSHOT: projecting an id resolves a lid through maps whose read moves the
+   * entry to the most-recent end, so a live iterator would hand the same entry back forever.
+   */
   listChats(): ChatSummary[] {
-    return [...this.chats.values()].map(c => this.toNeutralChat(c));
+    const lidIndex = this.lidsByPhone();
+    const previews = new Map<string, LastMessage>();
+    for (const [key, m] of [...this.lastMessages.entries()]) {
+      const id = this.toNeutralJid(key);
+      const seen = previews.get(id);
+      if (!seen || m.timestamp > seen.timestamp) previews.set(id, m);
+    }
+    const byId = new Map<string, Chat[]>();
+    for (const c of [...this.chats.values()]) {
+      const id = this.toNeutralJid(c.id!);
+      byId.set(id, [...(byId.get(id) ?? []), c]);
+    }
+    // A new engine starts with no chats, but a chat with a persisted state is known to exist: a deleted
+    // chat loses its row. So it is listed before its next message arrives.
+    if (this.chatStateStore && this.sessionId) {
+      for (const chatId of this.chatStateStore.chatIds(this.sessionId)) {
+        const id = this.toNeutralJid(chatId);
+        if (!byId.has(id)) byId.set(id, [{ id: chatId }]);
+      }
+    }
+    return [...byId].map(([id, records]) => this.toNeutralChat(id, records, previews.get(id), lidIndex));
   }
 
-  lastMessage(chatId: string): { key: WAMessageKey; timestamp: number } | null {
-    const m = this.lastMessages.get(chatId) ?? this.lastMessages.get(this.toEngineJid(chatId));
-    return m ? { key: m.key, timestamp: m.timestamp } : null;
+  /**
+   * The id the chat is keyed under, for an app-state write addressed with any spelling of it (the
+   * listing's @c.us id of a lid-keyed chat resolves to the lid). Baileys indexes the patch by this jid
+   * and replays it locally under the same id, so any other spelling names a chat the phone does not
+   * hold and lands the echo on a second record.
+   */
+  chatJid(chatId: string): string {
+    return this.chatKey(chatId);
+  }
+
+  /** The chat's newest message, with `jid`, the id the chat itself is keyed under. */
+  lastMessage(chatId: string): { key: WAMessageKey; timestamp: number; jid: string } | null {
+    const m = this.newestAcrossTwins(this.lastMessages, chatId);
+    return m ? { key: m.key, timestamp: m.timestamp, jid: this.chatJid(chatId) } : null;
+  }
+
+  /**
+   * The newest entry `map` holds for a chat under any of its spellings. A message recorded under the
+   * contact's lid before the lid->phone mapping was learned stays on the lid twin while the chat key
+   * moves to the phone-keyed chat record, so reading the chat key alone would lose it.
+   */
+  private newestAcrossTwins<T extends { timestamp: number }>(map: LruMap<string, T>, chatId: string): T | undefined {
+    let newest: T | undefined;
+    for (const k of [this.chatKey(chatId), ...this.chatTwins(chatId)]) {
+      const v = map.get(k);
+      if (v && (!newest || v.timestamp > newest.timestamp)) newest = v;
+    }
+    return newest;
   }
 
   /**
@@ -415,7 +604,10 @@ export class BaileysSessionStore {
     }
     // Fallback to the chat object's own timer for sessions/engines that do surface it on `chats.*`.
     const chat =
-      this.chats.get(chatId) ?? this.chats.get(this.toEngineJid(chatId)) ?? this.chats.get(this.toNeutralJid(chatId));
+      this.chats.get(chatId) ??
+      this.chats.get(this.toEngineJid(chatId)) ??
+      this.chats.get(this.toNeutralJid(chatId)) ??
+      this.chats.get(this.chatKey(chatId));
     const exp = chat?.ephemeralExpiration;
     return typeof exp === 'number' && exp > 0 ? exp : undefined;
   }
@@ -480,22 +672,43 @@ export class BaileysSessionStore {
     };
   }
 
-  private toNeutralChat(c: Chat): ChatSummary {
+  /**
+   * Project the records that share neutral `id` (usually one) into a row. `last` is the newest preview
+   * filed under any of their keys.
+   */
+  private toNeutralChat(
+    id: string,
+    records: Chat[],
+    last: LastMessage | undefined,
+    lidIndex: Map<string, string[]>,
+  ): ChatSummary {
     // Chat.id is nullable on Baileys' own type (it's the raw proto.IConversation field), but
     // upsertChats() only ever stores a record under a truthy r.id, so every value in `this.chats`
-    // is provably keyed by a real id.
-    const id = c.id!;
-    const last = this.lastMessages.get(id);
+    // is provably keyed by a real id. Phone-keyed first, then the lower raw id: stable across calls.
+    const [c, ...others] = [...records].sort((a, b) =>
+      isPhoneKeyed(a.id!) !== isPhoneKeyed(b.id!) ? (isPhoneKeyed(a.id!) ? -1 : 1) : a.id! < b.id! ? -1 : 1,
+    );
+    const rawId = c.id!;
     // Mute/archive/pin come from the persisted store when it has this chat (it survives a reconnect
-    // Baileys cannot resync), else from the live record. A `null` muteEndTime there means unmuted.
-    const st = this.sessionId ? this.chatStateStore?.get(this.sessionId, id) : undefined;
+    // Baileys cannot resync), else from the primary's live record. A `null` muteEndTime means unmuted.
+    const st = this.chatState(
+      rawId,
+      records.map(r => r.id!),
+      lidIndex,
+    );
     return {
-      id: this.toNeutralJid(id),
-      name: c.name ?? this.resolveContactName(id),
-      isGroup: id.endsWith('@g.us'),
-      kind: chatKind(this.toNeutralJid(id)),
-      unreadCount: c.unreadCount ?? 0,
-      timestamp: last?.timestamp ?? this.toUnixSeconds(c.conversationTimestamp),
+      id,
+      name: c.name ?? others.find(o => o.name)?.name ?? this.resolveContactName(rawId),
+      isGroup: rawId.endsWith('@g.us'),
+      kind: chatKind(id),
+      // From the most recently active record that has one: new messages to a lid-migrated contact
+      // count on the lid record while the phone one keeps a stale 0.
+      unreadCount:
+        [c, ...others]
+          .filter(r => r.unreadCount != null)
+          .sort((a, b) => this.toUnixSeconds(b.conversationTimestamp) - this.toUnixSeconds(a.conversationTimestamp))[0]
+          ?.unreadCount ?? 0,
+      timestamp: last?.timestamp ?? Math.max(...records.map(r => this.toUnixSeconds(r.conversationTimestamp))),
       lastMessage: last?.text,
       archived: st ? st.archived : (c.archived ?? false),
       // Baileys reports a pin as an ORDER, not a flag: 0/absent means unpinned.

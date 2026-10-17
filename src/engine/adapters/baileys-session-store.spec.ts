@@ -1,5 +1,6 @@
 import { BaileysSessionStore } from './baileys-session-store';
 import type { LidMappingStore } from '../identity/lid-mapping-store.service';
+import { mergeTwinStates, type ChatStateValue } from './baileys-chat-state-store.service';
 
 describe('BaileysSessionStore', () => {
   let store: BaileysSessionStore;
@@ -86,6 +87,7 @@ describe('BaileysSessionStore', () => {
     expect(store.lastMessage('628111@s.whatsapp.net')).toEqual({
       key: { remoteJid: '628111@s.whatsapp.net', fromMe: false, id: 'NEW' },
       timestamp: 200,
+      jid: '628111@s.whatsapp.net',
     });
   });
 
@@ -348,6 +350,88 @@ describe('BaileysSessionStore', () => {
     });
   });
 
+  describe('one preview per chat across id dialects', () => {
+    const PHONE = '628111@s.whatsapp.net';
+    const LID = '484848@lid';
+    const msg = (remoteJid: string, id: string, ts: number, fromMe = false) => ({
+      key: { remoteJid, fromMe, id },
+      message: { conversation: id },
+      messageTimestamp: ts,
+    });
+
+    it('files an own send addressed as @c.us under the chat Baileys keyed by phone', () => {
+      store.upsertChats([{ id: PHONE, conversationTimestamp: 5 }]);
+      store.recordMessage(msg('628111@c.us', 'OUT', 100, true));
+      expect(store.listChats()).toEqual([
+        expect.objectContaining({ id: '628111@c.us', timestamp: 100, lastMessage: 'OUT' }),
+      ]);
+      expect(store.lastMessage('628111@c.us')).toEqual(expect.objectContaining({ jid: PHONE }));
+    });
+
+    it('files a lid-addressed send under the phone-keyed chat once the mapping is known', () => {
+      store.upsertChats([{ id: PHONE }]);
+      store.addLidMappings([{ lid: LID, pn: PHONE }]);
+      store.recordMessage(msg(LID, 'OUT', 100, true));
+      expect(store.listChats()).toEqual([expect.objectContaining({ timestamp: 100, lastMessage: 'OUT' })]);
+    });
+
+    it('finds a lid-keyed chat from the @c.us id the listing publishes', () => {
+      store.upsertChats([{ id: LID }]);
+      store.recordKeyLidMappings({ remoteJid: LID, remoteJidAlt: PHONE });
+      store.recordMessage(msg(LID, 'IN', 100));
+      expect(store.listChats()[0].id).toBe('628111@c.us');
+      expect(store.lastMessage('628111@c.us')).toEqual({
+        key: { remoteJid: LID, fromMe: false, id: 'IN' },
+        timestamp: 100,
+        jid: LID,
+      });
+      store.recordMessageEdit('628111@c.us', 'IN', 'edited');
+      expect(store.listChats()[0].lastMessage).toBe('edited');
+    });
+
+    it('finds the lid twin through the persisted table as well', () => {
+      const lidStore = {
+        getCached: jest.fn(() => undefined),
+        resolveLid: jest.fn(() => null),
+        lidsForPhone: jest.fn((phone: string) => (phone === '628111' ? ['484848'] : [])),
+        remember: jest.fn(() => Promise.resolve()),
+      };
+      const s = new BaileysSessionStore(lidStore, 'sess-1');
+      s.upsertChats([{ id: LID }]);
+      s.recordMessage(msg(LID, 'IN', 100));
+      expect(s.lastMessage('628111@c.us')?.jid).toBe(LID);
+    });
+
+    it('keeps one entry when a chat with no record yet is addressed in both dialects', () => {
+      store.recordMessage(msg('628111@c.us', 'OUT', 100, true));
+      store.recordKeyLidMappings({ remoteJid: LID, remoteJidAlt: PHONE });
+      store.recordMessage(msg(LID, 'IN', 200));
+      expect(store.lastMessage('628111@c.us')?.key.id).toBe('IN');
+      expect(store.lastMessage(LID)?.key.id).toBe('IN');
+    });
+
+    it('still finds a message filed under the lid before the mapping to the phone chat was learned', () => {
+      store.upsertChats([{ id: PHONE }]);
+      store.recordMessage(msg(LID, 'IN', 100));
+      store.addLidMappings([{ lid: LID, pn: PHONE }]);
+      for (const id of [LID, '628111@c.us']) {
+        expect(store.lastMessage(id)).toEqual({
+          key: { remoteJid: LID, fromMe: false, id: 'IN' },
+          timestamp: 100,
+          jid: PHONE,
+        });
+      }
+    });
+
+    it('prefers the newest message across twins over an older one under the chat key', () => {
+      store.upsertChats([{ id: PHONE }]);
+      store.recordMessage(msg(PHONE, 'OUT', 100, true));
+      store.recordMessage(msg(LID, 'IN', 200));
+      store.addLidMappings([{ lid: LID, pn: PHONE }]);
+      expect(store.lastMessage('628111@c.us')).toEqual(expect.objectContaining({ timestamp: 200, jid: PHONE }));
+    });
+  });
+
   describe('persistent lid->phone table', () => {
     const makeFakeLidStore = () => {
       const map = new Map<string, string | null>();
@@ -522,18 +606,53 @@ describe('BaileysSessionStore', () => {
 
   describe('chat state (mute/archive/pin) persistence', () => {
     type StateValue = { muteEndTime: number | null; archived: boolean; pinned: boolean };
+    const FIELDS = ['muteEndTime', 'archived', 'pinned'] as const;
+    const DEFAULTS: StateValue = { muteEndTime: null, archived: false, pinned: false };
 
+    /** A faithful in-memory ChatStateStore: remember/fold keep `observed` and honour `create`. */
     const fakeStore = () => {
-      const states = new Map<string, StateValue>();
+      const states = new Map<string, ChatStateValue>();
+      let clock = 0;
+      const write = (
+        sessionId: string,
+        chatId: string,
+        base: ChatStateValue | undefined,
+        patch: Partial<StateValue>,
+        create: boolean,
+      ) => {
+        const hasRow = base !== undefined;
+        const isDefaultsOnly = FIELDS.every(f => !(f in patch) || patch[f] === DEFAULTS[f]);
+        if (!hasRow && !create && isDefaultsOnly) return;
+        const observed = new Set([...(base?.observed ?? []), ...FIELDS.filter(f => f in patch)]);
+        states.set(`${sessionId} ${chatId}`, {
+          ...DEFAULTS,
+          ...base,
+          ...patch,
+          observed: [...observed],
+          updatedAt: ++clock,
+        });
+      };
       return {
         get: jest.fn((sessionId: string, chatId: string) => states.get(`${sessionId} ${chatId}`)),
-        remember: jest.fn((sessionId: string, chatId: string, patch: Partial<StateValue>) => {
-          const key = `${sessionId} ${chatId}`;
-          const existing = states.get(key) ?? { muteEndTime: null, archived: false, pinned: false };
-          states.set(key, { ...existing, ...patch });
+        chatIds: jest.fn((sessionId: string) =>
+          [...states.keys()].filter(k => k.startsWith(`${sessionId} `)).map(k => k.slice(sessionId.length + 1)),
+        ),
+        remember: jest.fn((sessionId: string, chatId: string, patch: Partial<StateValue>, create: boolean = true) => {
+          write(sessionId, chatId, states.get(`${sessionId} ${chatId}`), patch, create);
           return Promise.resolve();
         }),
+        fold: jest.fn(
+          (sessionId: string, chatId: string, twins: string[], patch: Partial<StateValue>, create: boolean = true) => {
+            const rows = [chatId, ...twins].flatMap(k => states.get(`${sessionId} ${k}`) ?? []);
+            write(sessionId, chatId, mergeTwinStates(rows), patch, create);
+            for (const t of twins) states.delete(`${sessionId} ${t}`);
+            return Promise.resolve();
+          },
+        ),
         reload: jest.fn().mockResolvedValue(undefined),
+        clearSession: jest.fn().mockResolvedValue(undefined),
+        forget: jest.fn().mockResolvedValue(undefined),
+        refreshSession: jest.fn().mockResolvedValue(undefined),
         states,
       };
     };
@@ -543,11 +662,12 @@ describe('BaileysSessionStore', () => {
       const s = new BaileysSessionStore(undefined, 'sess-1', chatStateStore);
       // pinned is Baileys' raw wire type: a truthy order number, not a boolean (see toNeutralChat).
       s.upsertChats([{ id: '628111@s.whatsapp.net', archived: true, pinned: 1, muteEndTime: 1800000000000 }]);
-      expect(chatStateStore.remember).toHaveBeenCalledWith('sess-1', '628111@s.whatsapp.net', {
-        archived: true,
-        pinned: true,
-        muteEndTime: 1800000000000,
-      });
+      expect(chatStateStore.remember).toHaveBeenCalledWith(
+        'sess-1',
+        '628111@s.whatsapp.net',
+        { archived: true, pinned: true, muteEndTime: 1800000000000 },
+        true,
+      );
     });
 
     it('does not write keys the update omits (a name-only hydration must not reset mute/archive/pin)', () => {
@@ -561,7 +681,12 @@ describe('BaileysSessionStore', () => {
       const chatStateStore = fakeStore();
       const s = new BaileysSessionStore(undefined, 'sess-1', chatStateStore);
       s.upsertChats([{ id: '628111@s.whatsapp.net', muteEndTime: null }]);
-      expect(chatStateStore.remember).toHaveBeenCalledWith('sess-1', '628111@s.whatsapp.net', { muteEndTime: null });
+      expect(chatStateStore.remember).toHaveBeenCalledWith(
+        'sess-1',
+        '628111@s.whatsapp.net',
+        { muteEndTime: null },
+        true,
+      );
     });
 
     it('toNeutralChat prefers the persisted store state over the live record', () => {
@@ -594,6 +719,143 @@ describe('BaileysSessionStore', () => {
       const [summary] = s.listChats();
       expect(summary.muted).toBe(false);
       expect(summary.muteExpiration).toBeUndefined();
+    });
+
+    it('reads a mute set to Always (WhatsApp sends muteEndTime -1) as muted indefinitely', () => {
+      const s = new BaileysSessionStore();
+      s.upsertChats([{ id: '628111@s.whatsapp.net', muteEndTime: -1 }]);
+      expect(s.listChats()[0]).toMatchObject({ muted: true, muteExpiration: 0 });
+    });
+
+    it('persists a mute set to Always as -1 and reads it back as muted indefinitely', () => {
+      const chatStateStore = fakeStore();
+      const s = new BaileysSessionStore(undefined, 'sess-1', chatStateStore);
+      s.upsertChats([{ id: '628111@s.whatsapp.net', muteEndTime: -1 }]);
+      expect(chatStateStore.states.get('sess-1 628111@s.whatsapp.net')?.muteEndTime).toBe(-1);
+      expect(s.listChats()[0]).toMatchObject({ muted: true, muteExpiration: 0 });
+    });
+
+    it('reads a mute Always persisted as -1000 by an earlier version as muted indefinitely', () => {
+      const chatStateStore = fakeStore();
+      const s = new BaileysSessionStore(undefined, 'sess-1', chatStateStore);
+      s.upsertChats([{ id: '628111@s.whatsapp.net', name: 'Alice' }]);
+      chatStateStore.states.set('sess-1 628111@s.whatsapp.net', { muteEndTime: -1000, archived: false, pinned: false });
+      expect(s.listChats()[0]).toMatchObject({ muted: true, muteExpiration: 0 });
+    });
+
+    it('does not read the prototype defaults of a decoded history chunk as a reset of the state', () => {
+      // History sync hands over proto.Conversation instances whose prototype defaults these fields to null.
+      class DecodedConversation {
+        constructor(public id: string) {}
+      }
+      Object.assign(DecodedConversation.prototype, { archived: null, pinned: null, muteEndTime: null });
+      const chatStateStore = fakeStore();
+      const s = new BaileysSessionStore(undefined, 'sess-1', chatStateStore);
+      s.upsertChats([new DecodedConversation('628111@s.whatsapp.net')]);
+      expect(chatStateStore.remember).not.toHaveBeenCalled();
+    });
+
+    it('lists a chat that only has a saved state, right after a restart', () => {
+      const chatStateStore = fakeStore();
+      chatStateStore.states.set('sess-1 628111@s.whatsapp.net', {
+        muteEndTime: null,
+        archived: false,
+        pinned: true,
+        observed: ['pinned'],
+        updatedAt: 1,
+      });
+      const s = new BaileysSessionStore(undefined, 'sess-1', chatStateStore);
+      expect(s.listChats()).toEqual([expect.objectContaining({ id: '628111@c.us', pinned: true })]);
+    });
+
+    describe('a lid-migrated contact (state synced under the lid, record keyed by phone)', () => {
+      const PHONE = '628111@s.whatsapp.net';
+      const LID = '484848@lid';
+      const SID = 'sess-1';
+      const lidStore = {
+        getCached: jest.fn(() => undefined),
+        resolveLid: jest.fn(() => null),
+        lidsForPhone: jest.fn((phone: string) => (phone === '628111' ? ['484848'] : [])),
+        remember: jest.fn(() => Promise.resolve()),
+      };
+      const stateFor = (chatStateStore: ReturnType<typeof fakeStore>) => {
+        const s = new BaileysSessionStore(lidStore, SID, chatStateStore);
+        s.addLidMappings([{ lid: LID, pn: PHONE }]);
+        return s;
+      };
+
+      it('lists the conversation once, with the pin and mute held under the lid row', () => {
+        const chatStateStore = fakeStore();
+        chatStateStore.states.set(`${SID} ${LID}`, {
+          muteEndTime: 4102444800000,
+          archived: false,
+          pinned: true,
+          observed: ['muteEndTime', 'pinned'],
+          updatedAt: 1,
+        });
+        const s = stateFor(chatStateStore);
+        s.upsertChats([{ id: PHONE, name: 'Alice' }]);
+        s.upsertChats([{ id: LID }]);
+        expect(s.listChats()).toEqual([
+          expect.objectContaining({ id: '628111@c.us', name: 'Alice', pinned: true, muted: true }),
+        ]);
+      });
+
+      it('files a state update the lid carried under the phone jid and folds the lid row onto it', () => {
+        const chatStateStore = fakeStore();
+        chatStateStore.states.set(`${SID} ${LID}`, {
+          muteEndTime: 4102444800000,
+          archived: false,
+          pinned: false,
+          observed: ['muteEndTime'],
+          updatedAt: 1,
+        });
+        const s = stateFor(chatStateStore);
+        s.upsertChats([{ id: LID, pinned: 1 }]);
+        expect(chatStateStore.fold).toHaveBeenCalledWith(SID, PHONE, [LID], { pinned: true }, true);
+        expect(chatStateStore.states.has(`${SID} ${LID}`)).toBe(false);
+        expect(chatStateStore.states.get(`${SID} ${PHONE}`)).toMatchObject({
+          muteEndTime: 4102444800000,
+          pinned: true,
+        });
+      });
+
+      it('keeps a newer unpin from being overturned by an older pin on the lid row', () => {
+        const chatStateStore = fakeStore();
+        chatStateStore.states.set(`${SID} ${LID}`, {
+          muteEndTime: null,
+          archived: false,
+          pinned: true,
+          observed: ['pinned'],
+          updatedAt: 1,
+        });
+        chatStateStore.states.set(`${SID} ${PHONE}`, {
+          muteEndTime: null,
+          archived: false,
+          pinned: false,
+          observed: ['pinned'],
+          updatedAt: 2,
+        });
+        const s = stateFor(chatStateStore);
+        s.upsertChats([{ id: PHONE }]);
+        expect(s.listChats()[0]).toMatchObject({ pinned: false });
+      });
+
+      it('keys a lid update by the lid while the mapping is unknown', () => {
+        const chatStateStore = fakeStore();
+        const s = new BaileysSessionStore(undefined, SID, chatStateStore);
+        s.upsertChats([{ id: LID, pinned: 1 }]);
+        expect(chatStateStore.remember).toHaveBeenCalledWith(SID, LID, { pinned: true }, true);
+      });
+
+      it('creates no row for the unarchive a message carries on a chat that has none', () => {
+        const chatStateStore = fakeStore();
+        const s = stateFor(chatStateStore);
+        s.upsertChats([{ id: PHONE, archived: false, unreadCount: 1 }]);
+        expect(chatStateStore.states.size).toBe(0);
+        s.upsertChats([{ id: PHONE, archived: false }]);
+        expect(chatStateStore.states.get(`${SID} ${PHONE}`)).toMatchObject({ archived: false });
+      });
     });
 
     it('is a no-op when no chatStateStore or sessionId is wired (unit tests, wwjs)', () => {

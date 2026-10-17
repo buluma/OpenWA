@@ -156,6 +156,16 @@ function streamOf(...chunks: Buffer[]): AsyncIterable<Buffer> & { destroy: () =>
     destroy: jest.fn(),
   };
 }
+/**
+ * Stand-in for Baileys' getContentType: the first key that names a message payload, so a test can hand
+ * the adapter a real-shaped wrapper without loading the ESM library.
+ */
+function realGetContentType(content?: Record<string, unknown>): string | undefined {
+  return Object.keys(content ?? {}).find(
+    k => (k === 'conversation' || k.includes('Message')) && k !== 'senderKeyDistributionMessage',
+  );
+}
+
 // sessionId (name) and dbSessionId (Session.id UUID) are deliberately distinct here so assertions
 // below prove auth-dir/logging use the name while messageStore (FK-bound) uses the UUID.
 const newAdapter = (): BaileysAdapter =>
@@ -236,6 +246,26 @@ describe('BaileysAdapter lifecycle & status', () => {
       await new Promise(r => setImmediate(r));
       expect(onDisconnected).toHaveBeenCalledWith('logged out');
       expect(makeWASocket).not.toHaveBeenCalled(); // no reconnect
+    } finally {
+      rmSpy.mockRestore();
+    }
+  });
+
+  it('on a logged-out close: clears the stored messages, as an API logout does', async () => {
+    const rmSpy = jest.spyOn(fs.promises, 'rm').mockResolvedValue(undefined);
+    try {
+      const onDisconnected = jest.fn();
+      const adapter = newAdapter();
+      await adapter.initialize(noopCallbacks({ onDisconnected }));
+      fakeStore.clearSession.mockRejectedValueOnce(new Error('SQLITE_BUSY'));
+      fakeSock.fire('connection.update', {
+        connection: 'close',
+        lastDisconnect: { error: { output: { statusCode: 401 } } },
+      });
+      await new Promise(r => setImmediate(r));
+      expect(fakeStore.clearSession).toHaveBeenCalledWith('db-uuid-1');
+      // A store failure does not turn the unlink into a failed cleanup.
+      expect(onDisconnected).toHaveBeenCalledWith('logged out');
     } finally {
       rmSpy.mockRestore();
     }
@@ -2342,6 +2372,54 @@ describe('BaileysAdapter inbound fan-out', () => {
     );
   });
 
+  it('reads an edit, a revoke and a reaction that arrive inside a wrapper from the unwrapped content', async () => {
+    baileys.getContentType.mockImplementation(realGetContentType);
+    baileys.normalizeMessageContent.mockImplementation(
+      (m?: { editedMessage?: { message?: unknown }; ephemeralMessage?: { message?: unknown } }) =>
+        m?.editedMessage?.message ?? m?.ephemeralMessage?.message ?? m,
+    );
+    const onMessageEdited = jest.fn();
+    const onMessageRevoked = jest.fn();
+    const onMessageReaction = jest.fn();
+    const adapter = newAdapter();
+    await adapter.initialize({ onMessageEdited, onMessageRevoked, onMessageReaction });
+    const key = (id: string) => ({ remoteJid: '628111@s.whatsapp.net', fromMe: false, id });
+    fakeSock.fire('messages.upsert', {
+      type: 'notify',
+      messages: [
+        {
+          key: key('WRAPPED_EDIT'),
+          message: {
+            editedMessage: {
+              message: {
+                protocolMessage: { key: { id: 'EDITED_ID' }, type: 14, editedMessage: { conversation: 'fixed' } },
+              },
+            },
+          },
+          messageTimestamp: 1700000050,
+        },
+        {
+          key: key('WRAPPED_REVOKE'),
+          message: { ephemeralMessage: { message: { protocolMessage: { key: { id: 'REVOKED_ID' }, type: 0 } } } },
+          messageTimestamp: 1700000051,
+        },
+        {
+          key: key('WRAPPED_REACTION'),
+          message: { ephemeralMessage: { message: { reactionMessage: { key: { id: 'REACTED_ID' }, text: 'ok' } } } },
+          messageTimestamp: 1700000052,
+        },
+      ],
+    });
+    await new Promise(r => setImmediate(r));
+    await new Promise(r => setImmediate(r));
+
+    expect(firstEditedMessage(onMessageEdited)).toMatchObject({ messageId: 'EDITED_ID', body: 'fixed' });
+    expect(onMessageRevoked).toHaveBeenCalledWith(expect.objectContaining({ id: 'REVOKED_ID' }));
+    expect(onMessageReaction).toHaveBeenCalledWith(
+      expect.objectContaining({ messageId: 'REACTED_ID', reaction: 'ok' }),
+    );
+  });
+
   it('reactionMessage: fires onMessageReaction and NOT onMessage', async () => {
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
     const baileys = jest.requireMock('@whiskeysockets/baileys') as { getContentType: jest.Mock };
@@ -2906,6 +2984,56 @@ describe('BaileysAdapter store-backed ops', () => {
     const adapter = await ready();
     await adapter.logout();
     expect(fakeStore.clearSession).toHaveBeenCalledWith('db-uuid-1');
+  });
+
+  describe('persisted chat states on an unlink', () => {
+    const chatStateStore = {
+      get: jest.fn(),
+      chatIds: jest.fn().mockReturnValue([]),
+      remember: jest.fn().mockResolvedValue(undefined),
+      fold: jest.fn().mockResolvedValue(undefined),
+      reload: jest.fn().mockResolvedValue(undefined),
+      clearSession: jest.fn(),
+      forget: jest.fn().mockResolvedValue(undefined),
+      refreshSession: jest.fn().mockResolvedValue(undefined),
+    };
+    const linked = async (onDisconnected = jest.fn()): Promise<BaileysAdapter> => {
+      // A failing clear must not change how either unlink ends.
+      chatStateStore.clearSession.mockRejectedValue(new Error('SQLITE_BUSY'));
+      const adapter = new BaileysAdapter({
+        sessionId: 'sess-1',
+        dbSessionId: 'db-uuid-1',
+        authDir: './data/baileys',
+        messageStore: fakeStore,
+        chatStateStore,
+      });
+      await adapter.initialize({ onDisconnected });
+      fakeSock.fire('connection.update', { connection: 'open' });
+      return adapter;
+    };
+
+    it('clears them on logout', async () => {
+      const adapter = await linked();
+      await expect(adapter.logout()).resolves.toBeUndefined();
+      expect(chatStateStore.clearSession).toHaveBeenCalledWith('sess-1');
+    });
+
+    it('clears them when WhatsApp unlinks the device', async () => {
+      const rmSpy = jest.spyOn(fs.promises, 'rm').mockResolvedValue(undefined);
+      try {
+        const onDisconnected = jest.fn();
+        await linked(onDisconnected);
+        fakeSock.fire('connection.update', {
+          connection: 'close',
+          lastDisconnect: { error: { output: { statusCode: 401 } } },
+        });
+        await new Promise(r => setImmediate(r));
+        expect(chatStateStore.clearSession).toHaveBeenCalledWith('sess-1');
+        expect(onDisconnected).toHaveBeenCalledWith('logged out');
+      } finally {
+        rmSpy.mockRestore();
+      }
+    });
   });
 });
 
@@ -3967,6 +4095,95 @@ describe('BaileysAdapter sendSeen + markUnread + deleteChat', () => {
     fakeSock.fire('connection.update', { connection: 'open' });
     await adapter.muteChat('628999@s.whatsapp.net', null);
     expect(fakeSock.chatModify).toHaveBeenCalledWith({ mute: null }, '628999@s.whatsapp.net');
+  });
+});
+
+describe('BaileysAdapter chat actions on a lid-keyed chat', () => {
+  const PHONE_CUS = '628111@c.us';
+  const LID = '484848@lid';
+
+  beforeEach(() => {
+    fakeSock.user = { id: '628999:1@s.whatsapp.net', name: 'Me' };
+    fakeSock.resetEmitter();
+    jest.clearAllMocks();
+  });
+
+  /** A chat Baileys keys by the contact's lid, with the lid->phone mapping learned from the message key. */
+  const lidChat = async (): Promise<BaileysAdapter> => {
+    const adapter = newAdapter();
+    await adapter.initialize({});
+    fakeSock.fire('connection.update', { connection: 'open' });
+    fakeSock.fire('chats.upsert', [{ id: LID }]);
+    fakeSock.fire('messages.upsert', {
+      type: 'notify',
+      messages: [
+        {
+          key: { remoteJid: LID, remoteJidAlt: '628111@s.whatsapp.net', fromMe: false, id: 'M1' },
+          message: { conversation: 'hi' },
+          messageTimestamp: 1700000020,
+        },
+      ],
+    });
+    await new Promise(r => setImmediate(r));
+    return adapter;
+  };
+
+  it.each([
+    ['markUnread', (a: BaileysAdapter) => a.markUnread(PHONE_CUS)],
+    ['clearChatMessages', (a: BaileysAdapter) => a.clearChatMessages(PHONE_CUS)],
+    ['archiveChat', (a: BaileysAdapter) => a.archiveChat(PHONE_CUS, true)],
+    ['deleteChat', (a: BaileysAdapter) => a.deleteChat(PHONE_CUS)],
+  ])('%s addresses the patch to the lid the chat is keyed by', async (_name, act) => {
+    const adapter = await lidChat();
+    await expect(act(adapter)).resolves.toBe(true);
+    expect(fakeSock.chatModify).toHaveBeenCalledWith(expect.anything(), LID);
+  });
+
+  it.each([
+    ['pinChat', (a: BaileysAdapter) => a.pinChat(PHONE_CUS, true), { pin: true }],
+    ['muteChat', (a: BaileysAdapter) => a.muteChat(PHONE_CUS, 1800000000000), { mute: 1800000000000 }],
+  ])('%s addresses the patch to the lid the chat is keyed by', async (_name, act, patch) => {
+    const adapter = await lidChat();
+    await act(adapter);
+    expect(fakeSock.chatModify).toHaveBeenCalledWith(patch, LID);
+  });
+
+  it('keys chat label writes by the lid the chat is keyed by', async () => {
+    const adapter = await lidChat();
+    await adapter.addLabelToChat(PHONE_CUS, 'LABEL8');
+    await adapter.removeLabelFromChat(PHONE_CUS, 'LABEL8');
+    expect(fakeSock.addChatLabel).toHaveBeenCalledWith(LID, 'LABEL8');
+    expect(fakeSock.removeChatLabel).toHaveBeenCalledWith(LID, 'LABEL8');
+  });
+
+  it('indexes star and delete-for-me by the chat the message is stored in', async () => {
+    const adapter = await lidChat();
+    fakeStore.getMessage.mockResolvedValue({
+      key: { remoteJid: LID, fromMe: false, id: 'M1' },
+      message: { conversation: 'hi' },
+      messageTimestamp: 1700000020,
+    });
+    await adapter.starMessage(PHONE_CUS, 'M1', true);
+    expect(fakeSock.chatModify).toHaveBeenLastCalledWith(
+      { star: { messages: [{ id: 'M1', fromMe: false }], star: true } },
+      LID,
+    );
+    await adapter.deleteMessage(PHONE_CUS, 'M1', false);
+    expect(fakeSock.chatModify).toHaveBeenLastCalledWith(
+      { deleteForMe: { deleteMedia: true, key: { remoteJid: LID, fromMe: false, id: 'M1' }, timestamp: 1700000020 } },
+      LID,
+    );
+  });
+
+  it('still folds an @c.us id to the phone jid for a chat keyed by phone', async () => {
+    const adapter = newAdapter();
+    await adapter.initialize({});
+    fakeSock.fire('connection.update', { connection: 'open' });
+    fakeSock.fire('chats.upsert', [{ id: '628111@s.whatsapp.net' }]);
+    await adapter.pinChat(PHONE_CUS, true);
+    await adapter.muteChat(PHONE_CUS, null);
+    expect(fakeSock.chatModify).toHaveBeenCalledWith({ pin: true }, '628111@s.whatsapp.net');
+    expect(fakeSock.chatModify).toHaveBeenCalledWith({ mute: null }, '628111@s.whatsapp.net');
   });
 });
 

@@ -3,7 +3,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
 /**
  * Creates `chat_states` - persisted per-session Baileys chat mute/archive/pin app-state on the `data`
  * connection, keyed by (sessionId, chatId). Baileys cannot re-deliver these on a reconnect (history
- * sync is skipped once paired and it keeps no queryable copy), so {@link BaileysChatStateStoreService}
+ * sync is skipped once paired and it keeps no queryable copy), so {@link ChatStateStoreService}
  * persists and rehydrates them here.
  *
  * Hand-authored (not `migration:generate`) because the dev SQLite DB in this worktree already carries

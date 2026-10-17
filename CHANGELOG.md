@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Baileys now delivers messages sent from the linked phone during a gateway outage while suppressing API-send echoes and duplicate replays.
 - Baileys repopulates its saved address book after a process restart; chat peers known only by pushname remain available by lookup without being listed as saved contacts.
 - Baileys now persists inbound messages before announcing them, so immediate quoted replies and other lookups wait for the write to finish.
+- Baileys: a chat muted "Always" reads as muted indefinitely (`muteExpiration: 0`) instead of unmuted.
+- Baileys: a WhatsApp-side unlink and an API logout clear the session's stored messages and its persisted chat mute, archive and pin state, so a re-linked account no longer inherits the previous account's flags.
+- Baileys: chat actions (mark unread, clear, archive, delete, mute, pin, chat labels, star and delete-for-me) address the jid the chat is keyed by, so the `@c.us` id `GET /chats` returns no longer creates a second row carrying the change. A chat's last message is found under its lid before the lid-to-phone mapping is learned.
+- Baileys: a lid-migrated contact's chat is listed once, with the pin, mute and archive WhatsApp synced under its lid. Persisted chat state is keyed by the phone jid once the lid resolves and a row filed under the lid is folded onto it on the chat's next change; the new nullable `chat_states.observed` column (migration `AddChatStateObserved`) records which fields a row has seen so an older value on the twin cannot overturn a newer unpin, unarchive or unmute.
+- Baileys: an edit, revoke or reaction WhatsApp delivers inside a wrapper message (an edit in `editedMessage`, a revoke or reaction in `ephemeralMessage`) is no longer dropped, so `message.edited`, `message.revoked` and `message.reaction` fire for it.
+- Baileys: a history sync no longer resets a chat's persisted mute, archive and pin state; a chat that has a saved state is listed by `GET /chats` right after a restart, before its next message.
+- Baileys: the linked-device name defaults to `Ubuntu` instead of `OpenWA`, because some accounts reject a non-standard name on phone-number pairing; `BAILEYS_BROWSER_NAME` still overrides it, and sessions that are already linked keep the name they were paired with.
 
 ### Security
 

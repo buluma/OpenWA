@@ -16,12 +16,14 @@ export interface BaileysContactsHost {
   normalizedSelfJid(): string;
   toNeutralJid(jid: string): string;
   toEngineJid(jid: string): string;
+  /** The id the chat is keyed under (its lid for a lid-migrated contact), the app-state index key. */
+  chatJid(chatId: string): string;
   listContacts(): Contact[];
   findContact(contactId: string): Contact | null;
   resolvePhone(contactId: string): string | null;
   listChats(): ChatSummary[];
   /** The chat's last known message (the handle readMessages/chatModify need), or null when none. */
-  lastMessage(chatId: string): { key: WAMessageKey; timestamp: number } | null;
+  lastMessage(chatId: string): { key: WAMessageKey; timestamp: number; jid: string } | null;
 }
 
 export class BaileysContacts {
@@ -143,7 +145,7 @@ export class BaileysContacts {
     }
     await this.sock().chatModify(
       { markRead: false, lastMessages: [{ key: last.key, messageTimestamp: last.timestamp }] },
-      chatId,
+      last.jid,
     );
     return true;
   }
@@ -156,7 +158,7 @@ export class BaileysContacts {
     }
     await this.sock().chatModify(
       { delete: true, lastMessages: [{ key: last.key, messageTimestamp: last.timestamp }] },
-      chatId,
+      last.jid,
     );
     return true;
   }
@@ -169,7 +171,7 @@ export class BaileysContacts {
     }
     await this.sock().chatModify(
       { clear: true, lastMessages: [{ key: last.key, messageTimestamp: last.timestamp }] },
-      chatId,
+      last.jid,
     );
     return true;
   }
@@ -182,7 +184,7 @@ export class BaileysContacts {
     }
     await this.sock().chatModify(
       { archive, lastMessages: [{ key: last.key, messageTimestamp: last.timestamp }] },
-      chatId,
+      last.jid,
     );
     return true;
   }
@@ -193,7 +195,7 @@ export class BaileysContacts {
     // archive/clear/delete, so a chat with no known history pins fine. Always true — Baileys writes
     // the app-state patch and reports nothing back, so it has no equivalent of the whatsapp-web.js
     // three-pin refusal to surface.
-    await this.sock().chatModify({ pin }, chatId);
+    await this.sock().chatModify({ pin }, this.host.chatJid(chatId));
     return true;
   }
 
@@ -201,6 +203,6 @@ export class BaileysContacts {
     this.host.ensureReady();
     // Deliberately no lastMessage lookup: the `mute` member of ChatModification carries no
     // `lastMessages`, unlike archive/clear/delete, so a chat with no known history mutes fine.
-    await this.sock().chatModify({ mute: muteUntil }, chatId);
+    await this.sock().chatModify({ mute: muteUntil }, this.host.chatJid(chatId));
   }
 }
