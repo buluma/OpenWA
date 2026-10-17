@@ -2931,9 +2931,13 @@ describe('BaileysAdapter store-backed ops', () => {
   describe('persisted chat states on an unlink', () => {
     const chatStateStore = {
       get: jest.fn(),
+      chatIds: jest.fn().mockReturnValue([]),
       remember: jest.fn().mockResolvedValue(undefined),
+      fold: jest.fn().mockResolvedValue(undefined),
       reload: jest.fn().mockResolvedValue(undefined),
       clearSession: jest.fn(),
+      forget: jest.fn().mockResolvedValue(undefined),
+      refreshSession: jest.fn().mockResolvedValue(undefined),
     };
     const linked = async (onDisconnected = jest.fn()): Promise<BaileysAdapter> => {
       // A failing clear must not change how either unlink ends.
