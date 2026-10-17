@@ -596,6 +596,28 @@ describe('BaileysSessionStore', () => {
       expect(summary.muteExpiration).toBeUndefined();
     });
 
+    it('reads a mute set to Always (WhatsApp sends muteEndTime -1) as muted indefinitely', () => {
+      const s = new BaileysSessionStore();
+      s.upsertChats([{ id: '628111@s.whatsapp.net', muteEndTime: -1 }]);
+      expect(s.listChats()[0]).toMatchObject({ muted: true, muteExpiration: 0 });
+    });
+
+    it('persists a mute set to Always as -1 and reads it back as muted indefinitely', () => {
+      const chatStateStore = fakeStore();
+      const s = new BaileysSessionStore(undefined, 'sess-1', chatStateStore);
+      s.upsertChats([{ id: '628111@s.whatsapp.net', muteEndTime: -1 }]);
+      expect(chatStateStore.states.get('sess-1 628111@s.whatsapp.net')?.muteEndTime).toBe(-1);
+      expect(s.listChats()[0]).toMatchObject({ muted: true, muteExpiration: 0 });
+    });
+
+    it('reads a mute Always persisted as -1000 by an earlier version as muted indefinitely', () => {
+      const chatStateStore = fakeStore();
+      const s = new BaileysSessionStore(undefined, 'sess-1', chatStateStore);
+      s.upsertChats([{ id: '628111@s.whatsapp.net', name: 'Alice' }]);
+      chatStateStore.states.set('sess-1 628111@s.whatsapp.net', { muteEndTime: -1000, archived: false, pinned: false });
+      expect(s.listChats()[0]).toMatchObject({ muted: true, muteExpiration: 0 });
+    });
+
     it('is a no-op when no chatStateStore or sessionId is wired (unit tests, wwjs)', () => {
       const s = new BaileysSessionStore(); // no lidStore, no sessionId, no chatStateStore
       expect(() => s.upsertChats([{ id: '628111@s.whatsapp.net', archived: true }])).not.toThrow();
