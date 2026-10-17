@@ -743,6 +743,31 @@ describe('BaileysSessionStore', () => {
       expect(s.listChats()[0]).toMatchObject({ muted: true, muteExpiration: 0 });
     });
 
+    it('does not read the prototype defaults of a decoded history chunk as a reset of the state', () => {
+      // History sync hands over proto.Conversation instances whose prototype defaults these fields to null.
+      class DecodedConversation {
+        constructor(public id: string) {}
+      }
+      Object.assign(DecodedConversation.prototype, { archived: null, pinned: null, muteEndTime: null });
+      const chatStateStore = fakeStore();
+      const s = new BaileysSessionStore(undefined, 'sess-1', chatStateStore);
+      s.upsertChats([new DecodedConversation('628111@s.whatsapp.net')]);
+      expect(chatStateStore.remember).not.toHaveBeenCalled();
+    });
+
+    it('lists a chat that only has a saved state, right after a restart', () => {
+      const chatStateStore = fakeStore();
+      chatStateStore.states.set('sess-1 628111@s.whatsapp.net', {
+        muteEndTime: null,
+        archived: false,
+        pinned: true,
+        observed: ['pinned'],
+        updatedAt: 1,
+      });
+      const s = new BaileysSessionStore(undefined, 'sess-1', chatStateStore);
+      expect(s.listChats()).toEqual([expect.objectContaining({ id: '628111@c.us', pinned: true })]);
+    });
+
     describe('a lid-migrated contact (state synced under the lid, record keyed by phone)', () => {
       const PHONE = '628111@s.whatsapp.net';
       const LID = '484848@lid';

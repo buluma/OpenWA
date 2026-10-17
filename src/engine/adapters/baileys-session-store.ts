@@ -183,18 +183,20 @@ export class BaileysSessionStore {
   }
 
   /**
-   * Write mute/archive/pin through to the persisted store when a chat update carries them. Key
-   * presence, not truthiness, is the trigger: a history-sync or name-hydration partial that omits
-   * these keys must not overwrite persisted state, and a live unmute arrives as `muteEndTime: null`
-   * (key present) that must persist as null. A no-op when this session has no store wired (unit
-   * tests, whatsapp-web.js).
+   * Write mute/archive/pin through to the persisted store when a chat update carries them. Own-key
+   * presence, not truthiness, is the trigger: a history-sync or name-hydration partial that omits these
+   * keys must not overwrite persisted state, and a live unmute arrives as `muteEndTime: null` (an own
+   * key) that must persist as null. It has to be an OWN key: history sync hands over decoded
+   * `proto.Conversation` instances, whose prototype defaults all three fields to null, so the `in`
+   * operator would read every history chunk as a reset to unpinned, unarchived and unmuted. A no-op
+   * when this session has no store wired (unit tests, wwjs).
    */
   private persistChatState(id: string, r: Partial<Chat>): void {
     if (!this.chatStateStore || !this.sessionId) return;
     const patch: Partial<ChatStateValue> = {};
-    if ('muteEndTime' in r) patch.muteEndTime = this.normalizeMuteEndTime(r.muteEndTime);
-    if ('archived' in r) patch.archived = Boolean(r.archived);
-    if ('pinned' in r) patch.pinned = Boolean(r.pinned);
+    if (Object.hasOwn(r, 'muteEndTime')) patch.muteEndTime = this.normalizeMuteEndTime(r.muteEndTime);
+    if (Object.hasOwn(r, 'archived')) patch.archived = Boolean(r.archived);
+    if (Object.hasOwn(r, 'pinned')) patch.pinned = Boolean(r.pinned);
     if (Object.keys(patch).length) {
       // A row still filed under a lid twin is folded onto the state key here, on a real change, never
       // on a read: the store picks the newest row from the table, so a twin the cache happens to hold
@@ -541,6 +543,14 @@ export class BaileysSessionStore {
     for (const c of [...this.chats.values()]) {
       const id = this.toNeutralJid(c.id!);
       byId.set(id, [...(byId.get(id) ?? []), c]);
+    }
+    // A new engine starts with no chats, but a chat with a persisted state is known to exist: a deleted
+    // chat loses its row. So it is listed before its next message arrives.
+    if (this.chatStateStore && this.sessionId) {
+      for (const chatId of this.chatStateStore.chatIds(this.sessionId)) {
+        const id = this.toNeutralJid(chatId);
+        if (!byId.has(id)) byId.set(id, [{ id: chatId }]);
+      }
     }
     return [...byId].map(([id, records]) => this.toNeutralChat(id, records, previews.get(id), lidIndex));
   }
