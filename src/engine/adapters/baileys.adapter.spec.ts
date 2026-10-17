@@ -4036,6 +4036,95 @@ describe('BaileysAdapter sendSeen + markUnread + deleteChat', () => {
   });
 });
 
+describe('BaileysAdapter chat actions on a lid-keyed chat', () => {
+  const PHONE_CUS = '628111@c.us';
+  const LID = '484848@lid';
+
+  beforeEach(() => {
+    fakeSock.user = { id: '628999:1@s.whatsapp.net', name: 'Me' };
+    fakeSock.resetEmitter();
+    jest.clearAllMocks();
+  });
+
+  /** A chat Baileys keys by the contact's lid, with the lid->phone mapping learned from the message key. */
+  const lidChat = async (): Promise<BaileysAdapter> => {
+    const adapter = newAdapter();
+    await adapter.initialize({});
+    fakeSock.fire('connection.update', { connection: 'open' });
+    fakeSock.fire('chats.upsert', [{ id: LID }]);
+    fakeSock.fire('messages.upsert', {
+      type: 'notify',
+      messages: [
+        {
+          key: { remoteJid: LID, remoteJidAlt: '628111@s.whatsapp.net', fromMe: false, id: 'M1' },
+          message: { conversation: 'hi' },
+          messageTimestamp: 1700000020,
+        },
+      ],
+    });
+    await new Promise(r => setImmediate(r));
+    return adapter;
+  };
+
+  it.each([
+    ['markUnread', (a: BaileysAdapter) => a.markUnread(PHONE_CUS)],
+    ['clearChatMessages', (a: BaileysAdapter) => a.clearChatMessages(PHONE_CUS)],
+    ['archiveChat', (a: BaileysAdapter) => a.archiveChat(PHONE_CUS, true)],
+    ['deleteChat', (a: BaileysAdapter) => a.deleteChat(PHONE_CUS)],
+  ])('%s addresses the patch to the lid the chat is keyed by', async (_name, act) => {
+    const adapter = await lidChat();
+    await expect(act(adapter)).resolves.toBe(true);
+    expect(fakeSock.chatModify).toHaveBeenCalledWith(expect.anything(), LID);
+  });
+
+  it.each([
+    ['pinChat', (a: BaileysAdapter) => a.pinChat(PHONE_CUS, true), { pin: true }],
+    ['muteChat', (a: BaileysAdapter) => a.muteChat(PHONE_CUS, 1800000000000), { mute: 1800000000000 }],
+  ])('%s addresses the patch to the lid the chat is keyed by', async (_name, act, patch) => {
+    const adapter = await lidChat();
+    await act(adapter);
+    expect(fakeSock.chatModify).toHaveBeenCalledWith(patch, LID);
+  });
+
+  it('keys chat label writes by the lid the chat is keyed by', async () => {
+    const adapter = await lidChat();
+    await adapter.addLabelToChat(PHONE_CUS, 'LABEL8');
+    await adapter.removeLabelFromChat(PHONE_CUS, 'LABEL8');
+    expect(fakeSock.addChatLabel).toHaveBeenCalledWith(LID, 'LABEL8');
+    expect(fakeSock.removeChatLabel).toHaveBeenCalledWith(LID, 'LABEL8');
+  });
+
+  it('indexes star and delete-for-me by the chat the message is stored in', async () => {
+    const adapter = await lidChat();
+    fakeStore.getMessage.mockResolvedValue({
+      key: { remoteJid: LID, fromMe: false, id: 'M1' },
+      message: { conversation: 'hi' },
+      messageTimestamp: 1700000020,
+    });
+    await adapter.starMessage(PHONE_CUS, 'M1', true);
+    expect(fakeSock.chatModify).toHaveBeenLastCalledWith(
+      { star: { messages: [{ id: 'M1', fromMe: false }], star: true } },
+      LID,
+    );
+    await adapter.deleteMessage(PHONE_CUS, 'M1', false);
+    expect(fakeSock.chatModify).toHaveBeenLastCalledWith(
+      { deleteForMe: { deleteMedia: true, key: { remoteJid: LID, fromMe: false, id: 'M1' }, timestamp: 1700000020 } },
+      LID,
+    );
+  });
+
+  it('still folds an @c.us id to the phone jid for a chat keyed by phone', async () => {
+    const adapter = newAdapter();
+    await adapter.initialize({});
+    fakeSock.fire('connection.update', { connection: 'open' });
+    fakeSock.fire('chats.upsert', [{ id: '628111@s.whatsapp.net' }]);
+    await adapter.pinChat(PHONE_CUS, true);
+    await adapter.muteChat(PHONE_CUS, null);
+    expect(fakeSock.chatModify).toHaveBeenCalledWith({ pin: true }, '628111@s.whatsapp.net');
+    expect(fakeSock.chatModify).toHaveBeenCalledWith({ mute: null }, '628111@s.whatsapp.net');
+  });
+});
+
 describe('BaileysAdapter status posting', () => {
   beforeEach(() => {
     fakeSock.user = { id: '628999:1@s.whatsapp.net', name: 'Me' };

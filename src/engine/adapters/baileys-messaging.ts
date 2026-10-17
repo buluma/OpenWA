@@ -239,7 +239,9 @@ export class BaileysMessaging {
           timestamp: this.host.toUnixSeconds(target.messageTimestamp),
         },
       },
-      chatId,
+      // Indexed by the chat the message is stored in: for a lid-keyed chat that is its lid, which the
+      // @c.us id the listing publishes does not fold to.
+      this.host.toEngineJid(target.key.remoteJid ?? chatId),
     );
   }
 
@@ -286,12 +288,13 @@ export class BaileysMessaging {
     this.assertStoredInChat(target, chatId, messageId);
     // fromMe is load-bearing: the same message id addresses a different message depending on
     // direction, so omitting it would star the wrong side of the conversation.
-    // Fold @c.us -> @s.whatsapp.net: chatModify keys the star app-state index by the raw jid (no
-    // jidNormalizedUser, unlike the send path), so a neutral @c.us would index a phantom chat and
-    // the star would silently apply to nothing on a 1:1 conversation.
+    // chatModify keys the star app-state index by the raw jid (no jidNormalizedUser, unlike the send
+    // path), so it takes the chat the message is stored in, folded to the engine form: a neutral @c.us,
+    // or the phone jid of a chat keyed by the contact's lid, would index a phantom chat and the star
+    // would silently apply to nothing.
     await this.sock().chatModify(
       { star: { messages: [{ id: target.key.id!, fromMe: target.key.fromMe ?? false }], star } },
-      this.host.toEngineJid(chatId),
+      this.host.toEngineJid(target.key.remoteJid ?? chatId),
     );
   }
 

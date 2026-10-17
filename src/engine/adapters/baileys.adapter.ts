@@ -153,6 +153,7 @@ export class BaileysAdapter implements IWhatsAppEngine {
       normalizedSelfJid: () => this.normalizedSelfJid(),
       toNeutralJid: jid => this.sessionStore.toNeutralJid(jid),
       toEngineJid: jid => this.sessionStore.toEngineJid(jid),
+      chatJid: chatId => this.sessionStore.chatJid(chatId),
       listContacts: () => this.sessionStore.listContacts(),
       findContact: contactId => this.sessionStore.findContact(contactId),
       resolvePhone: contactId => this.sessionStore.resolvePhone(contactId),
@@ -532,11 +533,11 @@ export class BaileysAdapter implements IWhatsAppEngine {
   // with a chat, they do not create/edit the label definition.
   async addLabelToChat(chatId: string, labelId: string): Promise<void> {
     this.ensureReady();
-    await this.sock!.addChatLabel(chatId, labelId);
+    await this.sock!.addChatLabel(this.sessionStore.chatJid(chatId), labelId);
   }
   async removeLabelFromChat(chatId: string, labelId: string): Promise<void> {
     this.ensureReady();
-    await this.sock!.removeChatLabel(chatId, labelId);
+    await this.sock!.removeChatLabel(this.sessionStore.chatJid(chatId), labelId);
   }
   getSubscribedChannels(): Promise<Channel[]> {
     return this.unsupported('getSubscribedChannels');
