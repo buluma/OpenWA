@@ -156,6 +156,16 @@ function streamOf(...chunks: Buffer[]): AsyncIterable<Buffer> & { destroy: () =>
     destroy: jest.fn(),
   };
 }
+/**
+ * Stand-in for Baileys' getContentType: the first key that names a message payload, so a test can hand
+ * the adapter a real-shaped wrapper without loading the ESM library.
+ */
+function realGetContentType(content?: Record<string, unknown>): string | undefined {
+  return Object.keys(content ?? {}).find(
+    k => (k === 'conversation' || k.includes('Message')) && k !== 'senderKeyDistributionMessage',
+  );
+}
+
 // sessionId (name) and dbSessionId (Session.id UUID) are deliberately distinct here so assertions
 // below prove auth-dir/logging use the name while messageStore (FK-bound) uses the UUID.
 const newAdapter = (): BaileysAdapter =>
