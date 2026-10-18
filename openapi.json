@@ -1733,6 +1733,15 @@
             }
           },
           {
+            "name": "mediaOnly",
+            "required": false,
+            "in": "query",
+            "description": "When true, return only media messages (image, video, audio, voice, sticker, document).",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
             "name": "limit",
             "required": false,
             "in": "query",
