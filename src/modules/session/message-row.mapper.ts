@@ -57,3 +57,19 @@ export function buildMessageMetadata(
 export function storableWaMessageId(id: string | undefined): string | undefined {
   return id || undefined;
 }
+
+/**
+ * The `createdAt` for a live-persisted row: the WhatsApp send time, not the insert time.
+ *
+ * Messages missed while the gateway was down replay through the live paths on reconnect, so the
+ * insert time would lump days of backlog into the reconnect moment — one spike in the stats time
+ * series and one spot in the chat order. The history backfill already stamps the send time; this
+ * brings the live paths in line. Clamped to `now` so host clock skew can't date a row in the future.
+ *
+ * @param timestamp WhatsApp send time in epoch seconds.
+ * @returns undefined when the engine gave no timestamp, leaving the column to its DB default.
+ */
+export function rowCreatedAt(timestamp: number | undefined, now: Date = new Date()): Date | undefined {
+  if (!timestamp) return undefined;
+  return new Date(Math.min(timestamp * 1000, now.getTime()));
+}

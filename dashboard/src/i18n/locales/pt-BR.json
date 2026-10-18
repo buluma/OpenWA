@@ -159,7 +159,24 @@
       "react": "Erro ao reagir à mensagem",
       "delete": "Erro ao excluir a mensagem"
     },
-    "loadMessagesError": "Não foi possível carregar as mensagens. Verifique os registros do servidor."
+    "loadMessagesError": "Não foi possível carregar as mensagens. Verifique os registros do servidor.",
+    "mediaTab": {
+      "title": "Mídia",
+      "count": "Mensagens de mídia: {{count}}",
+      "missing": "Não armazenadas: {{count}}",
+      "notStored": "Não armazenada",
+      "fetch": "Buscar recentes no WhatsApp",
+      "fetchError": "Não foi possível buscar a mídia no WhatsApp.",
+      "loadError": "Falha ao carregar a mídia.",
+      "empty": "Ainda não há mídia nesta conversa.",
+      "loadMore": "Carregar mais",
+      "type": {
+        "image": "Imagem",
+        "video": "Vídeo",
+        "audio": "Áudio",
+        "document": "Documento"
+      }
+    }
   },
   "errorBoundary": {
     "title": "Algo deu errado",

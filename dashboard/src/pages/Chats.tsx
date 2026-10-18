@@ -4,7 +4,7 @@ import { Trans, useTranslation } from 'react-i18next';
 import { nextReconnectState } from '../utils/reconnectState';
 import { applyIncomingToChatList } from '../utils/chatList';
 import { filterChats, filterChannels, groupStatusesByContact } from '../utils/chatFilters';
-import { ArrowLeft, Loader2, Megaphone, CircleDashed, AlertCircle, MessageSquare } from 'lucide-react';
+import { ArrowLeft, Loader2, Megaphone, CircleDashed, AlertCircle, MessageSquare, Images } from 'lucide-react';
 import { useProfilePicture } from '../hooks/useProfilePicture';
 import { useProfilePictures } from '../hooks/useProfilePictures';
 import { useResolvedPhone } from '../hooks/useResolvedPhone';
@@ -49,6 +49,7 @@ import MediaLightbox, { type LightboxItem } from '../components/chats/MediaLight
 import KindIcon from '../components/chats/KindIcon';
 import ChatSidebar from '../components/chats/ChatSidebar';
 import ChatThread from '../components/chats/ChatThread';
+import ChatMediaPanel from '../components/chats/ChatMediaPanel';
 import ChatComposer, { type StagedAttachment } from '../components/chats/ChatComposer';
 import StatusMedia from '../components/chats/StatusMedia';
 import StatusComposeModal from '../components/chats/StatusComposeModal';
@@ -183,6 +184,9 @@ export function Chats() {
 
   // Lightbox state for media viewer
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  // Media tab: the chat whose media grid is showing. Keyed by chat id rather than a boolean so
+  // switching chats drops back to the thread without a reset effect.
+  const [mediaChatId, setMediaChatId] = useState<string | null>(null);
 
   const [replyingTo, setReplyingTo] = useState<ChatMessageView | null>(null);
   // Draft text lives here (not in ChatComposer) so it survives closing/switching the room.
@@ -921,42 +925,66 @@ export function Chats() {
                       {activeChat.id}
                     </span>
                   </div>
+                  <button
+                    type="button"
+                    className={`room-media-toggle ${mediaChatId === activeChat.id ? 'active' : ''}`}
+                    aria-pressed={mediaChatId === activeChat.id}
+                    title={t('chats.mediaTab.title')}
+                    onClick={() => setMediaChatId(prev => (prev === activeChat.id ? null : activeChat.id))}
+                  >
+                    <Images size={18} />
+                    <span>{t('chats.mediaTab.title')}</span>
+                  </button>
                 </header>
 
-                {/* Messages body (list, media, reactions, scroll-to-bottom) — components/chats/ChatThread. */}
-                <ChatThread
-                  activeChat={activeChat}
-                  messages={messages}
-                  loadingMessages={loadingMessages}
-                  loadingOlderMessages={selectedSessionId ? isLoadingOlder(selectedSessionId, activeChat.id) : false}
-                  messagesError={messagesError}
-                  messagesContainerRef={messagesContainerRef}
-                  onMediaLoad={onMediaLoad}
-                  onOpenImage={messageId => {
-                    const idx = imageMedia.findIndex(x => x.id === messageId);
-                    if (idx >= 0) setLightboxIndex(idx);
-                  }}
-                  onReply={setReplyingTo}
-                  onReact={handleReactMessage}
-                  onDelete={handleDeleteMessage}
-                />
+                {mediaChatId === activeChat.id ? (
+                  <ChatMediaPanel
+                    key={activeChat.id}
+                    sessionId={selectedSessionId}
+                    chatId={activeChat.id}
+                    canFetchFromWhatsApp={currentEngine.data?.engineType === 'whatsapp-web.js'}
+                    formatTime={formatChatTime}
+                  />
+                ) : (
+                  <>
+                    {/* Messages body (list, media, reactions, scroll-to-bottom) — components/chats/ChatThread. */}
+                    <ChatThread
+                      activeChat={activeChat}
+                      messages={messages}
+                      loadingMessages={loadingMessages}
+                      loadingOlderMessages={
+                        selectedSessionId ? isLoadingOlder(selectedSessionId, activeChat.id) : false
+                      }
+                      messagesError={messagesError}
+                      messagesContainerRef={messagesContainerRef}
+                      onMediaLoad={onMediaLoad}
+                      onOpenImage={messageId => {
+                        const idx = imageMedia.findIndex(x => x.id === messageId);
+                        if (idx >= 0) setLightboxIndex(idx);
+                      }}
+                      onReply={setReplyingTo}
+                      onReact={handleReactMessage}
+                      onDelete={handleDeleteMessage}
+                    />
 
-                {/* Composer: attachment preview, emoji panel, reply banner, input bar —
+                    {/* Composer: attachment preview, emoji panel, reply banner, input bar —
                     components/chats/ChatComposer. */}
-                <ChatComposer
-                  selectedSessionId={selectedSessionId}
-                  activeChat={activeChat}
-                  replyingTo={replyingTo}
-                  setReplyingTo={setReplyingTo}
-                  onMessageAppended={onMessageAppended}
-                  setChats={setChats}
-                  messageInput={messageInput}
-                  setMessageInput={setMessageInput}
-                  attachment={attachment}
-                  setAttachment={setAttachment}
-                  previewUrl={previewUrl}
-                  setPreviewUrl={setPreviewUrl}
-                />
+                    <ChatComposer
+                      selectedSessionId={selectedSessionId}
+                      activeChat={activeChat}
+                      replyingTo={replyingTo}
+                      setReplyingTo={setReplyingTo}
+                      onMessageAppended={onMessageAppended}
+                      setChats={setChats}
+                      messageInput={messageInput}
+                      setMessageInput={setMessageInput}
+                      attachment={attachment}
+                      setAttachment={setAttachment}
+                      previewUrl={previewUrl}
+                      setPreviewUrl={setPreviewUrl}
+                    />
+                  </>
+                )}
               </div>
             ) : activeChannel ? (
               // Read-only channel pane: no send footer, reactions, delete, reply, or markChatRead —

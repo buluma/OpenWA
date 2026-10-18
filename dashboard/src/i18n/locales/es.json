@@ -159,7 +159,24 @@
       "react": "Error al reaccionar al mensaje",
       "delete": "Error al eliminar el mensaje"
     },
-    "loadMessagesError": "No se pudieron cargar los mensajes. Revisa los registros del servidor."
+    "loadMessagesError": "No se pudieron cargar los mensajes. Revisa los registros del servidor.",
+    "mediaTab": {
+      "title": "Multimedia",
+      "count": "Mensajes multimedia: {{count}}",
+      "missing": "No guardados: {{count}}",
+      "notStored": "No guardado",
+      "fetch": "Obtener recientes de WhatsApp",
+      "fetchError": "No se pudo obtener el contenido multimedia de WhatsApp.",
+      "loadError": "No se pudo cargar el contenido multimedia.",
+      "empty": "Aún no hay contenido multimedia en este chat.",
+      "loadMore": "Cargar más",
+      "type": {
+        "image": "Imagen",
+        "video": "Vídeo",
+        "audio": "Audio",
+        "document": "Documento"
+      }
+    }
   },
   "errorBoundary": {
     "title": "Algo salió mal",

@@ -159,7 +159,24 @@
       "react": "回應訊息失敗",
       "delete": "刪除訊息失敗"
     },
-    "loadMessagesError": "無法載入訊息。請檢查伺服器日誌。"
+    "loadMessagesError": "無法載入訊息。請檢查伺服器日誌。",
+    "mediaTab": {
+      "title": "媒體",
+      "count": "媒體訊息：{{count}}",
+      "missing": "未儲存：{{count}}",
+      "notStored": "未儲存",
+      "fetch": "從 WhatsApp 取得最近的媒體",
+      "fetchError": "無法從 WhatsApp 取得媒體。",
+      "loadError": "載入媒體失敗。",
+      "empty": "此聊天中仍未有媒體。",
+      "loadMore": "載入更多",
+      "type": {
+        "image": "圖片",
+        "video": "影片",
+        "audio": "音訊",
+        "document": "文件"
+      }
+    }
   },
   "errorBoundary": {
     "title": "發生問題",

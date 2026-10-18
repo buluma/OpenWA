@@ -159,7 +159,24 @@
       "react": "Impossibile reagire al messaggio",
       "delete": "Impossibile eliminare il messaggio"
     },
-    "loadMessagesError": "Impossibile caricare i messaggi. Controlla i log del server."
+    "loadMessagesError": "Impossibile caricare i messaggi. Controlla i log del server.",
+    "mediaTab": {
+      "title": "Media",
+      "count": "Messaggi multimediali: {{count}}",
+      "missing": "Non salvati: {{count}}",
+      "notStored": "Non salvato",
+      "fetch": "Recupera i recenti da WhatsApp",
+      "fetchError": "Impossibile recuperare i media da WhatsApp.",
+      "loadError": "Impossibile caricare i media.",
+      "empty": "Ancora nessun media in questa chat.",
+      "loadMore": "Carica altri",
+      "type": {
+        "image": "Immagine",
+        "video": "Video",
+        "audio": "Audio",
+        "document": "Documento"
+      }
+    }
   },
   "errorBoundary": {
     "title": "Qualcosa è andato storto",

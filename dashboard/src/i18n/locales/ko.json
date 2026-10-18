@@ -159,7 +159,24 @@
       "react": "메시지에 반응하지 못했습니다",
       "delete": "메시지를 삭제하지 못했습니다"
     },
-    "loadMessagesError": "메시지를 불러올 수 없습니다. 서버 로그를 확인하세요."
+    "loadMessagesError": "메시지를 불러올 수 없습니다. 서버 로그를 확인하세요.",
+    "mediaTab": {
+      "title": "미디어",
+      "count": "미디어 메시지: {{count}}",
+      "missing": "저장되지 않음: {{count}}",
+      "notStored": "저장되지 않음",
+      "fetch": "WhatsApp에서 최근 항목 가져오기",
+      "fetchError": "WhatsApp에서 미디어를 가져오지 못했습니다.",
+      "loadError": "미디어를 불러오지 못했습니다.",
+      "empty": "이 채팅에는 아직 미디어가 없습니다.",
+      "loadMore": "더 불러오기",
+      "type": {
+        "image": "이미지",
+        "video": "동영상",
+        "audio": "오디오",
+        "document": "문서"
+      }
+    }
   },
   "errorBoundary": {
     "title": "문제가 발생했습니다",

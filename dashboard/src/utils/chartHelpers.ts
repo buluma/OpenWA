@@ -1,4 +1,4 @@
-import type { StatsPeriod } from '../services/api';
+import type { MessageTimeSeriesPoint, StatsPeriod } from '../services/api';
 
 // Stable, distinct color per message type. Keyed by type name — not array index — so two types
 // can never share a color, and a slice keeps its color even when the set of present types changes.
@@ -36,6 +36,39 @@ export function formatTick(ts: string, period: StatsPeriod): string {
   // Strip any trailing time component so '2026-12-31 00:00:00' → '12-31'.
   const datePart = ts.includes(' ') ? ts.slice(0, 10) : ts;
   return datePart.slice(5);
+}
+
+const HOUR_MS = 60 * 60 * 1000;
+const PERIOD_MS: Record<StatsPeriod, number> = {
+  '24h': 24 * HOUR_MS,
+  '7d': 7 * 24 * HOUR_MS,
+  '30d': 30 * 24 * HOUR_MS,
+};
+
+/** Server bucket key for a UTC instant: 'YYYY-MM-DD HH:00:00' (24h) or 'YYYY-MM-DD' (7d/30d). */
+function bucketKey(ms: number, period: StatsPeriod): string {
+  const iso = new Date(ms).toISOString();
+  return period === '24h' ? `${iso.slice(0, 10)} ${iso.slice(11, 13)}:00:00` : iso.slice(0, 10);
+}
+
+/** The server only returns buckets that have messages, so a category axis would draw a 3-week gap
+ *  as wide as a single day. Emit every bucket of the period (UTC, matching the server's grouping)
+ *  with zeros for the empty ones; server buckets outside the grid are kept, all in key order. */
+export function fillTimeSeriesGaps(
+  points: MessageTimeSeriesPoint[],
+  period: StatsPeriod,
+  now: Date = new Date(),
+): MessageTimeSeriesPoint[] {
+  const step = period === '24h' ? HOUR_MS : 24 * HOUR_MS;
+  const end = now.getTime();
+  const start = Math.floor((end - PERIOD_MS[period]) / step) * step;
+  const byKey = new Map<string, MessageTimeSeriesPoint>();
+  for (let ms = start; ms <= end; ms += step) {
+    const key = bucketKey(ms, period);
+    byKey.set(key, { timestamp: key, sent: 0, received: 0 });
+  }
+  for (const p of points) byKey.set(p.timestamp, p);
+  return [...byKey.values()].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
 }
 
 /** WhatsApp ids look like '62812...@c.us' / '...@g.us' / '...@lid' — show just the local part. */

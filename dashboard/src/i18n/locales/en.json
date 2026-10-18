@@ -159,7 +159,24 @@
       "react": "Failed to react to message",
       "delete": "Failed to delete message"
     },
-    "loadMessagesError": "Couldn't load messages. Check the server logs."
+    "loadMessagesError": "Couldn't load messages. Check the server logs.",
+    "mediaTab": {
+      "title": "Media",
+      "count": "Media messages: {{count}}",
+      "missing": "Not stored: {{count}}",
+      "notStored": "Not stored",
+      "fetch": "Fetch recent from WhatsApp",
+      "fetchError": "Could not fetch media from WhatsApp.",
+      "loadError": "Failed to load media.",
+      "empty": "No media in this chat yet.",
+      "loadMore": "Load more",
+      "type": {
+        "image": "Image",
+        "video": "Video",
+        "audio": "Audio",
+        "document": "Document"
+      }
+    }
   },
   "errorBoundary": {
     "title": "Something went wrong",

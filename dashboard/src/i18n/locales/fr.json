@@ -159,7 +159,24 @@
       "react": "Échec de la réaction au message",
       "delete": "Échec de la suppression du message"
     },
-    "loadMessagesError": "Impossible de charger les messages. Vérifiez les journaux du serveur."
+    "loadMessagesError": "Impossible de charger les messages. Vérifiez les journaux du serveur.",
+    "mediaTab": {
+      "title": "Médias",
+      "count": "Messages multimédias : {{count}}",
+      "missing": "Non enregistrés : {{count}}",
+      "notStored": "Non enregistré",
+      "fetch": "Récupérer les récents depuis WhatsApp",
+      "fetchError": "Impossible de récupérer les médias depuis WhatsApp.",
+      "loadError": "Échec du chargement des médias.",
+      "empty": "Aucun média dans cette discussion pour le moment.",
+      "loadMore": "Charger plus",
+      "type": {
+        "image": "Image",
+        "video": "Vidéo",
+        "audio": "Audio",
+        "document": "Document"
+      }
+    }
   },
   "errorBoundary": {
     "title": "Une erreur est survenue",
