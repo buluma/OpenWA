@@ -2447,6 +2447,26 @@ describe('SessionService', () => {
       expect(eventsGateway.emitMessage).toHaveBeenCalled();
     });
 
+    // Messages missed while the gateway was down replay through the live path on reconnect. Stamping the
+    // insert time lumped days of backlog into one stats bucket and one spot in the chat order; the row
+    // must carry the WhatsApp send time, like the history backfill does.
+    it('stamps createdAt from the WhatsApp timestamp on live inbound and outgoing rows', async () => {
+      (hookManager.execute as jest.Mock).mockImplementation((_e: string, data: unknown) =>
+        Promise.resolve({ continue: true, data }),
+      );
+      const callbacks = await startAndCaptureCallbacks();
+
+      callbacks.onMessage?.(makeMessage({ id: 'wa-backlog-in', timestamp: 1706868000 }));
+      callbacks.onMessageCreate!(
+        makeMessage({ id: 'wa-backlog-out', from: 'me@c.us', fromMe: true, timestamp: 1706868060 }),
+      );
+      await flush();
+
+      const rows = ((messageRepository.create as jest.Mock).mock.calls as [Partial<Message>][]).map(c => c[0]);
+      expect(rows.find(r => r.waMessageId === 'wa-backlog-in')?.createdAt).toEqual(new Date(1706868000 * 1000));
+      expect(rows.find(r => r.waMessageId === 'wa-backlog-out')?.createdAt).toEqual(new Date(1706868060 * 1000));
+    });
+
     it('still persists and dispatches an outgoing message when a plugin stops the hook chain', async () => {
       (hookManager.execute as jest.Mock).mockImplementation((event: string, data: unknown) =>
         Promise.resolve({ continue: event !== 'message:sent', data }),

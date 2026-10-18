@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Live-persisted messages (inbound and phone-sent) now record their WhatsApp send time as `createdAt` instead of the insert time, so a backlog replayed after reconnecting lands on its real days in the dashboard stats and chat order rather than in one spike at the reconnect. Rows stored before this fix keep their insert time.
+- Dashboard "Messages over time" chart shows every hour/day of the selected period, with zeros for quiet ones, instead of placing only the buckets that have messages side by side.
 - Baileys now dispatches messages WhatsApp replays from its offline queue after reconnecting; bulk history remains handled separately.
 - Baileys now delivers messages sent from the linked phone during a gateway outage while suppressing API-send echoes and duplicate replays.
 - Baileys repopulates its saved address book after a process restart; chat peers known only by pushname remain available by lookup without being listed as saved contacts.

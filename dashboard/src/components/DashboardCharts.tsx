@@ -18,7 +18,7 @@ import {
 import { BarChart3, X } from 'lucide-react';
 import { useStatsMessagesQuery } from '../hooks/queries';
 import type { StatsPeriod } from '../services/api';
-import { colorForType, formatTick, shortChat } from '../utils/chartHelpers';
+import { colorForType, fillTimeSeriesGaps, formatTick, shortChat } from '../utils/chartHelpers';
 import './DashboardCharts.css';
 
 const PERIODS: StatsPeriod[] = ['24h', '7d', '30d'];
@@ -57,7 +57,10 @@ export function DashboardCharts() {
   const forbidden = (error as (Error & { status?: number }) | null)?.status === 403;
   if (isError && forbidden) return null;
 
-  const timeSeries = (data?.timeSeries ?? []).map(p => ({ ...p, label: formatTick(p.timestamp, period) }));
+  const timeSeries = (data?.timeSeries?.length ? fillTimeSeriesGaps(data.timeSeries, period) : []).map(p => ({
+    ...p,
+    label: formatTick(p.timestamp, period),
+  }));
   const byType = Object.entries(data?.byType ?? {})
     .map(([name, value]) => ({ name, value }))
     .sort((a, b) => b.value - a.value);

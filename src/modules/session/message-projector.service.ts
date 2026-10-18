@@ -8,7 +8,7 @@ import { Message, MessageDirection, MessageStatus } from '../message/entities/me
 import { EngineRegistry } from '../../engine/engine-registry.service';
 import { KeyedMutationQueue } from '../../common/utils/keyed-mutation-queue';
 import { SessionLidResolver } from './session-lid-resolver.service';
-import { buildMessageMetadata, storableWaMessageId } from './message-row.mapper';
+import { buildMessageMetadata, rowCreatedAt, storableWaMessageId } from './message-row.mapper';
 import { MessageMutationProjector } from './message-mutation-projector';
 import { persistHistoryMessages } from './message-history-projector';
 import { isUniqueConstraintError } from '../../common/utils/unique-constraint.util';
@@ -257,6 +257,7 @@ export class MessageProjector {
       type: incoming.type,
       direction: incoming.fromMe ? MessageDirection.OUTGOING : MessageDirection.INCOMING,
       timestamp: incoming.timestamp,
+      createdAt: rowCreatedAt(incoming.timestamp),
       status: MessageStatus.SENT,
       metadata,
     });
@@ -394,6 +395,7 @@ export class MessageProjector {
             type: outgoing.type,
             direction: MessageDirection.OUTGOING,
             timestamp: outgoing.timestamp,
+            createdAt: rowCreatedAt(outgoing.timestamp),
             status: MessageStatus.SENT,
             metadata,
           });
