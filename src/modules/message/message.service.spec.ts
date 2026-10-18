@@ -647,6 +647,24 @@ describe('MessageService', () => {
       expect(qb.skip).toHaveBeenCalledWith(0);
     });
 
+    // The dashboard's per-chat Media tab pages through only the media rows of a chat.
+    it('narrows to the media message types when mediaOnly is set', async () => {
+      const qb = makeQb();
+      (repository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+      await service.getMessages('sess-1', { chatId: '628999@c.us', mediaOnly: true });
+      expect(qb.andWhere).toHaveBeenCalledWith('message.type IN (:...mediaTypes)', {
+        mediaTypes: ['image', 'video', 'audio', 'voice', 'sticker', 'document'],
+      });
+    });
+
+    it('applies no type filter by default', async () => {
+      const qb = makeQb();
+      (repository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+      await service.getMessages('sess-1', { chatId: '628999@c.us' });
+      const clauses = (qb.andWhere.mock.calls as [string][]).map(c => c[0]);
+      expect(clauses.some(c => c.includes('message.type'))).toBe(false);
+    });
+
     // ── getMessages order tiebreak ─────────────────────────────────
 
     /**

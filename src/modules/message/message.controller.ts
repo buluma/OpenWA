@@ -41,6 +41,12 @@ export class MessageController {
     description:
       'Filter by sender. A phone also matches group messages via the author field and any lid that resolves to it.',
   })
+  @ApiQuery({
+    name: 'mediaOnly',
+    required: false,
+    type: Boolean,
+    description: 'When true, return only media messages (image, video, audio, voice, sticker, document).',
+  })
   @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Max messages to return (default 50)' })
   @ApiQuery({ name: 'offset', required: false, type: Number, description: 'Offset for pagination' })
   @ApiResponse({
@@ -51,12 +57,14 @@ export class MessageController {
     @Param('sessionId') sessionId: string,
     @Query('chatId') chatId?: string,
     @Query('from') from?: string,
+    @Query('mediaOnly') mediaOnly?: string,
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
   ) {
     return this.messageService.getMessages(sessionId, {
       chatId,
       from,
+      mediaOnly: mediaOnly === 'true' || mediaOnly === '1',
       limit: limit ? parseInt(limit, 10) : undefined,
       offset: offset ? parseInt(offset, 10) : undefined,
     });

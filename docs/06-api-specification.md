@@ -943,6 +943,7 @@ Get persisted message history for a session from the local DB (paginated, filter
 | --- | --- | --- | --- | --- |
 | chatId | string | No | — | Filter by chat ID. Matched across `@c.us` / `@s.whatsapp.net` dialects via the lid-mapping table. |
 | from | string | No | — | Filter by sender. A phone also matches any lid that resolves to it. |
+| mediaOnly | boolean | No | false | `true` (or `1`) returns only media messages: `image`, `video`, `audio`, `voice`, `sticker`, `document`. The payload is in `metadata.media.data` when it was stored; a row without it (no `metadata`, or `metadata.media.omitted: true`) was not stored and can only be re-fetched from WhatsApp. |
 | limit | integer | No | 50 | Clamped to `[1,100]`; a non-finite value falls back to 50. |
 | offset | integer | No | 0 | Clamped to `>=0`; a non-finite value falls back to 0. |
 

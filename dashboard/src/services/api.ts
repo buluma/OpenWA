@@ -709,6 +709,11 @@ export const sessionApi = {
     request<{ messages: ChatMessage[]; total: number }>(
       `/sessions/${id}/messages?chatId=${encodeURIComponent(chatId)}&limit=${limit}&offset=${offset}`,
     ),
+  // Only the chat's media rows (image/video/audio/voice/sticker/document), newest first — the Media tab.
+  getChatMedia: (id: string, chatId: string, limit = 30, offset = 0) =>
+    request<{ messages: ChatMessage[]; total: number }>(
+      `/sessions/${id}/messages?chatId=${encodeURIComponent(chatId)}&mediaOnly=true&limit=${limit}&offset=${offset}`,
+    ),
   // Live history straight from WhatsApp (bypasses the DB) — backfills a thread the gateway never
   // captured, e.g. a freshly paired session whose persisted store is still empty.
   // includeMedia downloads the media payload (base64) for history messages so stickers/images/

@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Dashboard: a **Media** tab in the chat header shows the chat's images, stickers, videos, audio and documents as a paged grid, newest first. Media that was never stored shows a "Not stored" placeholder; on whatsapp-web.js a "Fetch recent from WhatsApp" button fills those in from the last 100 messages. Backed by a new optional `mediaOnly=true` query parameter on `GET /api/sessions/:sessionId/messages`.
 - Single-message autoreply rules under `/api/sessions/:sessionId/automation-rules` (create, list, get,
   update, delete — all OPERATOR). A rule matches an inbound message using the same filter shape as
   webhook `filters` and replies with `replyText` through the ordinary send path; at most one rule

@@ -159,7 +159,24 @@
       "react": "Reaktion auf die Nachricht fehlgeschlagen",
       "delete": "Nachricht konnte nicht gelöscht werden"
     },
-    "loadMessagesError": "Nachrichten konnten nicht geladen werden. Prüfe die Serverprotokolle."
+    "loadMessagesError": "Nachrichten konnten nicht geladen werden. Prüfe die Serverprotokolle.",
+    "mediaTab": {
+      "title": "Medien",
+      "count": "Mediennachrichten: {{count}}",
+      "missing": "Nicht gespeichert: {{count}}",
+      "notStored": "Nicht gespeichert",
+      "fetch": "Neueste von WhatsApp abrufen",
+      "fetchError": "Medien konnten nicht von WhatsApp abgerufen werden.",
+      "loadError": "Medien konnten nicht geladen werden.",
+      "empty": "In diesem Chat gibt es noch keine Medien.",
+      "loadMore": "Mehr laden",
+      "type": {
+        "image": "Bild",
+        "video": "Video",
+        "audio": "Audio",
+        "document": "Dokument"
+      }
+    }
   },
   "errorBoundary": {
     "title": "Etwas ist schiefgelaufen",

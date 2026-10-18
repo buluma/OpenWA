@@ -6,6 +6,7 @@ import { QueryDeepPartialEntity } from 'typeorm';
 import { SessionService } from '../session/session.service';
 import { EngineRegistry } from '../../engine/engine-registry.service';
 import { MessageProjector } from '../session/message-projector.service';
+import { MEDIA_MESSAGE_TYPES } from '../session/message-row.mapper';
 import { SendTextMessageDto, SendMediaMessageDto, SendAudioMessageDto, MessageResponseDto } from './dto';
 import { SendTemplateMessageDto } from './dto/send-template.dto';
 import { assertBase64WithinMediaCap, stripBase64DataUri } from './media-cap.util';
@@ -25,6 +26,8 @@ export interface GetMessagesOptions {
   chatId?: string;
   /** Filter by sender. A phone matches stored `@c.us`/`@s.whatsapp.net` ids AND any lid resolving to it. Group messages match on `author` (the real sender) as well as `from` (which holds the group JID). */
   from?: string;
+  /** Only rows whose type carries a media payload (image, video, audio, voice, sticker, document). */
+  mediaOnly?: boolean;
   limit?: number;
   offset?: number;
 }
@@ -359,6 +362,10 @@ export class MessageService {
         froms,
         authorFroms: froms,
       });
+    }
+
+    if (options.mediaOnly) {
+      query.andWhere('message.type IN (:...mediaTypes)', { mediaTypes: [...MEDIA_MESSAGE_TYPES] });
     }
 
     const [messages, total] = await query.getManyAndCount();
