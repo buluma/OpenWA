@@ -1648,9 +1648,10 @@ export function Chats() {
     [messages, formatChatTime],
   );
 
-  const activeChatDisplayName = activeChat ? chatHeaderDisplayName(activeChat) : '';
-  const activeChatUsername = activeChat ? formatWhatsAppUsername(activeChat.username) : undefined;
-  const showTechnicalChatId = activeChat ? shouldShowTechnicalChatId(activeChat, Boolean(activePhoneText)) : false;
+  const headerChat = activeChat ? (chats.find(chat => chat.id === activeChat.id) ?? activeChat) : null;
+  const activeChatDisplayName = headerChat ? chatHeaderDisplayName(headerChat) : '';
+  const activeChatUsername = headerChat ? formatWhatsAppUsername(headerChat.username) : undefined;
+  const showTechnicalChatId = headerChat ? shouldShowTechnicalChatId(headerChat, Boolean(activePhoneText)) : false;
 
   return (
     <div className="chats-page">

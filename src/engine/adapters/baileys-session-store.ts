@@ -579,13 +579,25 @@ export class BaileysSessionStore {
     // most-recent end. Iterating the live map therefore hands the same entry back forever, a
     // synchronous loop that wedges the process rather than answering the request.
     const byId = new Map<string, ContactTwin>();
+    const unnamedUsernames = new Map<string, string>();
     for (const c of [...this.contacts.values()]) {
-      if (!c.name) continue;
-      const twin: ContactTwin = { contact: this.toNeutralContact(c), rawId: c.id };
+      const contact = this.toNeutralContact(c);
+      if (!c.name) {
+        if (contact.username) {
+          const phone = parseWaId(contact.id).kind === 'lid' ? this.resolvePhone(contact.id) : null;
+          const usernameId = phone ? `${phone}@c.us` : contact.id;
+          unnamedUsernames.set(usernameId, contact.username);
+        }
+        continue;
+      }
+      const twin: ContactTwin = { contact, rawId: c.id };
       const existing = byId.get(twin.contact.id);
       byId.set(twin.contact.id, existing ? mergeContactTwins(existing, twin) : twin);
     }
-    return [...byId.values()].map(t => t.contact);
+    return [...byId.values()].map(t => ({
+      ...t.contact,
+      username: t.contact.username ?? unnamedUsernames.get(t.contact.id),
+    }));
   }
 
   findContact(id: string): Contact | null {
@@ -1035,7 +1047,11 @@ export class BaileysSessionStore {
         this.contacts.get(`${parsed.userPart}@s.whatsapp.net`)?.username ??
         this.contacts.get(`${parsed.userPart}@c.us`)?.username;
       if (phoneUsername) return phoneUsername;
-      for (const lid of lidIndex.get(parsed.userPart) ?? []) {
+      const lids = new Set([
+        ...(lidIndex.get(parsed.userPart) ?? []),
+        ...(this.lidStore?.lidsForPhone(parsed.userPart) ?? []).map(lid => `${lid}@lid`),
+      ]);
+      for (const lid of lids) {
         const username = this.contacts.get(lid)?.username;
         if (username) return username;
       }
