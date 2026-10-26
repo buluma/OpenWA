@@ -18985,6 +18985,11 @@
             "type": "string",
             "example": "Alice"
           },
+          "username": {
+            "type": "string",
+            "description": "WhatsApp username, when available.",
+            "example": "alice"
+          },
           "isGroup": {
             "type": "boolean",
             "description": "Retained for back-compat; true for @g.us chats.",
@@ -23310,6 +23315,11 @@
             "type": "string",
             "description": "The display name the contact set for themselves. Present even when the contact is not saved.",
             "example": "Ada"
+          },
+          "username": {
+            "type": "string",
+            "description": "WhatsApp username, when available.",
+            "example": "alice"
           },
           "number": {
             "type": "string",

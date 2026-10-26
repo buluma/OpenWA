@@ -786,6 +786,8 @@ export interface ContactRecord {
   id: Jid;
   /** The name from the account's own addressbook. Absent for a contact that was never saved. */
   name?: string;
+  /** WhatsApp username, when available. */
+  username?: string;
   /** MSISDN digits, without a leading + or any separators. */
   number: string;
   /** The name the contact set on their own account. Both engines emit this as `pushName`. */
@@ -1128,6 +1130,8 @@ export interface WebhookRedriveResult {
 export interface ChatSummary {
   id: Jid;
   name: string;
+  /** WhatsApp username, when available. */
+  username?: string;
   isGroup: boolean;
   unreadCount: number;
   /** Preview text of the last message (the server returns a plain string, not an object). */

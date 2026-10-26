@@ -13,6 +13,7 @@ import "net/url"
 type ContactRecord struct {
 	ID            string  `json:"id"`
 	Name          *string `json:"name,omitempty"`
+	Username      *string `json:"username,omitempty"`
 	Number        *string `json:"number,omitempty"`
 	PushName      *string `json:"pushName,omitempty"`
 	IsMyContact   bool    `json:"isMyContact"`

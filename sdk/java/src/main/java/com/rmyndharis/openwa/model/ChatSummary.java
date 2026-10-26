@@ -9,6 +9,7 @@ package com.rmyndharis.openwa.model;
 public record ChatSummary(
     String id,
     String name,
+    String username,
     Boolean isGroup,
     Integer unreadCount,
     /** Preview text of the last message (the server returns a plain string, not an object). */
@@ -28,7 +29,16 @@ public record ChatSummary(
         String id, String name, Boolean isGroup, Integer unreadCount, String lastMessage,
         Long timestamp, ChatKind kind, Boolean archived, Boolean pinned, Boolean muted,
         Long muteExpiration) {
-        this(id, name, isGroup, unreadCount, lastMessage, timestamp, kind, archived, pinned,
+        this(id, name, null, isGroup, unreadCount, lastMessage, timestamp, kind, archived, pinned,
             muted, muteExpiration, null);
+    }
+
+    /** Construct a chat summary with last-message type metadata and without a username. */
+    public ChatSummary(
+        String id, String name, Boolean isGroup, Integer unreadCount, String lastMessage,
+        Long timestamp, ChatKind kind, Boolean archived, Boolean pinned, Boolean muted,
+        Long muteExpiration, MessageType lastMessageType) {
+        this(id, name, null, isGroup, unreadCount, lastMessage, timestamp, kind, archived, pinned,
+            muted, muteExpiration, lastMessageType);
     }
 }

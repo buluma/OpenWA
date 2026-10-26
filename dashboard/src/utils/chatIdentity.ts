@@ -11,7 +11,7 @@ export function chatDisplayName(chat: Pick<Chat, 'id' | 'name' | 'username'>): s
   const username = formatWhatsAppUsername(chat.username);
   const name = chat.name?.trim();
   if (!name || name === fallback || (chat.username && name === chat.username)) {
-    return username ?? name ?? fallback;
+    return username ?? (name || fallback);
   }
   return name;
 }
