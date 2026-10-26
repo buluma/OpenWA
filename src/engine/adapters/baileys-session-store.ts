@@ -429,6 +429,12 @@ export class BaileysSessionStore {
     if (!chatId || !msg.key) {
       return;
     }
+    // Baileys puts a username on the message key, even when no Contact.username update was synced.
+    // Keep it in the same bounded contact cache so chat summaries can surface it immediately.
+    const identityKind = parseWaId(chatId).kind;
+    if (msg.key.remoteJidUsername && (identityKind === 'user' || identityKind === 'lid')) {
+      this.upsertContacts([{ id: chatId, username: msg.key.remoteJidUsername }]);
+    }
     // Learn the chat's disappearing-messages timer from the message itself (#473). This runs before the
     // newest-message guard so every inbound refreshes it; the timer is cached under both the raw and
     // neutral JID so an outbound send addressed in either dialect (phone or @lid) finds it.
@@ -821,7 +827,7 @@ export class BaileysSessionStore {
     return {
       id,
       name: c.name ?? others.find(o => o.name)?.name ?? this.resolveContactName(rawId),
-      username: this.resolveContactUsername(rawId, lidIndex),
+      username: last?.key.remoteJidUsername || this.resolveContactUsername(rawId, lidIndex),
       isGroup: rawId.endsWith('@g.us'),
       kind: chatKind(id),
       // From the most recently active record that has one: new messages to a lid-migrated contact
