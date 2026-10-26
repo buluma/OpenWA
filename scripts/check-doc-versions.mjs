@@ -4,7 +4,7 @@
  *
  * Stops the recurring "we cut a release but a doc still shows the old version" problem by failing
  * CI when a *current-version* reference drifts from package.json. It does NOT touch historical
- * version mentions (CHANGELOG history, roadmap milestones, example image tags) — only the three
+ * version mentions (CHANGELOG history, roadmap milestones, example image tags) — only the
  * places that must always reflect the shipped version:
  *
  *   1. The README version badges (root + docs/) must be the DYNAMIC shields endpoint that reads
@@ -19,8 +19,11 @@
  *      current-support prose ("currently X.Y.x") and the supported-versions table row
  *      ("| X.Y.x | :white_check_mark: |"), plus the lower-bound row ("< X.Y"). Derived from
  *      package.json so a release cannot ship with a stale supported-version.
+ *   6. charts/openwa/Chart.yaml `appVersion` must equal package.json — the chart defaults its image
+ *      tag to appVersion, so a stale one deploys a tag that does not exist yet. The chart's own
+ *      `version:` is intentionally left alone: it tracks packaging changes on its own cadence.
  *
- * Run locally: `npm run check:versions`. Runs in CI (lint job).
+ * Run locally: `bun run check:versions`. Runs in CI (lint job).
  */
 import { readFileSync } from 'node:fs';
 
@@ -117,10 +120,25 @@ if (minorMatch) {
   }
 }
 
+// 6) The Helm chart's appVersion must name the shipped application version. The chart's own
+//    `version:` is deliberately NOT checked — it tracks packaging changes and bumps on its own
+//    cadence, so tying it to package.json would be wrong.
+{
+  const chart = read('charts/openwa/Chart.yaml');
+  const appVersion = chart.match(/^appVersion:\s*["']?([^"'\s]+)["']?\s*$/m)?.[1];
+  if (!appVersion) {
+    errors.push('charts/openwa/Chart.yaml: no appVersion line found — it must name the shipped application version.');
+  } else if (appVersion !== version) {
+    errors.push(
+      `charts/openwa/Chart.yaml: appVersion is ${appVersion} but package.json is ${version} — the chart would deploy an image tag that does not exist yet.`,
+    );
+  }
+}
+
 if (errors.length) {
   console.error(`\n✖ Version consistency check failed (package.json = ${version}):`);
   for (const e of errors) console.error(`  - ${e}`);
-  console.error('\nFix the above so docs track the release automatically, then re-run `npm run check:versions`.\n');
+  console.error('\nFix the above so docs track the release automatically, then re-run `bun run check:versions`.\n');
   process.exit(1);
 }
 console.log(`✓ Version consistency OK (package.json = ${version}).`);

@@ -1,6 +1,7 @@
 package com.rmyndharis.openwa;
 
 import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import com.google.gson.JsonParseException;
 import com.rmyndharis.openwa.errors.OpenWAApiError;
 import com.rmyndharis.openwa.errors.OpenWAError;
@@ -8,11 +9,16 @@ import com.rmyndharis.openwa.http.BinaryResponse;
 import com.rmyndharis.openwa.http.DefaultHttpTransport;
 import com.rmyndharis.openwa.http.Http;
 import com.rmyndharis.openwa.http.HttpMethod;
+import com.rmyndharis.openwa.model.MuteChatRequest;
+import com.rmyndharis.openwa.model.UpdateSessionConfigRequest;
+import com.rmyndharis.openwa.model.UpdateSessionConfigRequestSerializer;
+import com.rmyndharis.openwa.model.UpdateSessionProxyRequest;
 import com.rmyndharis.openwa.http.HttpRequestData;
 import com.rmyndharis.openwa.http.HttpResponseData;
 import com.rmyndharis.openwa.http.HttpTransport;
 import com.rmyndharis.openwa.model.AuthValidateResponse;
 import com.rmyndharis.openwa.resources.CallsResource;
+import com.rmyndharis.openwa.resources.MediaResource;
 import com.rmyndharis.openwa.resources.CatalogResource;
 import com.rmyndharis.openwa.resources.ChannelsResource;
 import com.rmyndharis.openwa.resources.ChatsResource;
@@ -30,6 +36,7 @@ import com.rmyndharis.openwa.resources.WebhooksResource;
 import java.io.IOException;
 import java.lang.reflect.Array;
 import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -39,13 +46,32 @@ import java.util.Map;
  *
  * <pre>{@code
  * OpenWAClient client = new OpenWAClient("http://localhost:2785", "owa_k1_…");
- * client.sessions.start("my-session");
- * client.messages.sendText("my-session",
+ * // Sessions are addressed by the UUID that create() returns, not by name.
+ * SessionResponse session = client.sessions.create(CreateSessionRequest.builder().name("my-session").build());
+ * client.sessions.start(session.id());
+ * // Link the account before sending: scan sessions.getQrCode (or use sessions.requestPairingCode for a number with no linked session),
+ * // then wait for status READY. An unlinked session answers the send with 409.
+ * client.messages.sendText(session.id(),
  *     SendTextRequest.builder().chatId("628123456789@c.us").text("Hello!").build());
  * }</pre>
  */
 public final class OpenWAClient {
-    private final Gson gson = new Gson();
+    // An unrecognised enum token decodes to that enum's UNKNOWN constant rather than null.
+    private final Gson gson = new GsonBuilder()
+            .registerTypeAdapterFactory(new LenientEnumTypeAdapterFactory())
+            .create();
+
+    // Used for the body types listed in bodySerializer(), never the shared default. Emitting an
+    // explicit null needs two things that pull in opposite directions: a serializer that decides
+    // WHICH keys appear, and serializeNulls() so the ones it chose survive the writer — Gson drops
+    // JsonNull members otherwise, even from a JsonObject the serializer already built. Applying
+    // serializeNulls() to the shared instance instead would turn every unset field of every other
+    // body into an explicit null, which the session-config route reads as "reset to default": a far
+    // worse bug than the one it fixes.
+    private final Gson nullEmittingGson = new GsonBuilder()
+            .serializeNulls()
+            .registerTypeAdapter(UpdateSessionConfigRequest.class, new UpdateSessionConfigRequestSerializer())
+            .create();
     private final ClientConfig config;
     private final HttpTransport transport;
 
@@ -65,6 +91,7 @@ public final class OpenWAClient {
     public final HealthResource health = new HealthResource(this);
     public final ProfileResource profile = new ProfileResource(this);
     public final CallsResource calls = new CallsResource(this);
+    public final MediaResource media = new MediaResource(this);
 
     public OpenWAClient(ClientConfig config) {
         // ClientConfig's constructor validates baseUrl/apiKey/timeout, so config is already sound here.
@@ -91,9 +118,14 @@ public final class OpenWAClient {
      * be JSON; a non-JSON body surfaces as a tidy {@link OpenWAError}, never a raw
      * Gson exception.
      */
-    @SuppressWarnings("unchecked")
     public <T> T request(HttpMethod method, String path, Object query, Object body, Class<T> type) {
-        HttpResponseData res = execute(method, path, query, body);
+        return request(method, path, query, body, type, null);
+    }
+
+    /** Issue a request with an optional caller-supplied send idempotency key. */
+    @SuppressWarnings("unchecked")
+    public <T> T request(HttpMethod method, String path, Object query, Object body, Class<T> type, String idempotencyKey) {
+        HttpResponseData res = execute(method, path, query, body, idempotencyKey);
         String text = utf8(res.body());
         if (res.status() == 204 || text.isEmpty()) {
             return null;
@@ -164,27 +196,76 @@ public final class OpenWAClient {
         return body == null ? "" : new String(body, StandardCharsets.UTF_8);
     }
 
+    /**
+     * The bodies that must be able to emit an explicit null.
+     *
+     * Gson drops null members by default, so for these a null field would leave the request
+     * without the key at all — which is not a weaker version of the request, it is a different one.
+     * {@link MuteChatRequest} is safe to route here despite the warning on {@code nullEmittingGson}
+     * because both of its fields are required: it has no optional field that an explicit null could
+     * turn into an unintended "reset to default". {@link UpdateSessionProxyRequest} is routed here so
+     * that a null {@code proxyUrl} is sent as an explicit null, which clears the session proxy.
+     */
+    private Gson bodySerializer(Object body) {
+        return body instanceof UpdateSessionConfigRequest
+                        || body instanceof MuteChatRequest
+                        || body instanceof UpdateSessionProxyRequest
+                ? nullEmittingGson
+                : gson;
+    }
+
+    /** A refused connection carries no detail text; name the exception class instead of printing "null". */
+    private static String reason(Exception e) {
+        String message = e.getMessage();
+        return message != null ? message : e.getClass().getSimpleName();
+    }
+
     private HttpResponseData execute(HttpMethod method, String path, Object query, Object body) {
+        return execute(method, path, query, body, null);
+    }
+
+    private HttpResponseData execute(HttpMethod method, String path, Object query, Object body, String idempotencyKey) {
+        Map<String, String> defaults = config.defaultHeaders;
+        if (idempotencyKey != null) {
+            boolean valid = !idempotencyKey.isEmpty() && idempotencyKey.length() <= 255;
+            for (int i = 0; valid && i < idempotencyKey.length(); i++) {
+                char value = idempotencyKey.charAt(i);
+                valid = value >= 0x21 && value <= 0x7e;
+            }
+            if (!valid) {
+                throw new IllegalArgumentException("OpenWA: idempotencyKey must be 1-255 visible ASCII characters");
+            }
+            defaults = new LinkedHashMap<>(defaults);
+            defaults.keySet().removeIf(name -> name.equalsIgnoreCase("Idempotency-Key"));
+        }
         String url = Http.buildUrl(config.baseUrl, path, query, gson);
-        Map<String, String> headers = Http.mergeHeaders(config.defaultHeaders, null, config.apiKey);
-        String bodyJson = body != null ? gson.toJson(body) : null;
+        Map<String, String> headers = Http.mergeHeaders(
+            defaults, idempotencyKey == null ? null : Map.of("Idempotency-Key", idempotencyKey), config.apiKey);
+        String bodyJson = body != null ? bodySerializer(body).toJson(body) : null;
         HttpRequestData reqData = new HttpRequestData(method, url, headers, bodyJson, config.timeout);
         HttpResponseData res;
         try {
             // A timeout surfaces as OpenWATimeoutError (unchecked) and propagates.
             res = transport.send(reqData);
         } catch (IOException e) {
-            throw new OpenWAError("Transport error — " + method + " " + path + ": " + e.getMessage());
+            throw new OpenWAError("Transport error — " + method + " " + path + ": " + reason(e), e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new OpenWAError("Transport interrupted — " + method + " " + path);
+            throw new OpenWAError("Transport interrupted — " + method + " " + path, e);
         } catch (IllegalArgumentException e) {
             // e.g. a JDK-restricted header name in defaultHeaders, or a URI-illegal char — keep it
             // inside the OpenWAError contract instead of leaking a raw JDK exception to the caller.
-            throw new OpenWAError("Invalid request — " + method + " " + path + ": " + e.getMessage());
+            // The JDK words a refused header VALUE as: invalid header value: "<the value>". Never repeat that.
+            // A refused header NAME is worded with the name only (restricted header name: "Host"), which is
+            // what tells the caller what to change, so it stays.
+            String why = reason(e);
+            if (why.toLowerCase(java.util.Locale.ROOT).contains("header value")) {
+                why = "a header value was refused by the HTTP stack (check defaultHeaders for control or non-ASCII characters)";
+            }
+            throw new OpenWAError("Invalid request — " + method + " " + path + ": " + why);
         }
         if (res.status() < 200 || res.status() >= 300) {
-            throw OpenWAApiError.fromResponse(res.status(), "", utf8(res.body()), method + " " + path);
+            throw OpenWAApiError.fromResponse(res.status(), "", utf8(res.body()), method + " " + path, res.headers());
         }
         return res;
     }

@@ -63,29 +63,28 @@ cd openwa
 # 3. Add upstream remote
 git remote add upstream https://github.com/rmyndharis/OpenWA.git
 
-# 4. Install dependencies
-npm install
+# 4. Install the locked dependencies (also installs dashboard dependencies)
+bun install --frozen-lockfile
 
-# 5. Copy environment file
-cp .env.example .env
-
-# 6. Start development
-npm run dev
+# 5. Start development (API + dashboard). No .env is needed: the first boot writes
+#    data/.env.generated. A .env only pins values; if you copy .env.example, set
+#    NODE_ENV=development in it.
+bun run dev
 ```
 
 ### Branch Naming
 
 ```
-feature/     - New features
-bugfix/      - Bug fixes
-hotfix/      - Critical production fixes
-docs/        - Documentation changes
-refactor/    - Code refactoring
-test/        - Test additions/modifications
+fix/         - Bug fixes
+feat/        - New features
+docs/        - Documentation only
+chore/       - Tooling, dependencies, release housekeeping
+refactor/    - Restructuring without a behavior change
+test/        - Tests only
 
 Examples:
-- feature/add-group-management
-- bugfix/fix-qr-timeout
+- fix/qr-timeout
+- feat/group-management
 - docs/update-api-reference
 - refactor/session-manager
 ```
@@ -128,8 +127,8 @@ refactor(database): migrate to TypeORM repository pattern
 ### Pull Request Process
 
 1. **Before submitting:**
-   - Ensure tests pass: `npm test`
-   - Lint your code: `npm run lint`
+   - Ensure tests pass: `bun run test`
+   - Lint your code: `bun run lint`
    - Update documentation if needed
    - Rebase on latest `main`
 
@@ -164,7 +163,7 @@ Closes #
 ```
 
 3. **Review Process:**
-   - CI (`.github/workflows/ci.yml`) runs on every pull request targeting `main` or `develop`
+   - CI (`.github/workflows/ci.yml`) runs on every pull request targeting `main`
    - A maintainer reviews the change and merges it
    - Address review comments
    - Keep the PR focused on one logical change
@@ -248,7 +247,7 @@ Blank issues are disabled — GitHub presents the **Bug report** form
 | ------------------ | ---------------------------------------------------------------------------- |
 | Pre-flight         | Both checkboxes: searched for duplicates, and on the latest released version |
 | OpenWA version     | e.g. `0.2.1` (shown on the dashboard Login screen) or a commit SHA           |
-| Deployment         | Docker Compose / Docker (manual run) / Bare metal (npm) / Other              |
+| Deployment         | Docker Compose / Docker (manual run) / Bare metal (Bun) / Other              |
 | Database           | SQLite (default) / PostgreSQL                                                |
 | What happened?     | The bug and its impact                                                       |
 | Steps to reproduce | Exact steps, including the API call or dashboard action                      |
@@ -294,6 +293,16 @@ not supported on whatsapp-web.js, the default engine.
 | `design`              | Architecture / design discussion                                                |
 | `engine:baileys`      | Baileys engine specific                                                         |
 | `upstream-blocked`    | Blocked on upstream library/WhatsApp behavior; no OpenWA-side fix               |
+| `release`             | Release / version PR                                                            |
+| `dependencies`        | Pull requests that update a dependency file                                     |
+| `dashboard`           | Dashboard (React) changes                                                       |
+| `ci`                  | CI and GitHub Actions workflow changes                                          |
+| `docker`              | Docker image and container changes                                              |
+| `github_actions`      | Pull requests that update GitHub Actions code                                   |
+| `javascript`          | Pull requests that update javascript code                                       |
+
+`.github/dependabot.yml` applies `dependencies`, `dashboard`, `javascript` (the JavaScript SDK), `ci` and
+`docker`; `github_actions` is a Dependabot default from before it set explicit labels.
 
 ## 20.4 Community Channels
 

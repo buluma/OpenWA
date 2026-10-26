@@ -3,7 +3,9 @@ package openwa
 import "net/url"
 
 // SearchQuery is the query for GET /search. Q is required; all else optional.
-// DateFrom/DateTo are epoch-ms.
+// DateFrom/DateTo are epoch-ms. Q holds at most 1000 characters and 32 words (the server answers 400
+// above either). Limit defaults to 50 and is capped at the server's SEARCH_LIMIT_MAX (100 by default);
+// Offset is at most 100000 (400 above).
 type SearchQuery struct {
 	Q         string
 	SessionID *string
@@ -34,17 +36,17 @@ func (q *SearchQuery) values() url.Values {
 
 // SearchHit is one search result.
 type SearchHit struct {
-	MessageID   string  `json:"messageId"`
-	WaMessageID string  `json:"waMessageId"`
-	SessionID   string  `json:"sessionId"`
-	ChatID      string  `json:"chatId"`
-	Body        string  `json:"body"`
-	Snippet     string  `json:"snippet"`
-	Timestamp   int64   `json:"timestamp"`
-	Type        string  `json:"type"`
-	Direction   string  `json:"direction"`
-	From        string  `json:"from"`
-	Score       float64 `json:"score,omitempty"`
+	MessageID   string           `json:"messageId"`
+	WaMessageID string           `json:"waMessageId"`
+	SessionID   string           `json:"sessionId"`
+	ChatID      string           `json:"chatId"`
+	Body        string           `json:"body"`
+	Snippet     string           `json:"snippet"`
+	Timestamp   int64            `json:"timestamp"`
+	Type        string           `json:"type"`
+	Direction   MessageDirection `json:"direction"`
+	From        string           `json:"from"`
+	Score       float64          `json:"score,omitempty"`
 }
 
 // SearchResults is the GET /search payload.

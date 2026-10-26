@@ -8,6 +8,10 @@
 import { encodeSegment } from '../http.js';
 import type { OpenWAClient } from '../client.js';
 import type {
+  CreateChannelRequest,
+  DemoteChannelAdminRequest,
+  MuteChannelRequest,
+  TransferChannelOwnershipRequest,
   ChannelMessageQuery,
   ChannelMessageRecord,
   ChannelRecord,
@@ -18,7 +22,7 @@ import type {
 export class ChannelsResource {
   constructor(private readonly client: OpenWAClient) {}
 
-  /** List all channels/newsletters the session is subscribed to. */
+  /** List all channels/newsletters the session is subscribed to. **whatsapp-web.js only**: Baileys answers 501. */
   list(sessionId: string): Promise<ChannelRecord[]> {
     return this.client.request<ChannelRecord[]>({
       method: 'GET',
@@ -34,7 +38,7 @@ export class ChannelsResource {
     });
   }
 
-  /** Get recent messages from a channel. */
+  /** Get recent messages from a channel. **whatsapp-web.js only**: Baileys answers 501. */
   messages(sessionId: string, channelId: string, query?: ChannelMessageQuery): Promise<ChannelMessageRecord[]> {
     return this.client.request<ChannelMessageRecord[]>({
       method: 'GET',
@@ -43,7 +47,41 @@ export class ChannelsResource {
     });
   }
 
-  /** Subscribe to a channel using its invite code. Requires an OPERATOR-level key. */
+  /** Create a channel. The account owns it, which is what makes `delete` possible later. */
+  create(sessionId: string, body: CreateChannelRequest): Promise<ChannelRecord> {
+    return this.client.request<ChannelRecord>({
+      method: 'POST',
+      path: `/api/sessions/${encodeSegment(sessionId)}/channels`,
+      body,
+    });
+  }
+
+  /**
+   * Delete a channel this account owns. Irreversible, and every subscriber loses it.
+   *
+   * Note the path: `unsubscribe` is the `DELETE` route, and these two are deliberately not reachable
+   * by the same request — leaving a channel and destroying it are very different acts.
+   */
+  delete(sessionId: string, channelId: string): Promise<SuccessResult> {
+    return this.client.request<SuccessResult>({
+      method: 'POST',
+      path: `/api/sessions/${encodeSegment(sessionId)}/channels/${encodeSegment(channelId)}/delete`,
+    });
+  }
+
+  /** Mute or unmute a channel's notifications. The subscription is untouched either way. */
+  mute(sessionId: string, channelId: string, body: MuteChannelRequest): Promise<SuccessResult> {
+    return this.client.request<SuccessResult>({
+      method: 'POST',
+      path: `/api/sessions/${encodeSegment(sessionId)}/channels/${encodeSegment(channelId)}/mute`,
+      body,
+    });
+  }
+
+  /**
+   * Subscribe to a channel using its invite code. Requires an OPERATOR-level key.
+   * **Baileys only**: whatsapp-web.js answers 501.
+   */
   subscribe(sessionId: string, body: SubscribeChannelRequest): Promise<ChannelRecord> {
     return this.client.request<ChannelRecord>({
       method: 'POST',
@@ -57,6 +95,37 @@ export class ChannelsResource {
     return this.client.request<SuccessResult>({
       method: 'DELETE',
       path: `/api/sessions/${encodeSegment(sessionId)}/channels/${encodeSegment(channelId)}`,
+    });
+  }
+  /**
+   * Demote a channel admin back to a subscriber. Requires an OPERATOR-level key.
+   *
+   * There is no promote counterpart: neither engine library has one, so an admin is promoted from
+   * the WhatsApp app and demoted here. The whatsapp-web.js engine answers `501`.
+   */
+  demoteAdmin(sessionId: string, channelId: string, body: DemoteChannelAdminRequest): Promise<SuccessResult> {
+    return this.client.request<SuccessResult>({
+      method: 'POST',
+      path: `/api/sessions/${encodeSegment(sessionId)}/channels/${encodeSegment(channelId)}/admins/demote`,
+      body,
+    });
+  }
+
+  /**
+   * Hand a channel to a new owner. Requires an OPERATOR-level key.
+   *
+   * **Irreversible**: once the transfer lands this account stops being the owner and cannot take the
+   * channel back. The whatsapp-web.js engine answers `501`.
+   */
+  transferOwnership(
+    sessionId: string,
+    channelId: string,
+    body: TransferChannelOwnershipRequest,
+  ): Promise<SuccessResult> {
+    return this.client.request<SuccessResult>({
+      method: 'POST',
+      path: `/api/sessions/${encodeSegment(sessionId)}/channels/${encodeSegment(channelId)}/owner/transfer`,
+      body,
     });
   }
 }

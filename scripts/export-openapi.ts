@@ -5,14 +5,19 @@
 // start, no sessions run. The version is sourced from package.json via swagger.config.ts, so the
 // snapshot tracks releases automatically.
 //
-// Usage: npx ts-node scripts/export-openapi.ts <output-path>
+// Usage: bunx ts-node scripts/export-openapi.ts <output-path>
 import '../src/config/load-env';
 import { NestFactory } from '@nestjs/core';
 import { SwaggerModule } from '@nestjs/swagger';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createSwaggerConfig, exemptPublicOperations } from '../src/config/swagger.config';
+import {
+  createSwaggerConfig,
+  documentErrorResponses,
+  dropUnexpressibleOperations,
+  exemptPublicOperations,
+} from '../src/config/swagger.config';
 
 // Pin a hermetic env BEFORE AppModule is imported. AppModule reads QUEUE_ENABLED / MCP_ENABLED at
 // module top-level (its conditional module mounts) and TypeORM reads the DB settings during
@@ -46,7 +51,7 @@ async function main() {
   // snapshot writes, which the documented usage explicitly allows.
   const out = process.argv[2];
   if (!out) {
-    console.error('Usage: npx ts-node scripts/export-openapi.ts <output-path>');
+    console.error('Usage: bunx ts-node scripts/export-openapi.ts <output-path>');
     process.exit(1);
   }
   // Imported after the env pins above so AppModule's top-level reads the hermetic values. Uses
@@ -61,16 +66,21 @@ async function main() {
   app.setGlobalPrefix('api');
   try {
     const doc = SwaggerModule.createDocument(app, createSwaggerConfig());
+    // Before the exemption pass, so it never spends work on an operation about to be removed.
+    dropUnexpressibleOperations(doc);
     exemptPublicOperations(doc);
+    documentErrorResponses(doc);
     writeFileSync(out, JSON.stringify(doc, null, 2) + '\n');
-    console.log(`✓ OpenAPI snapshot written to ${out} (version ${doc.info.version}, ${Object.keys(doc.paths).length} paths)`);
+    console.log(
+      `✓ OpenAPI snapshot written to ${out} (version ${doc.info.version}, ${Object.keys(doc.paths).length} paths)`,
+    );
   } finally {
     await app.close();
     rmSync(exportDataDir, { recursive: true, force: true });
   }
 }
 
-void main().catch((e) => {
+void main().catch(e => {
   console.error(e);
   process.exit(1);
 });

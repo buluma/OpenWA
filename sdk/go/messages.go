@@ -85,6 +85,11 @@ func (s *MessagesService) Reply(ctx context.Context, sessionID string, body Repl
 	return s.send(ctx, sessionID, "reply", body)
 }
 
+// ClickButton taps a choice on a WhatsApp Business prompt. Baileys only (whatsapp-web.js returns 501).
+func (s *MessagesService) ClickButton(ctx context.Context, sessionID string, body ClickButtonRequest) (*MessageResponse, error) {
+	return s.send(ctx, sessionID, "click-button", body)
+}
+
 // Forward forwards a message between chats.
 func (s *MessagesService) Forward(ctx context.Context, sessionID string, body ForwardMessageRequest) (*MessageResponse, error) {
 	return s.send(ctx, sessionID, "forward", body)
@@ -121,21 +126,35 @@ func (s *MessagesService) EditMessage(ctx context.Context, sessionID string, bod
 	return &out, nil
 }
 
+// History reads live chat history from WhatsApp. whatsapp-web.js only; Baileys answers 501.
+func (s *MessagesService) History(ctx context.Context, sessionID, chatID string, query *MessageHistoryQuery) ([]ChatHistoryMessage, error) {
+	var out []ChatHistoryMessage
+	path := s.base(sessionID) + "/" + pathEscape(chatID) + "/history"
+	err := s.client.do(ctx, "GET", path, valuesOf(query), nil, &out)
+	return out, err
+}
+
+// Reactions returns the reactions on a message. whatsapp-web.js only; Baileys answers 501.
+func (s *MessagesService) Reactions(ctx context.Context, sessionID, chatID, messageID string) ([]ReactionRecord, error) {
+	var out []ReactionRecord
+	path := s.base(sessionID) + "/" + pathEscape(chatID) + "/" + pathEscape(messageID) + "/reactions"
+	err := s.client.do(ctx, "GET", path, nil, nil, &out)
+	return out, err
+}
+
 // Pin pins a message in its chat for a bounded window.
 func (s *MessagesService) Pin(ctx context.Context, sessionID string, body PinMessageRequest) (*SuccessResult, error) {
 	var out SuccessResult
-	err := s.client.do(ctx, "POST", s.base(sessionID)+"/pin", nil, body, &out)
-	if err != nil {
+	if err := s.client.do(ctx, "POST", s.base(sessionID)+"/pin", nil, body, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
 }
 
-// Unpin unpins a message from its chat.
-func (s *MessagesService) Unpin(ctx context.Context, sessionID string, body UnpinMessageRequest) (*SuccessResult, error) {
+// VotePoll casts a vote on a poll. Not supported on the Baileys engine (501).
+func (s *MessagesService) VotePoll(ctx context.Context, sessionID string, body VotePollRequest) (*SuccessResult, error) {
 	var out SuccessResult
-	err := s.client.do(ctx, "POST", s.base(sessionID)+"/unpin", nil, body, &out)
-	if err != nil {
+	if err := s.client.do(ctx, "POST", s.base(sessionID)+"/vote-poll", nil, body, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -144,37 +163,33 @@ func (s *MessagesService) Unpin(ctx context.Context, sessionID string, body Unpi
 // Star stars or unstars a message.
 func (s *MessagesService) Star(ctx context.Context, sessionID string, body StarMessageRequest) (*SuccessResult, error) {
 	var out SuccessResult
-	err := s.client.do(ctx, "POST", s.base(sessionID)+"/star", nil, body, &out)
-	if err != nil {
+	if err := s.client.do(ctx, "POST", s.base(sessionID)+"/star", nil, body, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
 }
 
-// VotePoll votes on a poll. whatsapp-web.js engine only — returns a 501 error on Baileys.
-func (s *MessagesService) VotePoll(ctx context.Context, sessionID string, body VotePollRequest) (*SuccessResult, error) {
+// Unpin removes a message's pin.
+func (s *MessagesService) Unpin(ctx context.Context, sessionID string, body UnpinMessageRequest) (*SuccessResult, error) {
 	var out SuccessResult
-	err := s.client.do(ctx, "POST", s.base(sessionID)+"/vote-poll", nil, body, &out)
-	if err != nil {
+	if err := s.client.do(ctx, "POST", s.base(sessionID)+"/unpin", nil, body, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
 }
 
-// History reads live chat history from WhatsApp.
-func (s *MessagesService) History(ctx context.Context, sessionID, chatID string, query *MessageHistoryQuery) ([]ChatHistoryMessage, error) {
-	var out []ChatHistoryMessage
-	path := s.base(sessionID) + "/" + pathEscape(chatID) + "/history"
-	err := s.client.do(ctx, "GET", path, valuesOf(query), nil, &out)
-	return out, err
-}
-
-// Reactions returns the reactions on a message.
-func (s *MessagesService) Reactions(ctx context.Context, sessionID, chatID, messageID string) ([]ReactionRecord, error) {
-	var out []ReactionRecord
-	path := s.base(sessionID) + "/" + pathEscape(chatID) + "/" + pathEscape(messageID) + "/reactions"
-	err := s.client.do(ctx, "GET", path, nil, nil, &out)
-	return out, err
+// Media fetches a message's stored media bytes: the archived file when one
+// exists, else the inline copy on the message row — which covers media sent by
+// this account. The server answers 404 when neither holds bytes (no media, a
+// size-only marker, or a URL-based send, whose bytes the gateway does not store
+// though on whatsapp-web.js the own-send echo may).
+func (s *MessagesService) Media(ctx context.Context, sessionID, chatID, messageID string) (*MessageMedia, error) {
+	path := s.base(sessionID) + "/" + pathEscape(chatID) + "/" + pathEscape(messageID) + "/media"
+	data, contentType, err := s.client.doRaw(ctx, "GET", path, nil, nil, false)
+	if err != nil {
+		return nil, err
+	}
+	return &MessageMedia{Data: data, ContentType: contentType}, nil
 }
 
 // SendBulk queues a batch of messages.
@@ -198,9 +213,10 @@ func (s *MessagesService) BatchStatus(ctx context.Context, sessionID, batchID st
 	return &out, nil
 }
 
-// CancelBatch cancels a running batch. Requires an OPERATOR-level key.
-func (s *MessagesService) CancelBatch(ctx context.Context, sessionID, batchID string) (*BatchStatusResponse, error) {
-	var out BatchStatusResponse
+// CancelBatch cancels a running batch. Requires an OPERATOR-level key. The reply
+// carries no per-recipient results; call BatchStatus for those.
+func (s *MessagesService) CancelBatch(ctx context.Context, sessionID, batchID string) (*BatchCancelResponse, error) {
+	var out BatchCancelResponse
 	path := s.base(sessionID) + "/batch/" + pathEscape(batchID) + "/cancel"
 	err := s.client.do(ctx, "POST", path, nil, nil, &out)
 	if err != nil {

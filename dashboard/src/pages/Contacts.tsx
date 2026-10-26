@@ -5,7 +5,12 @@ import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useRole } from '../hooks';
 import { useToast } from '../hooks/useToast';
 import { PageHeader } from '../components/PageHeader';
-import { useSessionsQuery, useContactsQuery, useUpsertContactMutation, useRemoveContactMutation } from '../hooks/queries';
+import {
+  useSessionsQuery,
+  useContactsQuery,
+  useUpsertContactMutation,
+  useRemoveContactMutation,
+} from '../hooks/queries';
 import type { Contact } from '../services/api';
 import './Contacts.css';
 
@@ -34,7 +39,7 @@ export function Contacts() {
   const [newContactId, setNewContactId] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<Contact | null>(null);
 
-      const filtered = useMemo(() => {
+  const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return contacts;
     return contacts.filter(
@@ -72,10 +77,7 @@ export function Contacts() {
       closeEdit();
     } catch (err) {
       const kind = errorMessage(err);
-      toast.error(
-        t('contacts.toasts.saveFailed'),
-        kind === 'not-supported' ? t('contacts.notSupported') : kind,
-      );
+      toast.error(t('contacts.toasts.saveFailed'), kind === 'not-supported' ? t('contacts.notSupported') : kind);
     }
   };
 
@@ -87,10 +89,7 @@ export function Contacts() {
       setDeleteTarget(null);
     } catch (err) {
       const kind = errorMessage(err);
-      toast.error(
-        t('contacts.toasts.removeFailed'),
-        kind === 'not-supported' ? t('contacts.notSupported') : kind,
-      );
+      toast.error(t('contacts.toasts.removeFailed'), kind === 'not-supported' ? t('contacts.notSupported') : kind);
     }
   };
 
@@ -157,8 +156,7 @@ export function Contacts() {
                 <span className="contact-name">{contact.name || contact.pushName || contact.number}</span>
                 <span className="contact-id">{contact.id}</span>
               </div>
-              <div className="contact-badges">
-              </div>
+              <div className="contact-badges"></div>
               {canWrite && (
                 <div className="contact-actions">
                   <button className="icon-btn" title={t('contacts.actions.edit')} onClick={() => openEdit(contact)}>

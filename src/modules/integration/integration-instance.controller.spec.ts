@@ -1,16 +1,17 @@
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { IntegrationInstanceController } from './integration-instance.controller';
 import { PluginInstanceService } from './plugin-instance.service';
 import { PluginLoaderService } from '../../core/plugins/plugin-loader.service';
 import { AuditAction } from '../audit/entities/audit-log.entity';
 import { AuditService } from '../audit/audit.service';
 import { ScopeBindingService } from './scope-binding.service';
-import { SessionService } from '../session/session.service';
+import { Repository } from 'typeorm';
+import { Session } from '../session/entities/session.entity';
 import { ApiKey } from '../auth/entities/api-key.entity';
 
 // ScopeBindingService reads session rows only for its boot-time "this scope matches no session"
 // warning; provisioning never reaches it, so these tests hand it a resolving stub.
-const sessions = { findOne: jest.fn().mockResolvedValue({ id: 'sess-1' }) } as unknown as SessionService;
+const sessions = { findOne: jest.fn().mockResolvedValue({ id: 'sess-1' }) } as unknown as Repository<Session>;
 
 // The provisioning bridge is what makes a minted instance's config reach the ingress worker: on
 // create/patch it mirrors the instance config into the plugin's per-session config and activates the
@@ -82,8 +83,7 @@ describe('IntegrationInstanceController provisioning bridge', () => {
     };
     const instances = {
       resolve: jest.fn().mockResolvedValue({ ...base, enabled: true }),
-      setEnabled: jest.fn().mockResolvedValue({ ...base, enabled: false }),
-      update: jest.fn(),
+      update: jest.fn().mockResolvedValue({ ...base, enabled: false }),
       list: jest.fn().mockResolvedValue([]), // no sibling shares the scope
       maskedView: (i: unknown) => i,
     } as unknown as PluginInstanceService;
@@ -110,8 +110,7 @@ describe('IntegrationInstanceController provisioning bridge', () => {
     const base = { pluginId: 'chatwoot-adapter', instanceId: 'acct1', sessionScope: '*', config: {} };
     const instances = {
       resolve: jest.fn().mockResolvedValue({ ...base, enabled: true }),
-      setEnabled: jest.fn().mockResolvedValue({ ...base, enabled: false }),
-      update: jest.fn(),
+      update: jest.fn().mockResolvedValue({ ...base, enabled: false }),
       list: jest.fn().mockResolvedValue([{ ...base, enabled: false }]), // only this one, now disabled
       maskedView: (i: unknown) => i,
     } as unknown as PluginInstanceService;
@@ -137,8 +136,7 @@ describe('IntegrationInstanceController provisioning bridge', () => {
     const base = { pluginId: 'chatwoot-adapter', instanceId: 'acct1', sessionScope: '*', config: {} };
     const instances = {
       resolve: jest.fn().mockResolvedValue({ ...base, enabled: true }),
-      setEnabled: jest.fn().mockResolvedValue({ ...base, enabled: false }),
-      update: jest.fn(),
+      update: jest.fn().mockResolvedValue({ ...base, enabled: false }),
       list: jest.fn().mockResolvedValue([
         { ...base, enabled: false },
         { pluginId: 'chatwoot-adapter', instanceId: 'acct2', sessionScope: '*', config: {}, enabled: true },
@@ -172,7 +170,6 @@ describe('IntegrationInstanceController provisioning bridge', () => {
         config: { baseUrl: 'https://x' },
         enabled: true,
       }),
-      setEnabled: jest.fn(),
       update: jest.fn().mockResolvedValue({
         pluginId: 'chatwoot-adapter',
         instanceId: 'acct1',
@@ -196,7 +193,211 @@ describe('IntegrationInstanceController provisioning bridge', () => {
     expect(setPluginSessionConfig).toHaveBeenCalledWith('chatwoot-adapter', 'sess-2', { baseUrl: 'https://y' }); // new bound
   });
 
-  it('keeps the session + its config when a disabled instance shares its scope with an ENABLED sibling', async () => {
+  describe('a secret removed from a wildcard instance', () => {
+    const manifest = {
+      id: 'chatwoot-adapter',
+      ingress: [{ route: 'chatwoot' }],
+      permissions: ['webhook:ingress'],
+      configSchema: {
+        type: 'object',
+        properties: { apiToken: { type: 'string', secret: true }, baseUrl: { type: 'string' } },
+      },
+    };
+    const row = (sessionScope: string | null, config: Record<string, unknown>, enabled = true) => ({
+      pluginId: 'chatwoot-adapter',
+      instanceId: 'acct1',
+      sessionScope,
+      config,
+      enabled,
+    });
+
+    /**
+     * `before` is the row PATCH reads; `after` is what update() stores; `others` are the sibling rows. The
+     * plugin's base config holds what the instance projected into it, unless `base` says otherwise.
+     */
+    function patchWith(
+      before: ReturnType<typeof row>,
+      after: ReturnType<typeof row>,
+      others: unknown[] = [],
+      base: Record<string, unknown> = before.config,
+    ) {
+      const { loader, audit, updatePluginConfig, setPluginSessionConfig } = build();
+      (loader.getPlugin as jest.Mock).mockReturnValue({ manifest, activeSessions: ['*'], config: base });
+      const instances = {
+        resolve: jest.fn().mockResolvedValue(before),
+        update: jest.fn().mockResolvedValue(after),
+        remove: jest.fn().mockResolvedValue(true),
+        list: jest.fn().mockResolvedValue([after, ...others]),
+        maskedView: (i: unknown) => i,
+      } as unknown as PluginInstanceService;
+      const controller = new IntegrationInstanceController(
+        instances,
+        loader,
+        audit,
+        new ScopeBindingService(instances, loader, audit, sessions),
+      );
+      return { controller, updatePluginConfig, setPluginSessionConfig };
+    }
+
+    /** DELETE reads the row, removes it, then lists what is left: only `others`. */
+    function deleteWith(
+      before: ReturnType<typeof row>,
+      others: unknown[] = [],
+      base: Record<string, unknown> = before.config,
+    ) {
+      const built = patchWith(before, before, others, base);
+      const instances = (built.controller as unknown as { instances: { list: jest.Mock } }).instances;
+      instances.list.mockResolvedValue(others);
+      return built;
+    }
+
+    it('is retracted from the plugin base config, where the earlier projection left it', async () => {
+      const { controller, updatePluginConfig } = patchWith(
+        row(null, { apiToken: 'LEAKED', baseUrl: 'https://crm' }),
+        row(null, { baseUrl: 'https://crm' }),
+      );
+
+      await controller.patch('chatwoot-adapter', 'acct1', { config: { apiToken: null, baseUrl: 'https://crm' } });
+
+      expect(updatePluginConfig).toHaveBeenCalledWith('chatwoot-adapter', { baseUrl: 'https://crm', apiToken: null });
+    });
+
+    it('is also retracted when the config is replaced without it', async () => {
+      const { controller, updatePluginConfig } = patchWith(
+        row('*', { apiToken: 'LEAKED', baseUrl: 'https://crm' }),
+        row('*', { baseUrl: 'https://crm' }),
+      );
+
+      await controller.patch('chatwoot-adapter', 'acct1', { config: { baseUrl: 'https://crm' } });
+
+      expect(updatePluginConfig).toHaveBeenCalledWith('chatwoot-adapter', { baseUrl: 'https://crm', apiToken: null });
+    });
+
+    it('leaves the base config alone when the instance moves in from a concrete session', async () => {
+      const { controller, updatePluginConfig } = patchWith(
+        row('sess-1', { apiToken: 'SLICE-ONLY', baseUrl: 'https://crm' }),
+        row(null, { baseUrl: 'https://crm' }),
+      );
+
+      await controller.patch('chatwoot-adapter', 'acct1', { sessionScope: null });
+
+      expect(updatePluginConfig).toHaveBeenCalledWith('chatwoot-adapter', { baseUrl: 'https://crm' });
+    });
+
+    // The wildcard projection only merges, so whatever an instance projected stays in the base config after
+    // it stops contributing. Its secrets are taken back when it is disabled, deleted or moved off the scope.
+    const held = { apiToken: 'LEAKED', baseUrl: 'https://crm' };
+
+    it('is retracted when the instance moves out to a concrete session, which keeps it in its own slice', async () => {
+      const { controller, updatePluginConfig, setPluginSessionConfig } = patchWith(
+        row(null, held),
+        row('sess-1', held),
+      );
+
+      await controller.patch('chatwoot-adapter', 'acct1', { sessionScope: 'sess-1' });
+
+      expect(updatePluginConfig).toHaveBeenCalledTimes(1);
+      expect(updatePluginConfig).toHaveBeenCalledWith('chatwoot-adapter', { apiToken: null });
+      expect(setPluginSessionConfig).toHaveBeenCalledWith('chatwoot-adapter', 'sess-1', held);
+    });
+
+    it('is retracted when the instance is disabled', async () => {
+      const { controller, updatePluginConfig } = patchWith(row(null, held), row(null, held, false));
+
+      await controller.patch('chatwoot-adapter', 'acct1', { enabled: false });
+
+      expect(updatePluginConfig).toHaveBeenCalledTimes(1);
+      expect(updatePluginConfig).toHaveBeenCalledWith('chatwoot-adapter', { apiToken: null });
+    });
+
+    it('is retracted when the instance is deleted', async () => {
+      const { controller, updatePluginConfig } = deleteWith(row('*', held));
+
+      await controller.remove('chatwoot-adapter', 'acct1');
+
+      expect(updatePluginConfig).toHaveBeenCalledTimes(1);
+      expect(updatePluginConfig).toHaveBeenCalledWith('chatwoot-adapter', { apiToken: null });
+    });
+
+    it('is left alone when the plugin config no longer holds the value the instance put there', async () => {
+      const { controller, updatePluginConfig } = deleteWith(row(null, held), [], { ...held, apiToken: 'OPERATOR' });
+
+      await controller.remove('chatwoot-adapter', 'acct1');
+
+      expect(updatePluginConfig).not.toHaveBeenCalled();
+    });
+
+    it('is handed back as the value another enabled wildcard instance still defines', async () => {
+      const sibling = { ...row(null, { apiToken: 'B-TOKEN' }), instanceId: 'acct2' };
+      const { controller, updatePluginConfig } = deleteWith(row(null, held), [sibling]);
+
+      await controller.remove('chatwoot-adapter', 'acct1');
+
+      expect(updatePluginConfig).toHaveBeenCalledWith('chatwoot-adapter', { apiToken: 'B-TOKEN' });
+    });
+
+    it('stays while the instance only moves between the spellings of the wildcard scope', async () => {
+      const { controller, updatePluginConfig } = patchWith(row(null, held), row('*', held));
+
+      await controller.patch('chatwoot-adapter', 'acct1', { sessionScope: '*' });
+
+      expect(updatePluginConfig).toHaveBeenCalledTimes(1);
+      expect(updatePluginConfig).toHaveBeenCalledWith('chatwoot-adapter', held);
+    });
+
+    it('is not retracted for an instance that was not contributing: disabled, or on a concrete session', async () => {
+      const disabled = patchWith(row(null, held, false), row(null, { baseUrl: 'https://crm' }, false));
+      await disabled.controller.patch('chatwoot-adapter', 'acct1', { config: { baseUrl: 'https://crm' } });
+      expect(disabled.updatePluginConfig).not.toHaveBeenCalled();
+
+      // Enabling it without the secret must not wipe a value the operator set on the plugin meanwhile.
+      const enabling = patchWith(row(null, held, false), row(null, { baseUrl: 'https://crm' }));
+      await enabling.controller.patch('chatwoot-adapter', 'acct1', { enabled: true });
+      expect(enabling.updatePluginConfig).toHaveBeenCalledWith('chatwoot-adapter', { baseUrl: 'https://crm' });
+
+      const concrete = deleteWith(row('sess-1', held));
+      await concrete.controller.remove('chatwoot-adapter', 'acct1');
+      expect(concrete.updatePluginConfig).not.toHaveBeenCalled();
+    });
+  });
+
+  it('returns a bound instance to all sessions on PATCH sessionScope:null', async () => {
+    const { loader, audit, setPluginSessionConfig, setPluginSessions, updatePluginConfig } = build();
+    (loader.getPlugin as jest.Mock).mockReturnValue({
+      manifest: { id: 'chatwoot-adapter', ingress: [{ route: 'chatwoot' }], permissions: ['webhook:ingress'] },
+      activeSessions: ['sess-1'],
+    });
+    const base = { pluginId: 'chatwoot-adapter', instanceId: 'acct1', config: { baseUrl: 'https://x' }, enabled: true };
+    const update = jest.fn().mockResolvedValue({ ...base, sessionScope: null });
+    const instances = {
+      resolve: jest.fn().mockResolvedValue({ ...base, sessionScope: 'sess-1' }),
+      update,
+      // The row is already unscoped when the old scope's teardown lists instances.
+      list: jest.fn().mockResolvedValue([{ ...base, sessionScope: null }]),
+      maskedView: (i: unknown) => i,
+    } as unknown as PluginInstanceService;
+    const controller = new IntegrationInstanceController(
+      instances,
+      loader,
+      audit,
+      new ScopeBindingService(instances, loader, audit, sessions),
+    );
+
+    const view = await controller.patch('chatwoot-adapter', 'acct1', { sessionScope: null });
+
+    expect(update).toHaveBeenCalledWith(
+      'chatwoot-adapter',
+      'acct1',
+      { sessionScope: null, config: undefined },
+      undefined,
+    );
+    expect(view.sessionScope).toBeNull();
+    expect(setPluginSessionConfig).toHaveBeenCalledWith('chatwoot-adapter', 'sess-1', {}); // old scope torn down
+    expect(updatePluginConfig).toHaveBeenCalledWith('chatwoot-adapter', { baseUrl: 'https://x' });
+    expect(setPluginSessions).toHaveBeenLastCalledWith('chatwoot-adapter', ['*']);
+  });
+
+  it('keeps the session but CLEARS its config when a disabled instance shares its scope with a sibling', async () => {
     const { loader, audit, setPluginSessionConfig, setPluginSessions } = build();
     (loader.getPlugin as jest.Mock).mockReturnValue({
       manifest: { id: 'chatwoot-adapter', ingress: [{ route: 'chatwoot' }], permissions: ['webhook:ingress'] },
@@ -205,8 +406,7 @@ describe('IntegrationInstanceController provisioning bridge', () => {
     const base = { pluginId: 'chatwoot-adapter', instanceId: 'acct1', sessionScope: 'sess-1', config: {} };
     const instances = {
       resolve: jest.fn().mockResolvedValue({ ...base, enabled: true }),
-      setEnabled: jest.fn().mockResolvedValue({ ...base, enabled: false }),
-      update: jest.fn(),
+      update: jest.fn().mockResolvedValue({ ...base, enabled: false }),
       // The row is already disabled when the teardown lists instances; an ENABLED sibling still binds sess-1.
       list: jest.fn().mockResolvedValue([
         { ...base, enabled: false },
@@ -223,12 +423,14 @@ describe('IntegrationInstanceController provisioning bridge', () => {
 
     await controller.patch('chatwoot-adapter', 'acct1', { enabled: false });
 
-    // The sibling still fires on sess-1: neither the session nor its sessionConfig may be torn down.
-    expect(setPluginSessionConfig).not.toHaveBeenCalledWith('chatwoot-adapter', 'sess-1', {});
+    // The sibling still fires on sess-1, so the SESSION stays bound. Its config slice does not: it is
+    // keyed by scope and holds the retiring instance's projection, which dispatch would hand to the
+    // survivor as soon as this leaves one enabled instance on the scope.
+    expect(setPluginSessionConfig).toHaveBeenCalledWith('chatwoot-adapter', 'sess-1', {});
     expect(setPluginSessions).not.toHaveBeenCalled();
   });
 
-  it('keeps the session + its config when a deleted instance shares its scope with an ENABLED sibling', async () => {
+  it('keeps the session but CLEARS its config when a deleted instance shares its scope with a sibling', async () => {
     const { loader, audit, setPluginSessionConfig, setPluginSessions } = build();
     (loader.getPlugin as jest.Mock).mockReturnValue({
       manifest: { id: 'chatwoot-adapter', ingress: [{ route: 'chatwoot' }], permissions: ['webhook:ingress'] },
@@ -260,7 +462,9 @@ describe('IntegrationInstanceController provisioning bridge', () => {
 
     await controller.remove('chatwoot-adapter', 'acct1');
 
-    expect(setPluginSessionConfig).not.toHaveBeenCalledWith('chatwoot-adapter', 'sess-1', {});
+    // Same rule as the disable path — and the delete case is the sharper one: the row is gone, so the
+    // slice is the deleted tenant's only remaining trace and the survivor would inherit it.
+    expect(setPluginSessionConfig).toHaveBeenCalledWith('chatwoot-adapter', 'sess-1', {});
     expect(setPluginSessions).not.toHaveBeenCalled();
   });
 
@@ -295,7 +499,7 @@ describe('IntegrationInstanceController provisioning bridge', () => {
     expect(setPluginSessions).toHaveBeenCalledWith('chatwoot-adapter', []);
   });
 
-  it('keeps the OLD scope bound by an ENABLED sibling on a scope move (PATCH sessionScope) and binds the new one', async () => {
+  it('keeps the OLD scope ACTIVE for an ENABLED sibling on a scope move, and binds the new one', async () => {
     const { loader, audit, setPluginSessionConfig, setPluginSessions } = build();
     (loader.getPlugin as jest.Mock).mockReturnValue({
       manifest: { id: 'chatwoot-adapter', ingress: [{ route: 'chatwoot' }], permissions: ['webhook:ingress'] },
@@ -309,7 +513,6 @@ describe('IntegrationInstanceController provisioning bridge', () => {
         config: { baseUrl: 'https://x' },
         enabled: true,
       }),
-      setEnabled: jest.fn(),
       update: jest.fn().mockResolvedValue({
         pluginId: 'chatwoot-adapter',
         instanceId: 'acct1',
@@ -333,7 +536,9 @@ describe('IntegrationInstanceController provisioning bridge', () => {
 
     await controller.patch('chatwoot-adapter', 'acct1', { sessionScope: 'sess-2' });
 
-    expect(setPluginSessionConfig).not.toHaveBeenCalledWith('chatwoot-adapter', 'sess-1', {}); // old scope kept for the sibling
+    // Moving off sess-1 leaves the sibling alone on it, so the slice this instance projected there
+    // must go with it — otherwise the sibling inherits the config of a tenant that has moved away.
+    expect(setPluginSessionConfig).toHaveBeenCalledWith('chatwoot-adapter', 'sess-1', {});
     expect(setPluginSessionConfig).toHaveBeenCalledWith('chatwoot-adapter', 'sess-2', { baseUrl: 'https://y' }); // new scope bound
     expect(setPluginSessions).toHaveBeenCalledWith('chatwoot-adapter', ['sess-1', 'sess-2']); // sess-1 never stripped
   });
@@ -347,8 +552,7 @@ describe('IntegrationInstanceController provisioning bridge', () => {
     const base = { pluginId: 'chatwoot-adapter', instanceId: 'acct1', sessionScope: 'sess-1', config: {} };
     const instances = {
       resolve: jest.fn().mockResolvedValue({ ...base, enabled: true }),
-      setEnabled: jest.fn().mockResolvedValue({ ...base, enabled: false }),
-      update: jest.fn(),
+      update: jest.fn().mockResolvedValue({ ...base, enabled: false }),
       list: jest.fn().mockResolvedValue([
         { ...base, enabled: false },
         { pluginId: 'chatwoot-adapter', instanceId: 'acct2', sessionScope: null, config: {}, enabled: true },
@@ -534,20 +738,25 @@ describe('IntegrationInstanceController session-scope fence', () => {
       ForbiddenException,
     );
     // An explicit null (all sessions) is likewise outside a scoped key's fence.
-    await expect(
-      controller.patch('chatwoot-adapter', 'acct1', { sessionScope: null as unknown as string }, scopedKey),
-    ).rejects.toThrow(ForbiddenException);
+    await expect(controller.patch('chatwoot-adapter', 'acct1', { sessionScope: null }, scopedKey)).rejects.toThrow(
+      ForbiddenException,
+    );
     expect(update).not.toHaveBeenCalled();
   });
 
   it('lets a scoped key patch an in-scope instance without touching sessionScope', async () => {
     const inst = { ...baseInstance, sessionScope: 'sess-1' };
-    const setEnabled = jest.fn().mockResolvedValue({ ...inst, enabled: false });
-    const { controller } = build({ resolve: jest.fn().mockResolvedValue(inst), setEnabled, update: jest.fn() });
+    const update = jest.fn().mockResolvedValue({ ...inst, enabled: false });
+    const { controller } = build({ resolve: jest.fn().mockResolvedValue(inst), update });
 
     await controller.patch('chatwoot-adapter', 'acct1', { enabled: false }, scopedKey);
 
-    expect(setEnabled).toHaveBeenCalledWith('chatwoot-adapter', 'acct1', false);
+    expect(update).toHaveBeenCalledWith(
+      'chatwoot-adapter',
+      'acct1',
+      { enabled: false, sessionScope: undefined, config: undefined },
+      undefined,
+    );
   });
 });
 
@@ -684,13 +893,14 @@ describe('IntegrationInstanceController reveal masking', () => {
 // values, since a config patch can carry credentials and audit metadata is not a credential store.
 describe('IntegrationInstanceController update audit', () => {
   function build() {
+    const setPluginSessions = jest.fn();
     const loader = {
       getPlugin: jest.fn().mockReturnValue({
         manifest: { id: 'chatwoot-adapter', ingress: [{ route: 'chatwoot' }], permissions: ['webhook:ingress'] },
         activeSessions: [],
       }),
       setPluginSessionConfig: jest.fn(),
-      setPluginSessions: jest.fn(),
+      setPluginSessions,
       updatePluginConfig: jest.fn(),
     } as unknown as PluginLoaderService;
     const audit = { logInfo: jest.fn(), logWarn: jest.fn() };
@@ -706,10 +916,10 @@ describe('IntegrationInstanceController update audit', () => {
       createdAt: new Date(0),
       updatedAt: new Date(0),
     };
+    const update = jest.fn().mockResolvedValue({ ...instance, config: { apiToken: 'rotated-token' } });
     const instances = {
       resolve: jest.fn().mockResolvedValue(instance),
-      setEnabled: jest.fn().mockResolvedValue({ ...instance, enabled: false }),
-      update: jest.fn().mockResolvedValue({ ...instance, config: { apiToken: 'rotated-token' } }),
+      update,
       list: jest.fn().mockResolvedValue([]),
       maskedView: (i: unknown) => i,
     } as unknown as PluginInstanceService;
@@ -719,7 +929,7 @@ describe('IntegrationInstanceController update audit', () => {
       audit as unknown as AuditService,
       new ScopeBindingService(instances, loader, audit as unknown as AuditService, sessions),
     );
-    return { controller, audit, instances };
+    return { controller, audit, instances, update, setPluginSessions };
   }
 
   it('emits INTEGRATION_INSTANCE_UPDATED (INFO) on a successful patch with clean metadata', async () => {
@@ -754,6 +964,63 @@ describe('IntegrationInstanceController update audit', () => {
     (instances.resolve as jest.Mock).mockResolvedValue(null);
 
     await expect(controller.patch('chatwoot-adapter', 'acct1', { enabled: false })).rejects.toThrow(NotFoundException);
+    expect(audit.logInfo).not.toHaveBeenCalledWith(AuditAction.INTEGRATION_INSTANCE_UPDATED, expect.anything());
+  });
+
+  it('answers 404, not 500, when the instance is deleted while the patch is in flight', async () => {
+    const { controller, audit, update, setPluginSessions } = build();
+    update.mockResolvedValue(null);
+
+    await expect(controller.patch('chatwoot-adapter', 'acct1', { enabled: false })).rejects.toThrow(NotFoundException);
+    expect(setPluginSessions).not.toHaveBeenCalled();
+    expect(audit.logInfo).not.toHaveBeenCalledWith(AuditAction.INTEGRATION_INSTANCE_UPDATED, expect.anything());
+  });
+
+  it('answers 404, not 500, when the instance is deleted while regenerate-secret is in flight', async () => {
+    const { controller, audit, instances } = build();
+    Object.assign(instances, { regenerateSecret: jest.fn().mockResolvedValue(null) });
+
+    await expect(controller.regenerate('chatwoot-adapter', 'acct1')).rejects.toThrow(NotFoundException);
+    expect(audit.logInfo).not.toHaveBeenCalledWith(
+      AuditAction.INTEGRATION_INSTANCE_SECRET_REGENERATED,
+      expect.anything(),
+    );
+  });
+
+  // `enabled` rides in the same update() as scope and config, so the row is written by ONE save. A
+  // second write could fail after the first landed, leaving the row half-patched with the scope
+  // binding and the audit entry skipped.
+  it('writes enabled, sessionScope and config in a single update() call', async () => {
+    const { controller, update } = build();
+
+    await controller.patch('chatwoot-adapter', 'acct1', {
+      enabled: false,
+      sessionScope: 'sess-2',
+      config: { apiToken: 'rotated-token' },
+    });
+
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(update).toHaveBeenCalledWith(
+      'chatwoot-adapter',
+      'acct1',
+      { enabled: false, sessionScope: 'sess-2', config: { apiToken: 'rotated-token' } },
+      undefined,
+    );
+  });
+
+  // update() can refuse the config with a 400 (a masked secret it cannot restore), before its save.
+  // Nothing may be written ahead of it: an `enabled` already saved would stay flipped in the row while
+  // the scope binding and the audit entry are skipped, so the DB and the runtime disagree.
+  it('persists nothing when the config is rejected, even with enabled in the same body', async () => {
+    const { controller, audit, update, setPluginSessions } = build();
+    update.mockRejectedValue(new BadRequestException('re-enter the remaining secret values'));
+
+    await expect(
+      controller.patch('chatwoot-adapter', 'acct1', { enabled: false, config: { apiToken: '***' } }),
+    ).rejects.toThrow(BadRequestException);
+
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(setPluginSessions).not.toHaveBeenCalled();
     expect(audit.logInfo).not.toHaveBeenCalledWith(AuditAction.INTEGRATION_INSTANCE_UPDATED, expect.anything());
   });
 });

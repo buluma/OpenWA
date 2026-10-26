@@ -1,9 +1,6 @@
 package com.rmyndharis.openwa.model;
 
-/**
- * Request body for pinning a message in its chat. {@code durationSeconds} must be 86400 (24h),
- * 604800 (7d) or 2592000 (30d); defaults to 24h server-side.
- */
+/** Request body for pinning a message in its chat. */
 public record PinMessageRequest(String chatId, String messageId, Integer durationSeconds) {
     public static Builder builder() {
         return new Builder();
@@ -24,7 +21,7 @@ public record PinMessageRequest(String chatId, String messageId, Integer duratio
             return this;
         }
 
-        /** Pin duration in seconds: 86400, 604800 or 2592000. Defaults to 24h. */
+        /** 86400 (24h), 604800 (7d) or 2592000 (30d). Defaults to 24h when omitted. */
         public Builder durationSeconds(Integer v) {
             this.durationSeconds = v;
             return this;

@@ -17,7 +17,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * an already-varchar (healthy) Postgres schema via a single information_schema probe.
  *
  * See issue #690. Operational note: `ALTER COLUMN ... TYPE varchar` is a full-table rewrite under an
- * ACCESS EXCLUSIVE lock; for very large `messages` tables, run via the CLI (`npm run migration:run`)
+ * ACCESS EXCLUSIVE lock; for very large `messages` tables, run via the CLI (`bun run migration:run`)
  * against the stopped app during a maintenance window.
  */
 export class NormalizeSynchronizeUuidColumns1770200000000 implements MigrationInterface {

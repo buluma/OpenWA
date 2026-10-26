@@ -5,7 +5,9 @@ import static com.rmyndharis.openwa.http.Http.encodeSegment;
 import com.rmyndharis.openwa.OpenWAClient;
 import com.rmyndharis.openwa.http.HttpMethod;
 import com.rmyndharis.openwa.model.AddLabelRequest;
+import com.rmyndharis.openwa.model.ChatSummary;
 import com.rmyndharis.openwa.model.LabelRecord;
+import com.rmyndharis.openwa.model.UpsertLabelRequest;
 import com.rmyndharis.openwa.model.SuccessResult;
 import java.util.List;
 
@@ -21,13 +23,16 @@ public final class LabelsResource {
         this.client = client;
     }
 
-    /** List all labels available in the business account. */
+    /**
+     * List all labels available in the business account. whatsapp-web.js only; Baileys answers
+     * {@code 501}.
+     */
     public List<LabelRecord> list(String sessionId) {
         return client.requestList(
             HttpMethod.GET, "/api/sessions/" + encodeSegment(sessionId) + "/labels", null, null, LabelRecord.class);
     }
 
-    /** Get a single label by id. */
+    /** Get a single label by id. whatsapp-web.js only; Baileys answers {@code 501}. */
     public LabelRecord get(String sessionId, String labelId) {
         return client.request(
             HttpMethod.GET,
@@ -37,7 +42,51 @@ public final class LabelsResource {
             LabelRecord.class);
     }
 
-    /** Get the labels currently applied to a chat. */
+    /**
+     * Every chat carrying a label. whatsapp-web.js only — Baileys has label writes but no label query
+     * of any kind, and answers {@code 501}.
+     */
+    public List<ChatSummary> chats(String sessionId, String labelId) {
+        return client.requestList(
+            HttpMethod.GET,
+            "/api/sessions/" + encodeSegment(sessionId) + "/labels/" + encodeSegment(labelId) + "/chats",
+            null,
+            null,
+            ChatSummary.class);
+    }
+
+    /**
+     * Create or update a label. Baileys only; whatsapp-web.js can read and assign labels but cannot
+     * edit one, and answers {@code 501}.
+     *
+     * <p>{@code PUT} rather than {@code POST} because you choose the id: WhatsApp carries one write
+     * keyed on it, so whether this creates or updates depends purely on whether that id already
+     * exists. Pick an unused id to create — reusing one rewrites that label rather than failing.
+     * The write replaces the whole label, so an omitted field is not preserved.
+     */
+    public SuccessResult upsert(String sessionId, String labelId, UpsertLabelRequest body) {
+        return client.request(
+            HttpMethod.PUT,
+            "/api/sessions/" + encodeSegment(sessionId) + "/labels/" + encodeSegment(labelId),
+            null,
+            body,
+            SuccessResult.class);
+    }
+
+    /** Delete a label; it disappears from every chat it was on. Baileys only. */
+    public SuccessResult delete(String sessionId, String labelId) {
+        return client.request(
+            HttpMethod.DELETE,
+            "/api/sessions/" + encodeSegment(sessionId) + "/labels/" + encodeSegment(labelId),
+            null,
+            null,
+            SuccessResult.class);
+    }
+
+    /**
+     * Get the labels currently applied to a chat. whatsapp-web.js only; Baileys answers
+     * {@code 501}.
+     */
     public List<LabelRecord> forChat(String sessionId, String chatId) {
         return client.requestList(
             HttpMethod.GET,

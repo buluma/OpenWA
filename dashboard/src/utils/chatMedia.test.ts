@@ -26,6 +26,9 @@ const hist = (over: Partial<EngineHistoryMessage> = {}): EngineHistoryMessage =>
   body: '',
   type: 'image',
   timestamp: 1790000000,
+  fromMe: false,
+  isGroup: false,
+  kind: 'individual',
   ...over,
 });
 

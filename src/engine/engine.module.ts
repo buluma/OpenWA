@@ -3,10 +3,10 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { EngineFactory } from './engine.factory';
 import { BaileysStoredMessage } from './adapters/baileys-stored-message.entity';
 import { BaileysMessageStoreService } from './adapters/baileys-message-store.service';
-import { ChatState } from './adapters/baileys-chat-state.entity';
-import { ChatStateStoreService } from './adapters/baileys-chat-state-store.service';
 import { LidMapping } from './identity/lid-mapping.entity';
 import { LidMappingStoreService } from './identity/lid-mapping-store.service';
+import { ChatState } from './adapters/baileys-chat-state.entity';
+import { ChatStateStoreService } from './adapters/baileys-chat-state-store.service';
 import { EngineRegistry } from './engine-registry.service';
 
 @Global()
@@ -16,6 +16,6 @@ import { EngineRegistry } from './engine-registry.service';
   // live engine can inject it directly, instead of importing SessionModule to reach the lifecycle
   // owner. It is a singleton by DI, which is what makes it a safe single source of truth.
   providers: [EngineFactory, BaileysMessageStoreService, LidMappingStoreService, ChatStateStoreService, EngineRegistry],
-  exports: [EngineFactory, LidMappingStoreService, EngineRegistry],
+  exports: [EngineFactory, LidMappingStoreService, ChatStateStoreService, EngineRegistry],
 })
 export class EngineModule {}

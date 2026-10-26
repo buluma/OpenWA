@@ -1,6 +1,6 @@
 /**
  * Build-time backport of upstream whatsapp-web.js#201832 into the installed
- * whatsapp-web.js. Run after `npm ci` in the Docker production stage.
+ * whatsapp-web.js. Run after `bun install --frozen-lockfile` in the Docker production stage.
  *
  * Background: WhatsApp Web build 2.3000.x (rolled out ~2026-07-14) renamed the
  * serialized message-id property `id._serialized` to `id.$1` (a minifier-mangled
@@ -25,6 +25,11 @@
  * dropped. Any OTHER reject means the installed shape drifted from the backport's
  * expected base; we abort the build loudly rather than ship a silently partial
  * patch.
+ *
+ * The PR's one typings hunk (index.d.ts, a method signature joined onto one line) is left out of
+ * wwebjs-201832.patch. It changes no behavior; as the first file `patch` wrote it would be the only
+ * marker of an interrupted run that tests formatting instead of the fix; and a release that merely
+ * reformatted its typings would reject it and fail the install.
  */
 'use strict';
 
@@ -42,7 +47,7 @@ const EXPECTED_REJECTS = new Set(['src/structures/Contact.js.rej']);
 // unnoticed. `patch` always writes a .rej for a hunk it couldn't place, but a hunk placed at the
 // WRONG offset would be silent — these assertions are what close that gap.
 //
-// This list must cover every file the patch normalizes, not just the structure constructors, because
+// This list must cover every file the patch writes, not just the structure constructors, because
 // the skip branch below uses it to decide a half-patched tree apart from an upstream fix. `patch`
 // applies the diff in file order and Utils.js is applied LAST, one file after Message.js — which is
 // what the skip branch keys on. Omitting a file here means a run that died in that window leaves a
@@ -80,6 +85,25 @@ function siteLanded(wwjsDir, rel) {
 }
 
 /**
+ * The REQUIRED_SITES a backport this patcher began did not reach, by relative path. The tree is judged
+ * ours when at least one site carries the text its marker looks for: with none the backport never
+ * started, or upstream fixed the tree its own way. A run killed part-way leaves any prefix of the eleven
+ * files, so no single file can stand for the rest. A file that cannot be read is not counted, since an
+ * install that cannot be inspected is not evidence of a broken one.
+ */
+function missingSites(wwjsDir = DEFAULT_WWJS) {
+  const landed = rel => {
+    try {
+      return siteLanded(wwjsDir, rel);
+    } catch {
+      return undefined;
+    }
+  };
+  if (!REQUIRED_SITES.some(([rel]) => landed(rel) === true)) return [];
+  return REQUIRED_SITES.filter(([rel]) => landed(rel) === false).map(([rel]) => rel);
+}
+
+/**
  * Flag an error raised against a tree that is no longer pristine — either this run wrote to it, or a
  * previous run left it half-patched. `--best-effort` degrades on a pre-flight failure (no `patch`
  * binary — nothing ran, tree untouched) but must never swallow one of these: `patch` applies hunks as
@@ -108,7 +132,7 @@ function findArtifacts(root, dir = root) {
 /**
  * Fallback applier for hosts without the GNU `patch` binary — the default on Windows outside Git
  * Bash, and the reason a native install could silently ship an unpatched whatsapp-web.js while
- * `npm install` still reported success (#889). Anyone installing from source necessarily has git,
+ * `bun install` still reported success (#889). Anyone installing from source necessarily has git,
  * so this closes that gap without adding a dependency.
  *
  * GIT_CEILING_DIRECTORIES is what makes it work at all: without it git discovers the parent OpenWA
@@ -125,10 +149,10 @@ function findArtifacts(root, dir = root) {
  * has CRLF.
  *
  * Neither applier accepts CRLF: a unified diff line must start with ' ', '+', '-' or '@', and a bare
- * \r is none of those, so both stop at line 7 of this patch — its first empty context line (`git
- * apply`: "corrupt patch at line 7"; `patch`: "malformed patch at line 7"). Windows checks the file out
+ * \r is none of those, so both stop at line 12 of this patch — its first empty context line (`git
+ * apply`: "corrupt patch at line 12"; `patch`: "malformed patch at line 12"). Windows checks the file out
  * that way whenever `core.autocrlf` is on, which is its default, so the git fallback added for Windows
- * could never actually run there and took `npm install` down with it (#889).
+ * could never actually run there and took `bun install` down with it (#889).
  *
  * The `.gitattributes` rule keeps fresh clones on LF; this repairs the ones already on disk, which that
  * rule cannot reach. Everywhere else the file is already LF and this is a single read with no temp file.
@@ -214,7 +238,8 @@ function applyBackport(wwjsDir = DEFAULT_WWJS, patchFile = DEFAULT_PATCH) {
   const msgSrc = fs.readFileSync(msgJs, 'utf8');
   if (/_normalizeId\(|\.\$1/.test(msgSrc)) {
     // Message.js normalizing is necessary but NOT sufficient to stand down. `patch` writes as it goes and
-    // Message.js is patched early, so a run that died part-way through lands here too — and skipping would
+    // Message.js is the second to last file it writes, so a run that died after it lands here too (and one
+    // that died before it is caught below), and skipping would
     // latch that half-patched tree in permanently, because every later run takes this same branch and never
     // reaches the assertions below. An upstream release that fixes this lands every site at once; a crashed
     // run does not. Proving the tree is whole is what tells the two apart.
@@ -227,12 +252,26 @@ function applyBackport(wwjsDir = DEFAULT_WWJS, patchFile = DEFAULT_PATCH) {
         new Error(
           'whatsapp-web.js is PARTIALLY patched — Message.js normalizes ids but ' +
             `${missing.map(([rel]) => rel).join(', ')} did not land. A previous run left the tree half-patched; ` +
-            'it cannot repair itself. Reinstall the dependency (`rm -rf node_modules/whatsapp-web.js && npm ci`) ' +
+            'it cannot repair itself. Reinstall the dependency (`rm -rf node_modules/whatsapp-web.js && bun install --frozen-lockfile`) ' +
             'and re-run. If the installed version genuinely ships its own fix, drop this backport instead.',
         ),
       );
     }
     return { skipped: true, reason: 'installed whatsapp-web.js already normalizes message ids' };
+  }
+
+  // A run that died before Message.js (the 10th of 11 files) left the earlier files patched and this one
+  // not. Applying the diff again would reject every hunk that already landed, litter the tree with .rej
+  // files and report version skew for what is an interrupted install.
+  const landedBefore = missingSites(wwjsDir);
+  if (landedBefore.length) {
+    throw partialTree(
+      new Error(
+        'whatsapp-web.js is PARTIALLY patched: an earlier run was interrupted and ' +
+          `${landedBefore.join(', ')} did not land. The tree cannot repair itself. Reinstall the dependency ` +
+          '(`rm -rf node_modules/whatsapp-web.js && bun install --frozen-lockfile`) and re-run.',
+      ),
+    );
   }
 
   // Apply the real upstream diff via `patch` (no git-discovery interference).
@@ -304,7 +343,7 @@ if (require.main === module) {
   // `--best-effort` (used by the postinstall hook) warns instead of failing. The image build runs
   // without it: there, an unpatched whatsapp-web.js must abort the build rather than ship broken.
   // Locally the same failure is only a degraded dev install — `patch` may not exist at all (Windows
-  // without WSL), and a Baileys-only user has no reason to care — so breaking `npm install` over it
+  // without WSL), and a Baileys-only user has no reason to care — so breaking `bun install` over it
   // would be worse than the bug.
   const bestEffort = process.argv.includes('--best-effort');
   const target = process.argv.find(a => !a.startsWith('--') && a !== process.argv[0] && a !== process.argv[1]);
@@ -331,6 +370,8 @@ if (require.main === module) {
 
 module.exports = {
   applyBackport,
+  missingSites,
+  REQUIRED_SITES,
   normalizeArtifactPath,
   gitApplyLeftTreeUntouched,
   DEFAULT_WWJS,

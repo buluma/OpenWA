@@ -8,12 +8,12 @@
 
 import { encodeSegment } from '../http.js';
 import type { OpenWAClient } from '../client.js';
-import type { AddLabelRequest, LabelRecord, SuccessResult } from '../types.js';
+import type { AddLabelRequest, ChatSummary, LabelRecord, SuccessResult, UpsertLabelRequest } from '../types.js';
 
 export class LabelsResource {
   constructor(private readonly client: OpenWAClient) {}
 
-  /** List all labels available in the business account. */
+  /** List all labels available in the business account. **whatsapp-web.js only**: Baileys answers 501. */
   list(sessionId: string): Promise<LabelRecord[]> {
     return this.client.request<LabelRecord[]>({
       method: 'GET',
@@ -21,7 +21,7 @@ export class LabelsResource {
     });
   }
 
-  /** Get a single label by id. */
+  /** Get a single label by id. **whatsapp-web.js only**: Baileys answers 501. */
   get(sessionId: string, labelId: string): Promise<LabelRecord> {
     return this.client.request<LabelRecord>({
       method: 'GET',
@@ -29,7 +29,43 @@ export class LabelsResource {
     });
   }
 
-  /** Get the labels currently applied to a chat. */
+  /**
+   * Every chat carrying a label. **whatsapp-web.js only** — Baileys has label writes but no label
+   * query of any kind, and answers 501.
+   */
+  chats(sessionId: string, labelId: string): Promise<ChatSummary[]> {
+    return this.client.request<ChatSummary[]>({
+      method: 'GET',
+      path: `/api/sessions/${encodeSegment(sessionId)}/labels/${encodeSegment(labelId)}/chats`,
+    });
+  }
+
+  /**
+   * Create or update a label. **Baileys only** — whatsapp-web.js can read and assign labels but
+   * cannot edit one, and answers 501.
+   *
+   * `PUT`, not `POST`, because you choose the id: WhatsApp carries one write keyed on it, so whether
+   * this creates or updates depends purely on whether that id already exists. Pick an unused id to
+   * create — reusing one rewrites that label rather than failing. The write replaces the whole
+   * label, so an omitted field is not preserved.
+   */
+  upsert(sessionId: string, labelId: string, body: UpsertLabelRequest): Promise<SuccessResult> {
+    return this.client.request<SuccessResult>({
+      method: 'PUT',
+      path: `/api/sessions/${encodeSegment(sessionId)}/labels/${encodeSegment(labelId)}`,
+      body,
+    });
+  }
+
+  /** Delete a label; it disappears from every chat it was on. **Baileys only.** */
+  delete(sessionId: string, labelId: string): Promise<SuccessResult> {
+    return this.client.request<SuccessResult>({
+      method: 'DELETE',
+      path: `/api/sessions/${encodeSegment(sessionId)}/labels/${encodeSegment(labelId)}`,
+    });
+  }
+
+  /** Get the labels currently applied to a chat. **whatsapp-web.js only**: Baileys answers 501. */
   forChat(sessionId: string, chatId: string): Promise<LabelRecord[]> {
     return this.client.request<LabelRecord[]>({
       method: 'GET',

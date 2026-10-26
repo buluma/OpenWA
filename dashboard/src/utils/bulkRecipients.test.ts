@@ -64,3 +64,50 @@ test('a number too short to be a phone is dropped rather than sent', () => {
   assert.deepEqual(parseBulkRecipients('12345'), []);
   assert.deepEqual(parseBulkRecipients('123456'), ['123456@c.us']);
 });
+
+// A contact export carries an email column next to the phone. Passing every '@' field through sent
+// each address as a recipient that could only fail, and doubled the count held against the batch cap.
+test('an @ field without a WhatsApp chat id shape is dropped, so an email column is not a recipient', () => {
+  const csv = 'name,email,phone\nJohn,john@example.com,628123456789\nAmy,12345@qq.com,628987654321';
+  assert.deepEqual(parseBulkRecipients(csv), ['628123456789@c.us', '628987654321@c.us']);
+  assert.deepEqual(
+    parseBulkRecipients('628123456789@s.whatsapp.net\n120363123456789@newsletter\n628123456789:12@lid'),
+    ['628123456789@s.whatsapp.net', '120363123456789@newsletter', '628123456789:12@lid'],
+  );
+});
+
+// A list pasted from an Arabic or a CJK source carries the digits of that script.
+test('a number written in native-script or full-width digits is read as ASCII digits', () => {
+  const toDigits = (ascii: string, zero: number) => [...ascii].map(d => String.fromCharCode(zero + Number(d))).join('');
+  assert.deepEqual(parseBulkRecipients(toDigits('628123456789', 0x0660)), ['628123456789@c.us']);
+  assert.deepEqual(parseBulkRecipients(toDigits('628123456789', 0xff10)), ['628123456789@c.us']);
+  assert.deepEqual(parseBulkRecipients(`${toDigits('628111222333', 0x0966)}\n628222333444`), [
+    '628111222333@c.us',
+    '628222333444@c.us',
+  ]);
+});
+
+// The same separators the Number Checker splits its list on, in the script the numbers are written in.
+test('a list in native-script digits separated by the Arabic comma or semicolon is several recipients', () => {
+  const toDigits = (ascii: string) => [...ascii].map(d => String.fromCharCode(0x0660 + Number(d))).join('');
+  const first = toDigits('628123456789');
+  const second = toDigits('628987654321');
+  const expected = ['628123456789@c.us', '628987654321@c.us'];
+  assert.deepEqual(parseBulkRecipients(`${first}${String.fromCharCode(0x060c)}${second}`), expected);
+  assert.deepEqual(parseBulkRecipients(`${first}${String.fromCharCode(0x061b)} ${second}`), expected);
+});
+
+test('a list in full-width digits separated by the full-width comma or semicolon is several recipients', () => {
+  const fullwidth = (ascii: string) => [...ascii].map(ch => String.fromCharCode(ch.charCodeAt(0) + 0xfee0)).join('');
+  const first = fullwidth('628123456789');
+  const second = fullwidth('628987654321');
+  const expected = ['628123456789@c.us', '628987654321@c.us'];
+  assert.deepEqual(parseBulkRecipients(`${first}${String.fromCharCode(0xff0c)}${second}`), expected);
+  assert.deepEqual(parseBulkRecipients(`${first}${String.fromCharCode(0xff1b)}${second}`), expected);
+});
+
+test('a chat id written in full-width characters passes through as the plain chat id', () => {
+  const fullwidth = (ascii: string) => [...ascii].map(ch => String.fromCharCode(ch.charCodeAt(0) + 0xfee0)).join('');
+  assert.deepEqual(parseBulkRecipients(fullwidth('123@c.us')), ['123@c.us']);
+  assert.deepEqual(parseBulkRecipients(fullwidth('alice@example.com')), []);
+});

@@ -100,6 +100,33 @@ test('moves initial focus to the first visible focusable in the dialog', () => {
   unbind();
 });
 
+test('moves initial focus to the element the dialog names, and records the opener before that', () => {
+  const { doc, card, focusables, makeElement } = makeWorld(3);
+  const opener = makeElement();
+  opener.focus();
+  const unbind = bindModalA11y(
+    doc as never,
+    card as never,
+    () => {},
+    () => focusables[2] as never,
+  );
+  assert.equal(doc.activeElement, focusables[2] as never);
+  unbind();
+  assert.equal(doc.activeElement, opener as never, 'focus did not return to the opener');
+});
+
+test('falls back to the first focusable when the named initial focus is not there', () => {
+  const { doc, card, focusables } = makeWorld(3);
+  const unbind = bindModalA11y(
+    doc as never,
+    card as never,
+    () => {},
+    () => null,
+  );
+  assert.equal(doc.activeElement, focusables[0] as never);
+  unbind();
+});
+
 test('focuses the card itself when the dialog has nothing focusable', () => {
   const { doc, card } = makeWorld(0);
   const unbind = bindModalA11y(doc as never, card as never, () => {});
@@ -203,4 +230,47 @@ test('a nested dialog still owns Escape when the parent unmounts first', () => {
   assert.equal(nestedClosed, 1);
   assert.equal(parentClosed, 0);
   unbindNested();
+});
+
+// Unmounting a page with a nested dialog open runs the parent's cleanup first (React unmounts a
+// deleted subtree parent-first). Each dialog restoring its own saved value left the nested one's
+// 'hidden' in place, and the next page could not scroll until a reload.
+test('the scroll lock is released once the last dialog closes, whatever the close order', () => {
+  const { doc, card } = makeWorld();
+  doc.body.style.overflow = 'auto';
+  const unbindParent = bindModalA11y(doc as never, card as never, () => {});
+  const unbindNested = bindModalA11y(doc as never, card as never, () => {});
+
+  unbindParent();
+  assert.equal(doc.body.style.overflow, 'hidden'); // the nested dialog is still open
+  unbindNested();
+  assert.equal(doc.body.style.overflow, 'auto');
+});
+
+test('Tab and Shift+Tab on a control that is neither first nor last are left to the browser', () => {
+  const { doc, card, focusables } = makeWorld(3);
+  const unbind = bindModalA11y(doc as never, card as never, () => {});
+  const [first, middle, last] = focusables;
+
+  middle.focus();
+  const forward = makeKeyEvent('Tab');
+  doc.dispatchKey(forward);
+  assert.equal(forward.defaultPrevented, false);
+  assert.equal(doc.activeElement, middle as never);
+
+  const backward = makeKeyEvent('Tab', true);
+  doc.dispatchKey(backward);
+  assert.equal(backward.defaultPrevented, false);
+  assert.equal(doc.activeElement, middle as never);
+
+  // Neither end is touched by the other direction either.
+  last.focus();
+  const backFromLast = makeKeyEvent('Tab', true);
+  doc.dispatchKey(backFromLast);
+  assert.equal(backFromLast.defaultPrevented, false);
+  first.focus();
+  const forwardFromFirst = makeKeyEvent('Tab');
+  doc.dispatchKey(forwardFromFirst);
+  assert.equal(forwardFromFirst.defaultPrevented, false);
+  unbind();
 });

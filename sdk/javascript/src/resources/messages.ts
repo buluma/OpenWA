@@ -7,11 +7,14 @@
  */
 
 import { encodeSegment } from '../http.js';
+import type { BinaryResponse } from '../http.js';
 import type { OpenWAClient } from '../client.js';
 import type {
+  BatchCancelResponse,
   BatchStatusResponse,
   BulkMessageResponse,
   ChatHistoryMessage,
+  ClickButtonRequest,
   DeleteMessageRequest,
   EditMessageRequest,
   ForwardMessageRequest,
@@ -28,13 +31,13 @@ import type {
   SendLocationRequest,
   SendAudioRequest,
   SendMediaRequest,
+  StarMessageRequest,
+  UnpinMessageRequest,
+  VotePollRequest,
   SendPollRequest,
   SendTemplateRequest,
   SendTextRequest,
-  StarMessageRequest,
   SuccessResult,
-  UnpinMessageRequest,
-  VotePollRequest,
 } from '../types.js';
 
 export class MessagesResource {
@@ -50,91 +53,106 @@ export class MessagesResource {
   }
 
   /** Send a text message. */
-  sendText(sessionId: string, body: SendTextRequest): Promise<MessageResponse> {
+  sendText(sessionId: string, body: SendTextRequest, idempotencyKey?: string): Promise<MessageResponse> {
     return this.client.request<MessageResponse>({
       method: 'POST',
       path: `/api/sessions/${encodeSegment(sessionId)}/messages/send-text`,
       body,
-    });
+    }, idempotencyKey);
   }
 
   /** Send an image (url or base64). */
-  sendImage(sessionId: string, body: SendMediaRequest): Promise<MessageResponse> {
-    return this.client.sendMedia(sessionId, 'send-image', body);
+  sendImage(sessionId: string, body: SendMediaRequest, idempotencyKey?: string): Promise<MessageResponse> {
+    return this.client.sendMedia(sessionId, 'send-image', body, idempotencyKey);
   }
 
   /** Send a video (url or base64). */
-  sendVideo(sessionId: string, body: SendMediaRequest): Promise<MessageResponse> {
-    return this.client.sendMedia(sessionId, 'send-video', body);
+  sendVideo(sessionId: string, body: SendMediaRequest, idempotencyKey?: string): Promise<MessageResponse> {
+    return this.client.sendMedia(sessionId, 'send-video', body, idempotencyKey);
   }
 
   /** Send an audio file (url or base64). */
-  sendAudio(sessionId: string, body: SendAudioRequest): Promise<MessageResponse> {
-    return this.client.sendMedia(sessionId, 'send-audio', body);
+  sendAudio(sessionId: string, body: SendAudioRequest, idempotencyKey?: string): Promise<MessageResponse> {
+    return this.client.sendMedia(sessionId, 'send-audio', body, idempotencyKey);
   }
 
-  /** Send a document (url or base64; `filename` required). */
-  sendDocument(sessionId: string, body: SendMediaRequest): Promise<MessageResponse> {
-    return this.client.sendMedia(sessionId, 'send-document', body);
+  /**
+   * Send a document (url or base64). `filename` is optional and is the name the recipient sees;
+   * without it the gateway uses `"file"`, or the URL basename for a URL send on whatsapp-web.js.
+   */
+  sendDocument(sessionId: string, body: SendMediaRequest, idempotencyKey?: string): Promise<MessageResponse> {
+    return this.client.sendMedia(sessionId, 'send-document', body, idempotencyKey);
   }
 
   /** Send a sticker (url or base64). */
-  sendSticker(sessionId: string, body: SendMediaRequest): Promise<MessageResponse> {
-    return this.client.sendMedia(sessionId, 'send-sticker', body);
+  sendSticker(sessionId: string, body: SendMediaRequest, idempotencyKey?: string): Promise<MessageResponse> {
+    return this.client.sendMedia(sessionId, 'send-sticker', body, idempotencyKey);
   }
 
   /** Send a location. */
-  sendLocation(sessionId: string, body: SendLocationRequest): Promise<MessageResponse> {
+  sendLocation(sessionId: string, body: SendLocationRequest, idempotencyKey?: string): Promise<MessageResponse> {
     return this.client.request<MessageResponse>({
       method: 'POST',
       path: `/api/sessions/${encodeSegment(sessionId)}/messages/send-location`,
       body,
-    });
+    }, idempotencyKey);
   }
 
   /** Send a contact card. */
-  sendContact(sessionId: string, body: SendContactRequest): Promise<MessageResponse> {
+  sendContact(sessionId: string, body: SendContactRequest, idempotencyKey?: string): Promise<MessageResponse> {
     return this.client.request<MessageResponse>({
       method: 'POST',
       path: `/api/sessions/${encodeSegment(sessionId)}/messages/send-contact`,
       body,
-    });
+    }, idempotencyKey);
   }
 
   /** Render and send a stored message template. */
-  sendTemplate(sessionId: string, body: SendTemplateRequest): Promise<MessageResponse> {
+  sendTemplate(sessionId: string, body: SendTemplateRequest, idempotencyKey?: string): Promise<MessageResponse> {
     return this.client.request<MessageResponse>({
       method: 'POST',
       path: `/api/sessions/${encodeSegment(sessionId)}/messages/send-template`,
       body,
-    });
+    }, idempotencyKey);
   }
 
   /** Send a native WhatsApp poll (2–12 options). */
-  sendPoll(sessionId: string, body: SendPollRequest): Promise<MessageResponse> {
+  sendPoll(sessionId: string, body: SendPollRequest, idempotencyKey?: string): Promise<MessageResponse> {
     return this.client.request<MessageResponse>({
       method: 'POST',
       path: `/api/sessions/${encodeSegment(sessionId)}/messages/send-poll`,
       body,
-    });
+    }, idempotencyKey);
   }
 
   /** Reply to a specific message. */
-  reply(sessionId: string, body: ReplyMessageRequest): Promise<MessageResponse> {
+  reply(sessionId: string, body: ReplyMessageRequest, idempotencyKey?: string): Promise<MessageResponse> {
     return this.client.request<MessageResponse>({
       method: 'POST',
       path: `/api/sessions/${encodeSegment(sessionId)}/messages/reply`,
+      body,
+    }, idempotencyKey);
+  }
+
+  /**
+   * Click a button on a WhatsApp Business prompt. Baileys only (whatsapp-web.js returns 501).
+   * Sends a structured reply proto quoted to the prompt, not a native UI tap.
+   */
+  clickButton(sessionId: string, body: ClickButtonRequest): Promise<MessageResponse> {
+    return this.client.request<MessageResponse>({
+      method: 'POST',
+      path: `/api/sessions/${encodeSegment(sessionId)}/messages/click-button`,
       body,
     });
   }
 
   /** Forward a message to another chat. */
-  forward(sessionId: string, body: ForwardMessageRequest): Promise<MessageResponse> {
+  forward(sessionId: string, body: ForwardMessageRequest, idempotencyKey?: string): Promise<MessageResponse> {
     return this.client.request<MessageResponse>({
       method: 'POST',
       path: `/api/sessions/${encodeSegment(sessionId)}/messages/forward`,
       body,
-    });
+    }, idempotencyKey);
   }
 
   /** React to a message (empty `emoji` removes the reaction). */
@@ -164,43 +182,7 @@ export class MessagesResource {
     });
   }
 
-  /** Pin a message in its chat for a bounded window. */
-  pin(sessionId: string, body: PinMessageRequest): Promise<SuccessResult> {
-    return this.client.request<SuccessResult>({
-      method: 'POST',
-      path: `/api/sessions/${encodeSegment(sessionId)}/messages/pin`,
-      body,
-    });
-  }
-
-  /** Unpin a message from its chat. */
-  unpin(sessionId: string, body: UnpinMessageRequest): Promise<SuccessResult> {
-    return this.client.request<SuccessResult>({
-      method: 'POST',
-      path: `/api/sessions/${encodeSegment(sessionId)}/messages/unpin`,
-      body,
-    });
-  }
-
-  /** Star or unstar a message. */
-  star(sessionId: string, body: StarMessageRequest): Promise<SuccessResult> {
-    return this.client.request<SuccessResult>({
-      method: 'POST',
-      path: `/api/sessions/${encodeSegment(sessionId)}/messages/star`,
-      body,
-    });
-  }
-
-  /** Vote on a poll. whatsapp-web.js engine only — 501 on Baileys. */
-  votePoll(sessionId: string, body: VotePollRequest): Promise<SuccessResult> {
-    return this.client.request<SuccessResult>({
-      method: 'POST',
-      path: `/api/sessions/${encodeSegment(sessionId)}/messages/vote-poll`,
-      body,
-    });
-  }
-
-  /** Get the message history for a chat (read live from WhatsApp). */
+  /** Get the message history for a chat (read live from WhatsApp). **whatsapp-web.js only**: Baileys answers 501. */
   history(sessionId: string, chatId: string, query?: MessageHistoryQuery): Promise<ChatHistoryMessage[]> {
     return this.client.request<ChatHistoryMessage[]>({
       method: 'GET',
@@ -209,11 +191,67 @@ export class MessagesResource {
     });
   }
 
-  /** Get reactions for a specific message. */
+  /** Get reactions for a specific message. **whatsapp-web.js only**: Baileys answers 501. */
   reactions(sessionId: string, chatId: string, messageId: string): Promise<ReactionRecord[]> {
     return this.client.request<ReactionRecord[]>({
       method: 'GET',
       path: `/api/sessions/${encodeSegment(sessionId)}/messages/${encodeSegment(chatId)}/${encodeSegment(messageId)}/reactions`,
+    });
+  }
+
+  /**
+   * Pin a message in its chat. `durationSeconds` must be 86400 (24h), 604800 (7d) or 2592000
+   * (30d); it defaults to 24h server-side. In a group only admins may pin.
+   */
+  pin(sessionId: string, body: PinMessageRequest): Promise<SuccessResult> {
+    return this.client.request<SuccessResult>({
+      method: 'POST',
+      path: `/api/sessions/${encodeSegment(sessionId)}/messages/pin`,
+      body,
+    });
+  }
+
+  /**
+   * Cast a vote on a poll. Not supported on the Baileys engine (501).
+   * `options` are the option texts, not ids.
+   */
+  votePoll(sessionId: string, body: VotePollRequest): Promise<SuccessResult> {
+    return this.client.request<SuccessResult>({
+      method: 'POST',
+      path: `/api/sessions/${encodeSegment(sessionId)}/messages/vote-poll`,
+      body,
+    });
+  }
+
+  /**
+   * Star or unstar a message. Best-effort on whatsapp-web.js: it silently ignores a message it
+   * will not star, so a resolved call is not proof the star is set.
+   */
+  star(sessionId: string, body: StarMessageRequest): Promise<SuccessResult> {
+    return this.client.request<SuccessResult>({
+      method: 'POST',
+      path: `/api/sessions/${encodeSegment(sessionId)}/messages/star`,
+      body,
+    });
+  }
+
+  /** Remove a message's pin. */
+  unpin(sessionId: string, body: UnpinMessageRequest): Promise<SuccessResult> {
+    return this.client.request<SuccessResult>({
+      method: 'POST',
+      path: `/api/sessions/${encodeSegment(sessionId)}/messages/unpin`,
+      body,
+    });
+  }
+
+  /**
+   * Fetch a message's stored media bytes: the archived file when one exists, else the inline copy
+   * on the message row — which covers media sent by this account; 404 when neither holds bytes.
+   */
+  media(sessionId: string, chatId: string, messageId: string): Promise<BinaryResponse> {
+    return this.client.requestBytes({
+      method: 'GET',
+      path: `/api/sessions/${encodeSegment(sessionId)}/messages/${encodeSegment(chatId)}/${encodeSegment(messageId)}/media`,
     });
   }
 
@@ -238,8 +276,8 @@ export class MessagesResource {
   }
 
   /** Cancel a running batch. Requires an OPERATOR-level key. */
-  cancelBatch(sessionId: string, batchId: string): Promise<BatchStatusResponse> {
-    return this.client.request<BatchStatusResponse>({
+  cancelBatch(sessionId: string, batchId: string): Promise<BatchCancelResponse> {
+    return this.client.request<BatchCancelResponse>({
       method: 'POST',
       path: `/api/sessions/${encodeSegment(sessionId)}/messages/batch/${encodeSegment(batchId)}/cancel`,
     });

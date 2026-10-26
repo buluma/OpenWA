@@ -1,6 +1,6 @@
 package com.rmyndharis.openwa.model;
 
-/** Request body for unpinning a message from its chat. */
+/** Request body for removing a message's pin. */
 public record UnpinMessageRequest(String chatId, String messageId) {
     public static Builder builder() {
         return new Builder();

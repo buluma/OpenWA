@@ -44,7 +44,7 @@ describe('patch-wwebjs-201832 (build-time backport of upstream #201832)', () => 
   describe('gitApplyLeftTreeUntouched', () => {
     it.each([
       ['git never executed', { code: 'ENOENT' as const, status: undefined }],
-      ['a diff git could not parse', { status: 128, stderr: 'error: corrupt patch at line 7' }],
+      ['a diff git could not parse', { status: 128, stderr: 'error: corrupt patch at line 12' }],
       ['input git did not recognise', { status: 128, stderr: 'error: unrecognized input' }],
       ['a non-diff file', { status: 128, stderr: 'error: No valid patches in input (allow with "--allow-empty")' }],
       ['a bad invocation', { status: 128, stderr: 'usage: git apply [<options>] [<patch>...]' }],
@@ -69,7 +69,7 @@ describe('patch-wwebjs-201832 (build-time backport of upstream #201832)', () => 
    * A pristine (unpatched) copy of the installed whatsapp-web.js.
    *
    * The install itself is not a reliable fixture: `postinstall` applies this same backport, so
-   * node_modules is patched on a normal `npm install` but pristine in the Docker builder stage
+   * node_modules is patched on a normal `bun install` but pristine in the Docker builder stage
    * (which installs before `scripts/` is copied). Reverse the constructor rewrites on the copy so
    * every case starts from the same known-unpatched shape either way.
    */
@@ -125,7 +125,7 @@ describe('patch-wwebjs-201832 (build-time backport of upstream #201832)', () => 
     const injected = path.join(dir, 'src', 'util', 'Injected', 'Utils.js');
     const pristine = fs.readFileSync(injected, 'utf8');
     applyBackport(dir);
-    // `patch` writes in diff order and Injected/Utils.js is the LAST of the twelve files, one after
+    // `patch` writes in diff order and Injected/Utils.js is the LAST of the eleven files, one after
     // Message.js — which is what the stand-down check keys on. A run that died in that window leaves
     // exactly this tree: every structure constructor normalizes, so the tree reads as healthy, while the
     // browser-side normalizer every inbound message crosses never landed. Asserting only the structure
@@ -135,10 +135,57 @@ describe('patch-wwebjs-201832 (build-time backport of upstream #201832)', () => 
     expect(() => applyBackport(dir)).toThrow(/PARTIALLY patched[\s\S]*Injected\/Utils\.js/);
   });
 
+  // `patch` writes in diff order and Message.js is the 10th of 11 files, so a run that was killed usually
+  // stopped before it. Applying the diff again would reject the hunks of the nine files that landed (25 of
+  // them), leave their .rej files in the tree and call an interrupted install version skew.
+  it('refuses a tree whose run stopped before Message.js, without touching it', () => {
+    const dir = copyWwjs();
+    const messageJs = path.join(dir, 'src', 'structures', 'Message.js');
+    const utilsJs = path.join(dir, 'src', 'util', 'Injected', 'Utils.js');
+    const pristine = [messageJs, utilsJs].map(file => fs.readFileSync(file, 'utf8'));
+    applyBackport(dir);
+    fs.writeFileSync(messageJs, pristine[0]);
+    fs.writeFileSync(utilsJs, pristine[1]);
+
+    expect(() => applyBackport(dir)).toThrow(/PARTIALLY patched[\s\S]*Message\.js[\s\S]*reinstall/i);
+
+    expect(fs.readFileSync(messageJs, 'utf8')).toBe(pristine[0]);
+    const litter: string[] = [];
+    const walk = (current: string): void => {
+      for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+        const full = path.join(current, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (/\.(rej|orig)$/.test(entry.name)) litter.push(path.relative(dir, full));
+      }
+    };
+    walk(path.join(dir, 'src'));
+    expect(litter).toEqual([]);
+  });
+
+  // src/Client.js is the FIRST file `patch` writes, so a run that died right after it leaves every other
+  // file pristine. Its marker is a real one: the tree is refused, instead of the diff being applied again
+  // over the hunks of Client.js, which would reject them and call an interrupted install version skew.
+  it('refuses a tree whose run stopped right after the first file, without touching it', () => {
+    const done = copyWwjs();
+    applyBackport(done);
+    const dir = copyWwjs();
+    const clientJs = path.join(dir, 'src', 'Client.js');
+    fs.copyFileSync(path.join(done, 'src', 'Client.js'), clientJs);
+    const before = fs.readFileSync(clientJs, 'utf8');
+    const baseJs = path.join(dir, 'src', 'structures', 'Base.js');
+    const base = fs.readFileSync(baseJs, 'utf8');
+
+    expect(() => applyBackport(dir)).toThrow(/PARTIALLY patched[\s\S]*Message\.js[\s\S]*reinstall/i);
+
+    expect(fs.readFileSync(clientJs, 'utf8')).toBe(before);
+    expect(fs.readFileSync(baseJs, 'utf8')).toBe(base);
+    expect(fs.existsSync(`${clientJs}.rej`)).toBe(false);
+  });
+
   it('refuses to stand down on a half-patched tree', () => {
     const dir = copyWwjs();
-    // Exactly what a run that died mid-apply leaves: `patch` writes as it goes and Message.js is patched
-    // early, so the load-bearing constructor normalizes while its siblings never did. Standing down here
+    // Exactly what a run that died mid-apply leaves: `patch` writes as it goes and Message.js is the
+    // second to last file, so the load-bearing constructor normalizes while its siblings never did. Standing down here
     // latches the broken tree in for good — every later run reads Message.js and takes the same branch —
     // and ships a whatsapp-web.js whose ids work in some paths and not others.
     const msgJs = path.join(dir, 'src', 'structures', 'Message.js');
@@ -231,7 +278,7 @@ describe('patch-wwebjs-201832 (build-time backport of upstream #201832)', () => 
     expect(() => applyBackport(dir)).toThrow(/version skew/);
   });
 
-  // `npm ci` fires the postinstall hook (--best-effort) BEFORE the image build's strict run, so
+  // `bun install` fires the postinstall hook (--best-effort) BEFORE the image build's strict run, so
   // --best-effort decides what the strict run inherits. Both directions are load-bearing.
   describe('--best-effort', () => {
     it('still fails when the tree was already written', () => {
@@ -267,7 +314,7 @@ describe('patch-wwebjs-201832 (build-time backport of upstream #201832)', () => 
 
     it('falls back to `git apply` when only `patch` is missing', () => {
       // The Windows-outside-Git-Bash case, and the one that let #889 happen: git.exe is on PATH but
-      // patch.exe ships only inside Git Bash, so the backport was skipped and `npm install` still
+      // patch.exe ships only inside Git Bash, so the backport was skipped and `bun install` still
       // reported success. Anyone installing from source has git by definition, so the dep gets
       // patched instead of silently shipping broken.
       const dir = copyWwjs();
@@ -292,7 +339,7 @@ describe('patch-wwebjs-201832 (build-time backport of upstream #201832)', () => 
     it('degrades when neither `patch` nor git is installed, leaving the tree pristine', () => {
       const dir = copyWwjs();
       // With no applier at all (a stripped container, a Baileys-only setup), nothing was written and a
-      // warning beats breaking `npm install` — the trade this flag exists to make. Emptying PATH is what
+      // warning beats breaking `bun install` — the trade this flag exists to make. Emptying PATH is what
       // makes both lookups fail; node itself is invoked by absolute path and is unaffected.
       const emptyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wwjs-nopath-'));
       tmpDirs.push(emptyDir);
@@ -331,9 +378,9 @@ describe('patch-wwebjs-201832 (build-time backport of upstream #201832)', () => 
     }
 
     // #889: both appliers reject a patch whose lines end CRLF — a bare \r is not one of the
-    // ' '/'+'/'-'/'@' markers a unified diff allows, and line 7 of this patch is an empty context line,
+    // ' '/'+'/'-'/'@' markers a unified diff allows, and line 12 of this patch is an empty context line,
     // so both fail exactly there. On Windows core.autocrlf=true checks the file out that way, so the
-    // git fallback added FOR Windows could never run there and `npm install` died on the attempt.
+    // git fallback added FOR Windows could never run there and `bun install` died on the attempt.
     it('applies even when the patch file was checked out with CRLF line endings', () => {
       const dir = copyWwjs();
       const script = stageScriptWith(fs.readFileSync(PATCH_FILE, 'utf8').replace(/\r?\n/g, '\r\n'));
@@ -353,7 +400,7 @@ describe('patch-wwebjs-201832 (build-time backport of upstream #201832)', () => 
 
     // A patch the applier refuses to parse fails BEFORE writing anything, so the tree is pristine and
     // `--best-effort` must still degrade. Treating that as a half-patched tree is what turned a skippable
-    // install warning into a hard `npm install` failure on every native Windows source install.
+    // install warning into a hard `bun install` failure on every native Windows source install.
     it('degrades on an unparseable patch instead of failing the install', () => {
       const dir = copyWwjs();
       const script = stageScriptWith('this is not a diff\n');

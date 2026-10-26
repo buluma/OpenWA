@@ -25,6 +25,17 @@ import { CreateInstanceDto, InstanceView, UpdateInstanceDto } from './dto/instan
 import { sessionScopeVisible } from '../../common/security/session-scope';
 import { ApiTags, ApiResponse } from '@nestjs/swagger';
 
+const isWildcardScope = (scope: string | null): boolean => !scope || scope === '*';
+
+/**
+ * What the instance has put into the plugin's base config: its config while it is enabled on the wildcard
+ * scope, nothing otherwise. That merged config is where a secret the instance stops contributing would stay
+ * behind (see ScopeBindingService.applyScopeBinding), and an instance that was not contributing, being
+ * disabled or on one session, left nothing there to take back.
+ */
+const contributedConfig = (inst: PluginInstance): Record<string, unknown> | undefined =>
+  inst.enabled && isWildcardScope(inst.sessionScope) ? (inst.config ?? undefined) : undefined;
+
 // ADMIN-only provisioning surface for per-plugin instances (e.g. one Chatwoot account). Only plugins
 // that declare an ingress route AND the webhook:ingress permission can have instances; everything
 // else is rejected before touching persistence.
@@ -47,6 +58,10 @@ export class IntegrationInstanceController {
       'Instance created. The plaintext ingress secret and verifyToken are revealed once in this response — store them immediately (both masked on every later read).',
     type: InstanceView,
   })
+  @ApiResponse({ status: 400, description: 'Validation failed, or the plugin is not ingress-capable.' })
+  @ApiResponse({ status: 403, description: "sessionScope is outside the key's allowedSessions." })
+  @ApiResponse({ status: 404, description: 'Plugin not found.' })
+  @ApiResponse({ status: 409, description: 'An instance with that id already exists for the plugin' })
   async create(
     @Param('pluginId') pluginId: string,
     @Body() dto: CreateInstanceDto,
@@ -84,6 +99,7 @@ export class IntegrationInstanceController {
 
   @Get(':instanceId')
   @ApiResponse({ status: 200, description: 'The instance (secret masked).', type: InstanceView })
+  @ApiResponse({ status: 404, description: "Unknown instance, or one outside the key's allowedSessions." })
   async getOne(
     @Param('pluginId') pluginId: string,
     @Param('instanceId') instanceId: string,
@@ -101,6 +117,7 @@ export class IntegrationInstanceController {
       'Secret regenerated. The new plaintext secret is revealed once in this response; the verifyToken is also shown (unchanged).',
     type: InstanceView,
   })
+  @ApiResponse({ status: 404, description: "Unknown instance, or one outside the key's allowedSessions." })
   async regenerate(
     @Param('pluginId') pluginId: string,
     @Param('instanceId') instanceId: string,
@@ -108,6 +125,8 @@ export class IntegrationInstanceController {
   ): Promise<InstanceView> {
     await this.resolveVisible(pluginId, instanceId, apiKey);
     const inst = await this.instances.regenerateSecret(pluginId, instanceId);
+    // regenerateSecret() answers null when the row was deleted after resolveVisible read it.
+    if (!inst) throw new NotFoundException('instance not found');
     void this.audit.logInfo(AuditAction.INTEGRATION_INSTANCE_SECRET_REGENERATED, {
       metadata: { pluginId, instanceId },
     });
@@ -116,6 +135,9 @@ export class IntegrationInstanceController {
 
   @Patch(':instanceId')
   @ApiResponse({ status: 200, description: 'Instance updated (secret masked).', type: InstanceView })
+  @ApiResponse({ status: 400, description: 'Validation failed, or the masked config could not be restored.' })
+  @ApiResponse({ status: 403, description: "The new sessionScope is outside the key's allowedSessions." })
+  @ApiResponse({ status: 404, description: "Unknown instance, or one outside the key's allowedSessions." })
   async patch(
     @Param('pluginId') pluginId: string,
     @Param('instanceId') instanceId: string,
@@ -125,23 +147,33 @@ export class IntegrationInstanceController {
     let inst: PluginInstance | null = await this.resolveVisible(pluginId, instanceId, apiKey);
     if (dto.sessionScope !== undefined) this.assertScopeWritable(apiKey, dto.sessionScope);
     const previousScope = inst.sessionScope;
-    if (dto.enabled !== undefined) inst = await this.instances.setEnabled(pluginId, instanceId, dto.enabled);
-    if (dto.sessionScope !== undefined || dto.config !== undefined) {
+    const previousConfig = contributedConfig(inst);
+    // One update() writes every field in a single save. Restoring the masked config can refuse the
+    // PATCH with a 400 before that save, so a rejected body changes nothing, `enabled` included.
+    if (dto.enabled !== undefined || dto.sessionScope !== undefined || dto.config !== undefined) {
       inst = await this.instances.update(
         pluginId,
         instanceId,
-        { sessionScope: dto.sessionScope, config: dto.config },
+        { enabled: dto.enabled, sessionScope: dto.sessionScope, config: dto.config },
         this.schemaFor(pluginId),
       );
+      // update() answers null when the row was deleted after resolveVisible read it.
+      if (!inst) throw new NotFoundException('instance not found');
     }
-    const updated = inst as PluginInstance;
+    const updated = inst;
     // If the bound session changed, tear down the OLD scope (incl. a wildcard/null scope) so it stops
     // firing with stale config. The new scope is (re)bound right after; teardown runs first with the new
     // scope already persisted, so the wildcard retirement check sees the current state correctly.
     if (previousScope !== updated.sessionScope) {
-      await this.scopeBinding.applyScopeBinding(pluginId, previousScope, {}, false);
+      // A move between the spellings of the wildcard scope is re-bound right below: retracting here would
+      // only hand the running plugin a config without its secrets for the length of one call.
+      await this.scopeBinding.applyScopeBinding(pluginId, previousScope, {}, false, {
+        previousConfig: isWildcardScope(updated.sessionScope) ? undefined : previousConfig,
+      });
     }
-    await this.scopeBinding.applyScopeBinding(pluginId, updated.sessionScope, updated.config ?? {}, updated.enabled);
+    await this.scopeBinding.applyScopeBinding(pluginId, updated.sessionScope, updated.config ?? {}, updated.enabled, {
+      previousConfig,
+    });
     // Audit the successful update with the CHANGED FIELD NAMES only — never the values: a config patch
     // can carry credentials, and audit metadata is not a credential store.
     const updatedFields = (['enabled', 'sessionScope', 'config'] as const).filter(f => dto[f] !== undefined);
@@ -154,6 +186,11 @@ export class IntegrationInstanceController {
   @Delete(':instanceId')
   @HttpCode(204)
   @ApiResponse({ status: 204, description: 'Instance deleted and its session scope torn down.' })
+  @ApiResponse({ status: 404, description: "Unknown instance, or one outside the key's allowedSessions." })
+  @ApiResponse({
+    status: 503,
+    description: 'On SQLite, another database transaction stayed open for 10 s; nothing was deleted, so retry.',
+  })
   async remove(
     @Param('pluginId') pluginId: string,
     @Param('instanceId') instanceId: string,
@@ -164,7 +201,7 @@ export class IntegrationInstanceController {
     // Delete the row FIRST, then tear down its scope: for a wildcard/null scope the teardown lists the
     // remaining instances to decide whether to retire '*', and that check must not count this instance.
     await this.instances.remove(pluginId, instanceId);
-    await this.scopeBinding.applyScopeBinding(pluginId, scope, {}, false);
+    await this.scopeBinding.applyScopeBinding(pluginId, scope, {}, false, { previousConfig: contributedConfig(inst) });
     void this.audit.logInfo(AuditAction.INTEGRATION_INSTANCE_DELETED, { metadata: { pluginId, instanceId } });
   }
 
