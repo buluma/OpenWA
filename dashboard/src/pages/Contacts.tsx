@@ -12,6 +12,7 @@ import {
   useRemoveContactMutation,
 } from '../hooks/queries';
 import type { Contact } from '../services/api';
+import { filterContacts } from '../utils/chatFilters';
 import './Contacts.css';
 
 function errorMessage(err: unknown): string {
@@ -39,17 +40,7 @@ export function Contacts() {
   const [newContactId, setNewContactId] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<Contact | null>(null);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return contacts;
-    return contacts.filter(
-      c =>
-        c.id.toLowerCase().includes(q) ||
-        c.name?.toLowerCase().includes(q) ||
-        c.pushName?.toLowerCase().includes(q) ||
-        c.number?.toLowerCase().includes(q),
-    );
-  }, [contacts, search]);
+  const filtered = useMemo(() => filterContacts(contacts, search), [contacts, search]);
 
   const openAdd = () => {
     setNewContactId('');
@@ -153,8 +144,17 @@ export function Contacts() {
           {filtered.map(contact => (
             <div key={contact.id} className="contact-row">
               <div className="contact-info">
-                <span className="contact-name">{contact.name || contact.pushName || contact.number}</span>
-                <span className="contact-id">{contact.id}</span>
+                <span className="contact-name">
+                  {contact.name ||
+                    contact.pushName ||
+                    (contact.username ? `@${contact.username.replace(/^@+/, '')}` : contact.number)}
+                </span>
+                <span className="contact-id">
+                  {contact.username && (contact.name || contact.pushName)
+                    ? `@${contact.username.replace(/^@+/, '')} · `
+                    : ''}
+                  {contact.id}
+                </span>
               </div>
               <div className="contact-badges"></div>
               {canWrite && (

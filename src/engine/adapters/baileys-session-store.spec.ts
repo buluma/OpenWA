@@ -139,6 +139,16 @@ describe('BaileysSessionStore', () => {
     ]);
   });
 
+  it('copies a username from an unnamed LID twin onto its saved phone contact', () => {
+    store.upsertContacts([{ id: '111@lid', username: 'alice' }]);
+    store.upsertContacts([{ id: '628111@s.whatsapp.net', lid: '111@lid', name: 'Alice' }]);
+    store.recordKeyLidMappings({ remoteJid: '111@lid', remoteJidAlt: '628111@s.whatsapp.net' });
+
+    expect(store.listContacts()).toEqual([
+      expect.objectContaining({ id: '628111@c.us', name: 'Alice', username: 'alice', number: '628111' }),
+    ]);
+  });
+
   it('answers for a saved lid-only contact whose lid has no mapping', () => {
     // Projecting a contact resolves its lid through the store's OWN contacts map, and a read there
     // moves the entry to the most-recent end. Listing over the live map therefore handed this entry
@@ -1339,6 +1349,19 @@ describe('BaileysSessionStore', () => {
         }),
       };
     };
+
+    it('resolves a phone chat username through a persisted LID mapping', () => {
+      const lidStore = {
+        ...makeFakeLidStore(),
+        lidsForPhone: jest.fn((phone: string) => (phone === '628111' ? ['484848'] : [])),
+      };
+      const s = new BaileysSessionStore(lidStore, 'sess-1');
+      s.upsertContacts([{ id: '484848@lid', username: 'alice' }]);
+      s.upsertChats([{ id: '628111@s.whatsapp.net' }]);
+
+      expect(s.listChats()[0].username).toBe('alice');
+      expect(lidStore.lidsForPhone).toHaveBeenCalledWith('628111');
+    });
 
     it('writes learned mappings through to the table (bare digits + session provenance)', () => {
       const lidStore = makeFakeLidStore();

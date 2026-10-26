@@ -425,8 +425,7 @@
   text-overflow: ellipsis;
 }
 
-/* Prettified phone (or "Group" / "Private contact" label for non-personal JIDs). Primary subtitle
-   line directly under the name — what an operator reads first. */
+/* Prettified phone (or "Group" / "Private contact" label for non-personal JIDs). */
 .chats-page .room-contact-phone {
   font-size: 0.8125rem;
   color: var(--text-muted);
@@ -435,6 +434,13 @@
      order inside Arabic and Hebrew pages. A line of digits resolves to left to right, so the box hugs the
      start edge of the header (the right one in RTL, where the name is) instead of stretching across it. */
   unicode-bidi: plaintext;
+  align-self: flex-start;
+}
+
+.chats-page .room-contact-username {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  line-height: 1.2;
   align-self: flex-start;
 }
 

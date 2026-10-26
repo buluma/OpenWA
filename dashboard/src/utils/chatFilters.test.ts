@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   applyChatListFilter,
   contactKey,
+  filterContacts,
   filterChats,
   filterChannels,
   groupStatusesByContact,
@@ -104,6 +105,15 @@ test('search matches name or id, case-insensitively, and an absent name never th
     filterChats(all, 'zzz').map(c => c.id),
     [],
   );
+});
+
+test('search matches the @username text shown in Chats and Contacts', () => {
+  const chats = [{ ...chat('628111@lid', 'Alice', 'individual'), username: 'alice' }];
+  const contacts = [{ id: '628111@c.us', name: 'Alice', username: 'alice', number: '628111' }];
+
+  assert.deepEqual(filterChats(chats, '@alice'), chats);
+  assert.deepEqual(filterContacts(contacts, '@alice'), contacts);
+  assert.deepEqual(filterContacts(contacts, '628111'), contacts);
 });
 
 test('channels match on their own name and id', () => {

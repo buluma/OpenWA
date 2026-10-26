@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Trans, useTranslation } from 'react-i18next';
 import { nextReconnectState } from '../utils/reconnectState';
 import { applyIncomingToChatList, promoteChatWithSnippet } from '../utils/chatList';
+import { chatHeaderDisplayName, formatWhatsAppUsername, shouldShowTechnicalChatId } from '../utils/chatIdentity';
 import {
   applyChatListFilter,
   contactKey,
@@ -1647,6 +1648,11 @@ export function Chats() {
     [messages, formatChatTime],
   );
 
+  const headerChat = activeChat ? (chats.find(chat => chat.id === activeChat.id) ?? activeChat) : null;
+  const activeChatDisplayName = headerChat ? chatHeaderDisplayName(headerChat) : '';
+  const activeChatUsername = headerChat ? formatWhatsAppUsername(headerChat.username) : undefined;
+  const showTechnicalChatId = headerChat ? shouldShowTechnicalChatId(headerChat, Boolean(activePhoneText)) : false;
+
   return (
     <div className="chats-page">
       <PageHeader
@@ -1766,7 +1772,10 @@ export function Chats() {
                     )}
                   </div>
                   <div className="room-contact-info">
-                    <h3>{activeChat.name || activeChat.id.split('@')[0]}</h3>
+                    <h3>{activeChatDisplayName}</h3>
+                    {activeChatUsername && activeChatDisplayName !== activeChatUsername && (
+                      <span className="room-contact-username">{activeChatUsername}</span>
+                    )}
                     {/* Personal chats show the prettified phone number — local formatting for
                         @c.us ids, engine-resolved for @lid privacy ids (which are NOT phones and
                         must never be formatted as one). Groups fall back to a semantic label;
@@ -1778,9 +1787,11 @@ export function Chats() {
                     {/* Raw JID preserved for the technical case (the gateway speaks JIDs everywhere:
                         webhooks, message rows, lid resolution). Monospace + muted so it doesn't compete
                         with the human-facing name/number. */}
-                    <span className="room-contact-jid" title={activeChat.id}>
-                      {activeChat.id}
-                    </span>
+                    {showTechnicalChatId && (
+                      <span className="room-contact-jid" title={activeChat.id}>
+                        {activeChat.id}
+                      </span>
+                    )}
                   </div>
                   <div className="room-header-actions">
                     <div className="room-menu" ref={roomMenuRef}>

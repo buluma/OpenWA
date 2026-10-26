@@ -26,6 +26,9 @@ export class ContactDto {
   })
   pushName?: string;
 
+  @ApiPropertyOptional({ description: 'WhatsApp username, when available.', example: 'alice' })
+  username?: string;
+
   @ApiProperty({ description: 'MSISDN digits, without a leading + or any separators.', example: '628123456789' })
   number!: string;
 

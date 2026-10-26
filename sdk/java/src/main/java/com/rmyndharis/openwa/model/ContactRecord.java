@@ -14,8 +14,17 @@ package com.rmyndharis.openwa.model;
 public record ContactRecord(
     String id,
     String name,
+    String username,
     String number,
     String pushName,
     Boolean isMyContact,
     Boolean isBlocked,
-    String profilePicUrl) {}
+    String profilePicUrl) {
+
+    /** Construct a contact without username metadata. */
+    public ContactRecord(
+        String id, String name, String number, String pushName, Boolean isMyContact,
+        Boolean isBlocked, String profilePicUrl) {
+        this(id, name, null, number, pushName, isMyContact, isBlocked, profilePicUrl);
+    }
+}

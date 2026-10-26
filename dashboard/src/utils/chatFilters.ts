@@ -7,6 +7,7 @@
  * functions they take the query as an argument and can be tested.
  */
 import { normalizePhoneText } from './phone.ts';
+import { formatWhatsAppUsername } from './chatIdentity.ts';
 
 // The last query as matches() reads it. Every filter calls matches() once per row on every render of the Chats page,
 // and folding a native digit walks back to its script's zero, so the fold is made once per query, not once per row.
@@ -29,6 +30,7 @@ export const matches = (query: string, ...fields: (string | undefined)[]): boole
 interface ChatLike {
   id: string;
   name?: string;
+  username?: string;
   kind?: string;
 }
 
@@ -37,7 +39,29 @@ interface ChatLike {
  * their own tabs instead, so a channel never appears twice.
  */
 export function filterChats<T extends ChatLike>(chats: T[], query: string): T[] {
-  return chats.filter(c => c.kind !== 'channel' && c.kind !== 'status' && matches(query, c.name, c.id));
+  return chats.filter(
+    c =>
+      c.kind !== 'channel' && c.kind !== 'status' && matches(query, c.name, formatWhatsAppUsername(c.username), c.id),
+  );
+}
+
+interface ContactLike {
+  id: string;
+  name?: string;
+  pushName?: string;
+  username?: string;
+  number?: string;
+}
+
+/** Contacts tab: search the same username text that its row displays, including the `@` prefix. */
+export function filterContacts<T extends ContactLike>(contacts: T[], query: string): T[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return contacts;
+  return contacts.filter(c =>
+    [c.id, c.name, c.pushName, formatWhatsAppUsername(c.username), c.number].some(value =>
+      value?.toLowerCase().includes(q),
+    ),
+  );
 }
 
 /** The quick filters above the Chats tab list, applied after the search box. */
@@ -125,7 +149,7 @@ interface StatusItemLike<C> {
  * is pinned by a test rather than left inline.
  */
 export function groupStatusesByContact<
-  C extends { id: string; name?: string; pushName?: string },
+  C extends { id: string; name?: string; pushName?: string; username?: string },
   T extends StatusItemLike<C>,
 >(statuses: T[], query: string): { contact: C; items: T[]; latest: string }[] {
   const byContact = new Map<string, { contact: C; items: T[]; latest: string }>();
@@ -140,6 +164,6 @@ export function groupStatusesByContact<
   }
   for (const group of byContact.values()) group.items.reverse();
   return Array.from(byContact.values())
-    .filter(g => matches(query, g.contact.name, g.contact.pushName, g.contact.id))
+    .filter(g => matches(query, g.contact.name, g.contact.pushName, g.contact.username, g.contact.id))
     .sort((a, b) => (a.latest < b.latest ? 1 : a.latest > b.latest ? -1 : 0));
 }

@@ -13,6 +13,9 @@ export class ChatSummaryDto {
   @ApiProperty({ example: 'Alice' })
   name!: string;
 
+  @ApiPropertyOptional({ description: 'WhatsApp username, when available.', example: 'alice' })
+  username?: string;
+
   @ApiProperty({ description: 'Retained for back-compat; true for @g.us chats.', example: false })
   isGroup!: boolean;
 

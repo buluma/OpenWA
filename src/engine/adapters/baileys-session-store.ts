@@ -157,6 +157,7 @@ function mergeContactTwins(a: ContactTwin, b: ContactTwin): ContactTwin {
       id: primary.contact.id,
       name: primary.contact.name ?? secondary.contact.name,
       pushName: primary.contact.pushName ?? secondary.contact.pushName,
+      username: primary.contact.username ?? secondary.contact.username,
       number: primary.contact.number || secondary.contact.number,
       isMyContact: primary.contact.isMyContact || secondary.contact.isMyContact,
       isBlocked: primary.contact.isBlocked || secondary.contact.isBlocked,
@@ -428,6 +429,12 @@ export class BaileysSessionStore {
     if (!chatId || !msg.key) {
       return;
     }
+    // Baileys puts a username on the message key, even when no Contact.username update was synced.
+    // Keep it in the same bounded contact cache so chat summaries can surface it immediately.
+    const identityKind = parseWaId(chatId).kind;
+    if (msg.key.remoteJidUsername && (identityKind === 'user' || identityKind === 'lid')) {
+      this.upsertContacts([{ id: chatId, username: msg.key.remoteJidUsername }]);
+    }
     // Learn the chat's disappearing-messages timer from the message itself (#473). This runs before the
     // newest-message guard so every inbound refreshes it; the timer is cached under both the raw and
     // neutral JID so an outbound send addressed in either dialect (phone or @lid) finds it.
@@ -572,13 +579,25 @@ export class BaileysSessionStore {
     // most-recent end. Iterating the live map therefore hands the same entry back forever, a
     // synchronous loop that wedges the process rather than answering the request.
     const byId = new Map<string, ContactTwin>();
+    const unnamedUsernames = new Map<string, string>();
     for (const c of [...this.contacts.values()]) {
-      if (!c.name) continue;
-      const twin: ContactTwin = { contact: this.toNeutralContact(c), rawId: c.id };
+      const contact = this.toNeutralContact(c);
+      if (!c.name) {
+        if (contact.username) {
+          const phone = parseWaId(contact.id).kind === 'lid' ? this.resolvePhone(contact.id) : null;
+          const usernameId = phone ? `${phone}@c.us` : contact.id;
+          unnamedUsernames.set(usernameId, contact.username);
+        }
+        continue;
+      }
+      const twin: ContactTwin = { contact, rawId: c.id };
       const existing = byId.get(twin.contact.id);
       byId.set(twin.contact.id, existing ? mergeContactTwins(existing, twin) : twin);
     }
-    return [...byId.values()].map(t => t.contact);
+    return [...byId.values()].map(t => ({
+      ...t.contact,
+      username: t.contact.username ?? unnamedUsernames.get(t.contact.id),
+    }));
   }
 
   findContact(id: string): Contact | null {
@@ -780,6 +799,7 @@ export class BaileysSessionStore {
       id,
       name: c.name ?? c.verifiedName,
       pushName: c.notify,
+      username: c.username,
       number,
       // Baileys distinguishes the two names: `name` is documented as the one YOU saved on your
       // WhatsApp, `notify` as the pushname the contact set themselves. Reporting true for everyone
@@ -819,6 +839,7 @@ export class BaileysSessionStore {
     return {
       id,
       name: c.name ?? others.find(o => o.name)?.name ?? this.resolveContactName(rawId),
+      username: last?.key.remoteJidUsername || this.resolveContactUsername(rawId, lidIndex),
       isGroup: rawId.endsWith('@g.us'),
       kind: chatKind(id),
       // From the most recently active record that has one: new messages to a lid-migrated contact
@@ -1013,6 +1034,38 @@ export class BaileysSessionStore {
   private contactDisplayName(id: string): string | undefined {
     const c = this.contacts.get(id);
     return c ? (c.name ?? c.verifiedName ?? c.notify ?? undefined) : undefined;
+  }
+
+  /** Best-effort username lookup across the phone and LID spellings of this contact. */
+  private resolveContactUsername(id: string, lidIndex: Map<string, string[]>): string | undefined {
+    const direct = this.contacts.get(id)?.username;
+    if (direct) return direct;
+
+    const parsed = parseWaId(id);
+    if (parsed.kind === 'user') {
+      const phoneUsername =
+        this.contacts.get(`${parsed.userPart}@s.whatsapp.net`)?.username ??
+        this.contacts.get(`${parsed.userPart}@c.us`)?.username;
+      if (phoneUsername) return phoneUsername;
+      const lids = new Set([
+        ...(lidIndex.get(parsed.userPart) ?? []),
+        ...(this.lidStore?.lidsForPhone(parsed.userPart) ?? []).map(lid => `${lid}@lid`),
+      ]);
+      for (const lid of lids) {
+        const username = this.contacts.get(lid)?.username;
+        if (username) return username;
+      }
+      return undefined;
+    }
+    if (parsed.kind !== 'lid') return undefined;
+
+    const lidJid = `${parsed.userPart}@lid`;
+    const phone = this.lidToPn.get(lidJid) ?? this.lidToPn.get(id);
+    const phoneDigits = phone ? userPart(phone) : this.resolvePhone(id);
+    return (
+      this.contacts.get(lidJid)?.username ??
+      (phoneDigits ? this.contacts.get(`${phoneDigits}@s.whatsapp.net`)?.username : undefined)
+    );
   }
 
   private toUnixSeconds(ts: number | { toNumber(): number } | null | undefined): number {

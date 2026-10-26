@@ -6,6 +6,7 @@ import "net/url"
 type ChatSummary struct {
 	ID              string      `json:"id"`
 	Name            string      `json:"name"`
+	Username        *string     `json:"username,omitempty"`
 	IsGroup         bool        `json:"isGroup"`
 	UnreadCount     int         `json:"unreadCount"`
 	LastMessage     string      `json:"lastMessage,omitempty"`

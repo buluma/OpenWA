@@ -253,6 +253,7 @@ export interface Contact {
   id: string;
   name?: string;
   pushName?: string;
+  username?: string;
   number: string;
   isMyContact: boolean;
   isBlocked: boolean;
@@ -563,6 +564,8 @@ export interface PaginatedProducts {
 export interface ChatSummary {
   id: string;
   name: string;
+  /** WhatsApp username, when available. The chat remains addressed by `id`. */
+  username?: string;
   isGroup: boolean;
   /** User-facing chat kind. `isGroup` is retained for back-compat; `kind` is the full discriminator. */
   kind: ChatKind;

@@ -767,6 +767,7 @@ class ContactRecord(TypedDict):
 
     id: Jid
     name: NotRequired[str]
+    username: NotRequired[str]
     number: str
     pushName: NotRequired[str]
     isMyContact: bool
@@ -1054,6 +1055,7 @@ class WebhookRedriveResult(TypedDict):
 class ChatSummary(TypedDict):
     id: Jid
     name: str
+    username: NotRequired[str]
     isGroup: bool
     unreadCount: int
     # Server returns a plain preview string, not a message object.
