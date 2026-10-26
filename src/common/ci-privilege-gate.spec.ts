@@ -1481,7 +1481,7 @@ describe('a job that can mint a publish credential pins global npm installs and 
       ],
       [
         'an unexpected publisher environment value',
-        w => ((steps(w)[publish].env ??= {}).NPM_CONFIG_TOKEN = 'unscoped-token'),
+        w => (((steps(w)[publish].env ??= {}) as Record<string, unknown>).NPM_CONFIG_TOKEN = 'unscoped-token'),
         [
           `publish step ${publish + 1} "${PUBLISH}": env NPM_CONFIG_TOKEN: unscoped-token, expected ` +
             '${{ secrets.NPM_CONFIG_TOKEN }}',

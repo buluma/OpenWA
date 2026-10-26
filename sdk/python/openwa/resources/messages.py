@@ -140,21 +140,6 @@ class MessagesResource:
             "GET", f"/api/sessions/{quote_segment(session_id)}/messages/{quote_segment(chat_id)}/{quote_segment(message_id)}/reactions"
         )
 
-    def pin(self, session_id: str, body: PinMessageRequest) -> SuccessResult:
-        """Pin a message. ``durationSeconds`` must be 86400, 604800 or 2592000; defaults to 24h."""
-        return self._http.request("POST", f"/api/sessions/{quote_segment(session_id)}/messages/pin", body=body)
-
-    def vote_poll(self, session_id: str, body: VotePollRequest) -> SuccessResult:
-        """Cast a vote on a poll. Not supported on the Baileys engine (501)."""
-        return self._http.request("POST", f"/api/sessions/{quote_segment(session_id)}/messages/vote-poll", body=body)
-
-    def star(self, session_id: str, body: StarMessageRequest) -> SuccessResult:
-        """Star or unstar a message. Best-effort on whatsapp-web.js."""
-        return self._http.request("POST", f"/api/sessions/{quote_segment(session_id)}/messages/star", body=body)
-
-    def unpin(self, session_id: str, body: UnpinMessageRequest) -> SuccessResult:
-        return self._http.request("POST", f"/api/sessions/{quote_segment(session_id)}/messages/unpin", body=body)
-
     def media(self, session_id: str, chat_id: str, message_id: str) -> MessageMedia:
         """Fetch a message's stored media bytes: the archived file when one exists, else the
         inline copy on the message row (covers media sent by this account); 404 when neither
