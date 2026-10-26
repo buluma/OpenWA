@@ -42,6 +42,9 @@ describe('Bun manifests and locks', () => {
     const dockerfile = readFileSync(join(repo, 'Dockerfile'), 'utf8');
     expect(version).toMatch(/^\d+\.\d+\.\d+$/);
     expect(manifest.packageManager).toBe(`bun@${version}`);
-    expect(dockerfile).toContain(`oven/bun:${version}`);
+    expect(dockerfile).toContain(`FROM --platform=$BUILDPLATFORM oven/bun:${version} AS bun-cli-build`);
+    expect(dockerfile).toContain(`FROM oven/bun:${version} AS bun-cli-target`);
+    expect(dockerfile).toContain('COPY --from=bun-cli-build /usr/local/bin/bun /usr/local/bin/bun');
+    expect(dockerfile).toContain('COPY --from=bun-cli-target /usr/local/bin/bun /usr/local/bin/bun');
   });
 });

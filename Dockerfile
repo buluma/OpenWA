@@ -1,6 +1,11 @@
 # OpenWA - Dockerfile
 # Multi-stage build for production-ready image
 
+# Bun's binary is architecture-specific. The builder runs on BUILDPLATFORM, while the
+# production dependency install runs on TARGETPLATFORM; keep a matching CLI for each stage.
+FROM --platform=$BUILDPLATFORM oven/bun:1.4.4 AS bun-cli-build
+FROM oven/bun:1.4.4 AS bun-cli-target
+
 # ===== Stage 1: Builder =====
 # Pin the builder to the BUILD host's platform (not the target's). It only produces arch-INDEPENDENT
 # artifacts (the NestJS dist/ JS and the static dashboard SPA), so it never needs to run emulated for
@@ -15,10 +20,8 @@
 # security-scan.yml fails once the pin differs from what the tag serves and either the tag has
 # served that image for 7 or more days, or for 3 or more days with the pin last changed 28 or more
 # days ago. Update both stages together.
-FROM oven/bun:1.4.4 AS bun-cli
-
 FROM --platform=$BUILDPLATFORM docker.io/node:22-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d AS builder
-COPY --from=bun-cli /usr/local/bin/bun /usr/local/bin/bun
+COPY --from=bun-cli-build /usr/local/bin/bun /usr/local/bin/bun
 
 WORKDIR /app
 
@@ -67,7 +70,7 @@ RUN bun run build && bun run dashboard:ci && bun run dashboard:build && rm -f di
 # ===== Stage 2: Production =====
 # Same digest-pinned node:22-slim base as the builder stage.
 FROM docker.io/node:22-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d AS production
-COPY --from=bun-cli /usr/local/bin/bun /usr/local/bin/bun
+COPY --from=bun-cli-target /usr/local/bin/bun /usr/local/bin/bun
 
 # Run the app with production defaults from the first boot: an unset NODE_ENV selects the
 # development branch of the CORS/Swagger/DTO-error-detail/default-secret hardening (main.ts
