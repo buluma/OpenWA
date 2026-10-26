@@ -101,6 +101,7 @@ const PUSH_ONLY_CONTACT = {
   isBlocked: false,
 };
 const LID_CHAT: Chat = { ...CHAT, id: '262813461250071@lid', name: 'Lia', lastMessage: 'from a lid' };
+let lidUsername: string | undefined;
 // A contact the address book holds as saved under a name that reads like a number.
 const NUMBER_NAMED_CHAT: Chat = { ...CHAT, id: '15550003333@c.us', name: '+1 555 000 3333', lastMessage: 'hey' };
 const NUMBER_NAMED_CONTACT = {
@@ -193,7 +194,9 @@ function installFetchStub(): void {
         jsonResponse([
           { ...CHAT, ...aliceNow },
           ...(listGroup ? [GROUP] : []),
-          ...(listExtra ? [PUSH_ONLY_CHAT, LID_CHAT, NUMBER_NAMED_CHAT] : []),
+          ...(listExtra
+            ? [PUSH_ONLY_CHAT, { ...LID_CHAT, ...(lidUsername ? { username: lidUsername } : {}) }, NUMBER_NAMED_CHAT]
+            : []),
           ...Array.from({ length: extraLidChats }, (_, n) => extraLidChat(n)),
         ]),
       );
@@ -382,6 +385,7 @@ afterEach(async () => {
   fetchCalls.length = 0;
   listSecond = false;
   listExtra = false;
+  lidUsername = undefined;
   listDuplicateContact = false;
   failContacts = false;
   failLidPhones = false;
@@ -514,6 +518,21 @@ async function startChatWithTypedNumber(): Promise<void> {
 }
 
 const listedChatCards = (container: HTMLElement) => container.querySelectorAll('.chats-list .chat-item-card').length;
+
+test('a privacy-id chat with a username and resolved phone hides the LID in the room header', async () => {
+  const { screen, fireEvent, waitFor } = rtl;
+  listExtra = true;
+  lidUsername = 'call_me_kira';
+  lidPhones[LID_CHAT.id] = '15550009999';
+  const { container } = renderPage();
+  fireEvent.click(await screen.findByText('Lia'));
+
+  await waitFor(() => assert.ok(container.querySelector('.room-header'), 'the room did not open'));
+  const header = container.querySelector('.room-header') as HTMLElement;
+  assert.equal(header.querySelector('.room-contact-info h3')?.textContent, '@call_me_kira');
+  await waitFor(() => assert.equal(header.querySelector('.room-contact-phone')?.textContent, '+1 555 000 9999'));
+  assert.equal(header.querySelector('.room-contact-jid'), null, 'the internal LID was still shown');
+});
 
 test('a typed number whose chat the list holds under a privacy id opens that chat, not a new one', async () => {
   const { screen, waitFor, within } = rtl;

@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Trans, useTranslation } from 'react-i18next';
 import { nextReconnectState } from '../utils/reconnectState';
 import { applyIncomingToChatList, promoteChatWithSnippet } from '../utils/chatList';
-import { chatDisplayName, formatWhatsAppUsername } from '../utils/chatIdentity';
+import { chatHeaderDisplayName, formatWhatsAppUsername, shouldShowTechnicalChatId } from '../utils/chatIdentity';
 import {
   applyChatListFilter,
   contactKey,
@@ -1648,8 +1648,9 @@ export function Chats() {
     [messages, formatChatTime],
   );
 
-  const activeChatDisplayName = activeChat ? chatDisplayName(activeChat) : '';
+  const activeChatDisplayName = activeChat ? chatHeaderDisplayName(activeChat) : '';
   const activeChatUsername = activeChat ? formatWhatsAppUsername(activeChat.username) : undefined;
+  const showTechnicalChatId = activeChat ? shouldShowTechnicalChatId(activeChat, Boolean(activePhoneText)) : false;
 
   return (
     <div className="chats-page">
@@ -1785,9 +1786,11 @@ export function Chats() {
                     {/* Raw JID preserved for the technical case (the gateway speaks JIDs everywhere:
                         webhooks, message rows, lid resolution). Monospace + muted so it doesn't compete
                         with the human-facing name/number. */}
-                    <span className="room-contact-jid" title={activeChat.id}>
-                      {activeChat.id}
-                    </span>
+                    {showTechnicalChatId && (
+                      <span className="room-contact-jid" title={activeChat.id}>
+                        {activeChat.id}
+                      </span>
+                    )}
                   </div>
                   <div className="room-header-actions">
                     <div className="room-menu" ref={roomMenuRef}>
