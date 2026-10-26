@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Trans, useTranslation } from 'react-i18next';
 import { nextReconnectState } from '../utils/reconnectState';
 import { applyIncomingToChatList, promoteChatWithSnippet } from '../utils/chatList';
+import { chatDisplayName, formatWhatsAppUsername } from '../utils/chatIdentity';
 import {
   applyChatListFilter,
   contactKey,
@@ -1647,6 +1648,9 @@ export function Chats() {
     [messages, formatChatTime],
   );
 
+  const activeChatDisplayName = activeChat ? chatDisplayName(activeChat) : '';
+  const activeChatUsername = activeChat ? formatWhatsAppUsername(activeChat.username) : undefined;
+
   return (
     <div className="chats-page">
       <PageHeader
@@ -1766,7 +1770,10 @@ export function Chats() {
                     )}
                   </div>
                   <div className="room-contact-info">
-                    <h3>{activeChat.name || activeChat.id.split('@')[0]}</h3>
+                    <h3>{activeChatDisplayName}</h3>
+                    {activeChatUsername && activeChatDisplayName !== activeChatUsername && (
+                      <span className="room-contact-username">{activeChatUsername}</span>
+                    )}
                     {/* Personal chats show the prettified phone number — local formatting for
                         @c.us ids, engine-resolved for @lid privacy ids (which are NOT phones and
                         must never be formatted as one). Groups fall back to a semantic label;

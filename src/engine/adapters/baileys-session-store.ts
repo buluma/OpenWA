@@ -157,6 +157,7 @@ function mergeContactTwins(a: ContactTwin, b: ContactTwin): ContactTwin {
       id: primary.contact.id,
       name: primary.contact.name ?? secondary.contact.name,
       pushName: primary.contact.pushName ?? secondary.contact.pushName,
+      username: primary.contact.username ?? secondary.contact.username,
       number: primary.contact.number || secondary.contact.number,
       isMyContact: primary.contact.isMyContact || secondary.contact.isMyContact,
       isBlocked: primary.contact.isBlocked || secondary.contact.isBlocked,
@@ -780,6 +781,7 @@ export class BaileysSessionStore {
       id,
       name: c.name ?? c.verifiedName,
       pushName: c.notify,
+      username: c.username,
       number,
       // Baileys distinguishes the two names: `name` is documented as the one YOU saved on your
       // WhatsApp, `notify` as the pushname the contact set themselves. Reporting true for everyone
@@ -819,6 +821,7 @@ export class BaileysSessionStore {
     return {
       id,
       name: c.name ?? others.find(o => o.name)?.name ?? this.resolveContactName(rawId),
+      username: this.resolveContactUsername(rawId, lidIndex),
       isGroup: rawId.endsWith('@g.us'),
       kind: chatKind(id),
       // From the most recently active record that has one: new messages to a lid-migrated contact
@@ -1013,6 +1016,34 @@ export class BaileysSessionStore {
   private contactDisplayName(id: string): string | undefined {
     const c = this.contacts.get(id);
     return c ? (c.name ?? c.verifiedName ?? c.notify ?? undefined) : undefined;
+  }
+
+  /** Best-effort username lookup across the phone and LID spellings of this contact. */
+  private resolveContactUsername(id: string, lidIndex: Map<string, string[]>): string | undefined {
+    const direct = this.contacts.get(id)?.username;
+    if (direct) return direct;
+
+    const parsed = parseWaId(id);
+    if (parsed.kind === 'user') {
+      const phoneUsername =
+        this.contacts.get(`${parsed.userPart}@s.whatsapp.net`)?.username ??
+        this.contacts.get(`${parsed.userPart}@c.us`)?.username;
+      if (phoneUsername) return phoneUsername;
+      for (const lid of lidIndex.get(parsed.userPart) ?? []) {
+        const username = this.contacts.get(lid)?.username;
+        if (username) return username;
+      }
+      return undefined;
+    }
+    if (parsed.kind !== 'lid') return undefined;
+
+    const lidJid = `${parsed.userPart}@lid`;
+    const phone = this.lidToPn.get(lidJid) ?? this.lidToPn.get(id);
+    const phoneDigits = phone ? userPart(phone) : this.resolvePhone(id);
+    return (
+      this.contacts.get(lidJid)?.username ??
+      (phoneDigits ? this.contacts.get(`${phoneDigits}@s.whatsapp.net`)?.username : undefined)
+    );
   }
 
   private toUnixSeconds(ts: number | { toNumber(): number } | null | undefined): number {

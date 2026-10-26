@@ -250,6 +250,7 @@ export const CHAT_KINDS: readonly ChatKind[] = ['individual', 'group', 'channel'
 export interface Chat {
   id: string;
   name: string;
+  username?: string;
   isGroup: boolean;
   kind: ChatKind;
   unreadCount: number;
@@ -471,11 +472,12 @@ export interface GroupParticipantsAck extends GroupAck {
 }
 
 // An entry of the session's address book, from GET /sessions/:id/contacts: what the recipient pickers and the
-// chat list's saved-contact check read. Only the name, push name and picture are optional.
+// chat list's saved-contact check read. Name, push name, username and picture are optional.
 export interface Contact {
   id: string;
   name?: string;
   pushName?: string;
+  username?: string;
   /** MSISDN digits without separators — always present in the response. */
   number: string;
   isMyContact: boolean;

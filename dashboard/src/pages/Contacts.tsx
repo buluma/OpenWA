@@ -47,6 +47,7 @@ export function Contacts() {
         c.id.toLowerCase().includes(q) ||
         c.name?.toLowerCase().includes(q) ||
         c.pushName?.toLowerCase().includes(q) ||
+        c.username?.toLowerCase().includes(q) ||
         c.number?.toLowerCase().includes(q),
     );
   }, [contacts, search]);
@@ -153,8 +154,17 @@ export function Contacts() {
           {filtered.map(contact => (
             <div key={contact.id} className="contact-row">
               <div className="contact-info">
-                <span className="contact-name">{contact.name || contact.pushName || contact.number}</span>
-                <span className="contact-id">{contact.id}</span>
+                <span className="contact-name">
+                  {contact.name ||
+                    contact.pushName ||
+                    (contact.username ? `@${contact.username.replace(/^@+/, '')}` : contact.number)}
+                </span>
+                <span className="contact-id">
+                  {contact.username && (contact.name || contact.pushName)
+                    ? `@${contact.username.replace(/^@+/, '')} · `
+                    : ''}
+                  {contact.id}
+                </span>
               </div>
               <div className="contact-badges"></div>
               {canWrite && (
