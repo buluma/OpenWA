@@ -239,7 +239,7 @@ Keep the blast radius small:
 ## 24.6 Enabling & Client Setup
 
 ```bash
-MCP_ENABLED=true npm run start:prod   # or set MCP_ENABLED in your .env / compose
+MCP_ENABLED=true bun run start:prod   # or set MCP_ENABLED in your .env / compose
 # optional:
 MCP_READONLY=false                    # expose write tools (default is read-only when unset)
 MCP_RATE_LIMIT_MAX=60                 # max tool calls per key per window (default 60)

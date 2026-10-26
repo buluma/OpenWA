@@ -46,7 +46,7 @@ function fakeWwjs(source) {
 }
 
 /**
- * The installed tree may ALREADY be patched: `npm ci` runs postinstall, which applies this very
+ * The installed tree may ALREADY be patched: `bun install --frozen-lockfile` runs postinstall, which applies this very
  * patcher, so on a CI runner the file is transformed before this spec ever reads it while a local
  * checkout that never re-installed still holds the pristine upstream text. Reversing the transform
  * first makes the fixture identical in both states.
@@ -63,7 +63,7 @@ const readInstalled = () => {
 };
 
 test('the unpatched-shape reversal is an exact inverse of the transform', () => {
-  // This is what makes the fixture safe on a CI runner, where `npm ci` has already run postinstall
+  // This is what makes the fixture safe on a CI runner, where `bun install --frozen-lockfile` has already run postinstall
   // and patched the installed tree before this spec reads it. If the reversal were not an exact
   // inverse, every assertion below would be testing a shape that never existed.
   const pristine = readInstalled();

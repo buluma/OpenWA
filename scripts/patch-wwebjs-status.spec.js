@@ -153,7 +153,7 @@ test('reports a missing whatsapp-web.js rather than pretending to patch it', () 
 
 /**
  * The exit-code contract both consumers stand on: postinstall passes `--best-effort` and must get
- * exit 0 for an unrecognised tree (a Baileys-only install must not fail `npm install`), while the
+ * exit 0 for an unrecognised tree (a Baileys-only install must not fail `bun install`), while the
  * production image build runs the patcher bare and MUST get exit 1 for the same tree — that
  * failing build is the only thing standing between an upstream reshape and a shipped image whose
  * status posting is still broken. Exercised end-to-end via a copy of the script next to a fake

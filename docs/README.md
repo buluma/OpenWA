@@ -84,14 +84,14 @@ git clone https://github.com/rmyndharis/OpenWA.git
 cd OpenWA
 
 # Install the locked dependencies (also installs dashboard dependencies)
-npm ci
+bun install --frozen-lockfile
 
 # Optional: .env.minimal pins database, storage, Redis/queue, session path, engine and Puppeteer
 # settings over Dashboard > Infrastructure, and turns off session auto-start
 # cp .env.minimal .env
 
 # Run the API and the dashboard
-npm run dev
+bun run dev
 ```
 
 Access:

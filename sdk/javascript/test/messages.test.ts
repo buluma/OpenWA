@@ -7,10 +7,16 @@ function client(t: MockTransport): OpenWAClient {
 }
 
 it('preserves message-time filters and the unknown timestamp count', async () => {
-  const t = new MockTransport().on('GET', /\/messages$/, { body: { messages: [], total: 0, unknownTimestampTotal: 2 } });
+  const t = new MockTransport().on('GET', /\/messages$/, {
+    body: { messages: [], total: 0, unknownTimestampTotal: 2 },
+  });
   const page = await client(t).messages.list('s', {
-    since: 1789855200000.5, until: 1789941600000, direction: 'incoming',
-    orderBy: 'timestamp', type: 'image', messageId: 'M1',
+    since: 1789855200000.5,
+    until: 1789941600000,
+    direction: 'incoming',
+    orderBy: 'timestamp',
+    type: 'image',
+    messageId: 'M1',
   });
   const query = new URL(t.lastCall!.url).searchParams;
   expect(query.get('since')).toBe('1789855200000.5');
@@ -25,21 +31,49 @@ it('preserves message-time filters and the unknown timestamp count', async () =>
 describe('MessagesResource idempotency keys', () => {
   const sends: Array<[string, (c: OpenWAClient, key?: string) => Promise<unknown>]> = [
     ['send-text', (c, key) => c.messages.sendText('s', { chatId: 'c@c.us', text: 'hi', mentions: ['1@c.us'] }, key)],
-    ['send-image', (c, key) => c.messages.sendImage('s', { chatId: 'c@c.us', url: 'http://image', caption: 'image' }, key)],
-    ['send-video', (c, key) => c.messages.sendVideo('s', { chatId: 'c@c.us', url: 'http://video', caption: 'video' }, key)],
+    [
+      'send-image',
+      (c, key) => c.messages.sendImage('s', { chatId: 'c@c.us', url: 'http://image', caption: 'image' }, key),
+    ],
+    [
+      'send-video',
+      (c, key) => c.messages.sendVideo('s', { chatId: 'c@c.us', url: 'http://video', caption: 'video' }, key),
+    ],
     ['send-audio', (c, key) => c.messages.sendAudio('s', { chatId: 'c@c.us', url: 'http://audio', ptt: true }, key)],
-    ['send-document', (c, key) => c.messages.sendDocument('s', { chatId: 'c@c.us', base64: 'YQ==', mimetype: 'application/pdf', filename: 'a.pdf' }, key)],
-    ['send-sticker', (c, key) => c.messages.sendSticker('s', { chatId: 'c@c.us', url: 'http://sticker', mimetype: 'image/webp' }, key)],
+    [
+      'send-document',
+      (c, key) =>
+        c.messages.sendDocument(
+          's',
+          { chatId: 'c@c.us', base64: 'YQ==', mimetype: 'application/pdf', filename: 'a.pdf' },
+          key,
+        ),
+    ],
+    [
+      'send-sticker',
+      (c, key) => c.messages.sendSticker('s', { chatId: 'c@c.us', url: 'http://sticker', mimetype: 'image/webp' }, key),
+    ],
     ['send-location', (c, key) => c.messages.sendLocation('s', { chatId: 'c@c.us', latitude: 1, longitude: 2 }, key)],
-    ['send-contact', (c, key) => c.messages.sendContact('s', { chatId: 'c@c.us', contactName: 'A', contactNumber: '628' }, key)],
-    ['send-template', (c, key) => c.messages.sendTemplate('s', { chatId: 'c@c.us', templateName: 'welcome', vars: { name: 'A' } }, key)],
-    ['send-poll', (c, key) => c.messages.sendPoll('s', { chatId: 'c@c.us', name: 'Question', options: ['A', 'B'] }, key)],
+    [
+      'send-contact',
+      (c, key) => c.messages.sendContact('s', { chatId: 'c@c.us', contactName: 'A', contactNumber: '628' }, key),
+    ],
+    [
+      'send-template',
+      (c, key) => c.messages.sendTemplate('s', { chatId: 'c@c.us', templateName: 'welcome', vars: { name: 'A' } }, key),
+    ],
+    [
+      'send-poll',
+      (c, key) => c.messages.sendPoll('s', { chatId: 'c@c.us', name: 'Question', options: ['A', 'B'] }, key),
+    ],
     ['reply', (c, key) => c.messages.reply('s', { chatId: 'c@c.us', quotedMessageId: 'q', text: 'reply' }, key)],
     ['forward', (c, key) => c.messages.forward('s', { fromChatId: 'a@c.us', toChatId: 'b@c.us', messageId: 'm' }, key)],
   ];
 
   it.each(sends)('%s keeps keys local to each call and preserves JSON', async (route, send) => {
-    const t = new MockTransport().on('POST', new RegExp(`/messages/${route}$`), { body: { messageId: 'm', timestamp: 1 } });
+    const t = new MockTransport().on('POST', new RegExp(`/messages/${route}$`), {
+      body: { messageId: 'm', timestamp: 1 },
+    });
     const c = new OpenWAClient({ baseUrl: 'http://localhost', apiKey: 'k', fetch: t.asFetch() });
     await send(c);
     const originalBody = t.lastCall!.body;
@@ -68,7 +102,12 @@ describe('MessagesResource idempotency keys', () => {
   it('overrides a mixed-case default without changing later calls', async () => {
     const t = new MockTransport().on('POST', /send-text$/, { body: { messageId: 'm', timestamp: 1 } });
     const headers = { 'iDeMpOtEnCy-KeY': 'default-key', 'X-Trace': 'trace' };
-    const c = new OpenWAClient({ baseUrl: 'http://localhost', apiKey: 'k', defaultHeaders: headers, fetch: t.asFetch() });
+    const c = new OpenWAClient({
+      baseUrl: 'http://localhost',
+      apiKey: 'k',
+      defaultHeaders: headers,
+      fetch: t.asFetch(),
+    });
     const body = { chatId: 'c@c.us', text: 'hi' };
     await c.messages.sendText('s', body, 'explicit-key');
     expect(t.lastCall!.headers['idempotency-key']).toBe('explicit-key');
@@ -284,6 +323,23 @@ describe('MessagesResource — exact paths', () => {
     expect(t.lastCall!.body).toEqual({ chatId: 'a@c.us', messageId: 'm1', body: 'edited' });
     expect(res.messageId).toBe('m1');
     expect(res.timestamp).toBe(4);
+  });
+
+  it('pin / unpin / star / votePoll', async () => {
+    const t = new MockTransport()
+      .on('POST', /\/messages\/pin$/, { body: { success: true } })
+      .on('POST', /\/messages\/unpin$/, { body: { success: true } })
+      .on('POST', /\/messages\/star$/, { body: { success: true } })
+      .on('POST', /\/messages\/vote-poll$/, { body: { success: true } });
+    const c = client(t);
+    await c.messages.pin('s', { chatId: 'a@c.us', messageId: 'm', durationSeconds: 604800 });
+    expect(t.lastCall!.url).toContain('/messages/pin');
+    await c.messages.unpin('s', { chatId: 'a@c.us', messageId: 'm' });
+    expect(t.lastCall!.url).toContain('/messages/unpin');
+    await c.messages.star('s', { chatId: 'a@c.us', messageId: 'm', star: true });
+    expect(t.lastCall!.url).toContain('/messages/star');
+    await c.messages.votePoll('s', { chatId: 'a@c.us', pollMessageId: 'm', options: ['Beach'] });
+    expect(t.lastCall!.url).toContain('/messages/vote-poll');
   });
 
   it('history puts chatId in the path', async () => {

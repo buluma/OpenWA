@@ -52,7 +52,7 @@ test('every patcher is COPIED into the production stage', () => {
   assert.deepEqual(missing, [], `not copied into the image: ${missing.join(', ')}`);
 });
 
-test('every patcher is RUN fatally after npm ci', () => {
+test('every patcher is RUN fatally after bun install --frozen-lockfile', () => {
   // The postinstall hook runs them --best-effort; the explicit run is the real gate, so a shape
   // change fails the image build instead of shipping unpatched.
   const missing = patchers.filter(p => !run.includes(` node scripts/${p} `));

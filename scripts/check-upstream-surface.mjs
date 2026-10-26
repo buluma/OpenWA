@@ -7,7 +7,7 @@
  * against the committed snapshot (upstream-surface.snapshot.json). Any ADDED symbol is a capability
  * the gateway has never reviewed (the #1164 class of blindspot: group membership requests sat in
  * both engines, unreviewed, until a user asked); any REMOVED symbol is a capability an exposed
- * feature may silently depend on. Either fails `npm run test:scripts` until a maintainer reviews
+ * feature may silently depend on. Either fails `bun run test:scripts` until a maintainer reviews
  * the delta (classify it: expose / defer / exclude — the docs/29 + gap-matrix procedure) and
  * refreshes the snapshot with `node scripts/check-upstream-surface.mjs --update`.
  *

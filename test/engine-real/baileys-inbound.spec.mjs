@@ -8,7 +8,7 @@
  * handler the socket's messages.upsert event reaches. A library upgrade that changes how a message is
  * typed or unwrapped fails here, not on a user's session.
  *
- * Runs over dist/, so it needs `npm run build` first: `npm run build && npm run test:engine-real`.
+ * Runs over dist/, so it needs `bun run build` first: `bun run build && bun run test:engine-real`.
  * No network, no socket, no WhatsApp account: media downloads are switched off, so a media message
  * resolves to the omitted marker.
  */

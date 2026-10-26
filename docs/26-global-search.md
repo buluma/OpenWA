@@ -113,7 +113,7 @@ want to drop the index entirely, run the migration `down` against the data conne
 > TypeORM creates the `messages` table from the entity but never runs migrations, so the FTS schema
 > would be missing. The built-in provider therefore re-applies the migration's idempotent DDL at boot
 > (including the one-time SQLite backfill), so `/search` works on a fresh synchronize-based box with no
-> manual `npm run migration:run` step. On migrations-based deployments the same DDL is a set of no-ops.
+> manual `bun run migration:run` step. On migrations-based deployments the same DDL is a set of no-ops.
 >
 > **Postgres caveat — `DATABASE_TYPE=postgres` with `DATABASE_SYNCHRONIZE=true` is rejected at boot.**
 > The Postgres data connection hardcodes `migrationsRun=true` (unlike SQLite, where it is

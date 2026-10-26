@@ -27,7 +27,7 @@
  * gets switched off; the defect being hunted leaves no literal anywhere, so generosity cannot hide
  * it. Four rounds of narrowing false positives produced the current rules — see harvestFile.
  *
- * Run locally: `npm run check:sdk-coverage`.
+ * Run locally: `bun run check:sdk-coverage`.
  */
 import { readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { join } from 'node:path';

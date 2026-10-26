@@ -17,7 +17,7 @@
  * sdk-ci is path-filtered and does not list openapi.json, so changing the contract alone runs none
  * of it, and it never runs on a release tag.
  *
- * Run locally: `npm run check:sdk-events`.
+ * Run locally: `bun run check:sdk-events`.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -85,7 +85,7 @@ for (const sdk of SDKS) {
 if (errors.length) {
   console.error('\n✖ SDK webhook events drifted from the committed contract:');
   for (const e of errors) console.error(`  - ${e}`);
-  console.error('\nAdd the event to the SDK, or regenerate the contract (`npm run openapi:export`).\n');
+  console.error('\nAdd the event to the SDK, or regenerate the contract (`bun run openapi:export`).\n');
   process.exit(1);
 }
 console.log(`✓ SDK webhook events OK (${expected.size} contract events across ${SDKS.length} SDKs).`);

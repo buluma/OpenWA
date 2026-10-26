@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { auditUnavailable, collectAdvisories, evaluate, unavailableOutcome } from './check-audit.mjs';
 
 /**
- * The report shape is taken from a real `npm audit --json` run, not invented: one advisory
+ * The report shape is taken from a real `bun audit --json` run, not invented: one advisory
  * (extract-zip) surfaces as FIVE package entries, and only the directly-vulnerable one carries the
  * advisory object in `via`. The other four name their parent as a plain string. A gate that counted
  * package entries instead of advisories would need four more allowlist ids for one problem.
@@ -95,6 +95,23 @@ test('moderate and low do not block', () => {
   assert.deepEqual(evaluate(report, []), []);
 });
 
+test('Bun audit JSON reports high advisories as package-keyed arrays', () => {
+  const report = {
+    'body-parser': [
+      {
+        id: 1243074,
+        url: 'https://github.com/advisories/GHSA-27r3-jxmh-p828',
+        title: 'body-parser denial of service',
+        severity: 'high',
+      },
+    ],
+  };
+  const found = collectAdvisories(report);
+  assert.equal(found.size, 1);
+  assert.equal(found.get('GHSA-27r3-jxmh-p828').package, 'body-parser');
+  assert.match(evaluate(report, []).join('\n'), /HIGH GHSA-27r3-jxmh-p828 in body-parser/);
+});
+
 /**
  * The rule that stops the carve-out outliving its cause. When whatsapp-web.js ships a puppeteer
  * carrying @puppeteer/browsers 3.x the advisory disappears, and without this the entry would sit
@@ -110,14 +127,14 @@ test('a clean report with an empty allowlist passes', () => {
   assert.deepEqual(evaluate({ vulnerabilities: {} }, []), []);
 });
 
-// npm omits the key entirely when nothing is found; treating that as a crash would fail every
+// Bun omits the key entirely when nothing is found; treating that as a crash would fail every
 // green build, and treating a crash as "clean" would fail open. It must simply be empty.
 test('a report with no vulnerabilities key is clean, not a crash', () => {
   assert.deepEqual(evaluate({}, []), []);
   assert.equal(collectAdvisories(undefined).size, 0);
 });
 
-// The endpoint-failure discriminator. npm returns `{ error }` (no vulnerabilities, no metadata) when
+// The endpoint-failure discriminator. Bun returns `{ error }` (no vulnerabilities, no metadata) when
 // the audit endpoint is down or retired; that must read as "could not audit", not as a clean tree,
 // or the stale-allowlist rule fires against every entry. A genuinely clean report has no `error` key.
 test('an { error } payload reads as audit-unavailable, not clean', () => {
@@ -132,7 +149,7 @@ test('a clean or vulnerable report is not audit-unavailable', () => {
   assert.equal(auditUnavailable(puppeteerReport), false);
 });
 
-// PR CI keeps the skip so an npm outage does not block every merge, but it must show on the run as a
+// PR CI keeps the skip so an Bun audit outage does not block every merge, but it must show on the run as a
 // warning annotation rather than a plain log line inside a green job.
 test('an unavailable audit skips with exit 0 outside a required path', () => {
   const plain = unavailableOutcome('down', {});
@@ -156,22 +173,22 @@ test('an unavailable audit fails when the path requires it', () => {
   assert.equal(unavailableOutcome('down', { CHECK_AUDIT_REQUIRED: '0' }).exitCode, 0);
 });
 
-test('the annotation stays on one line when npm reports a multi-line summary', () => {
+test('the annotation stays on one line when Bun reports a multi-line summary', () => {
   const [annotation] = unavailableOutcome('100% down\nretry later', { GITHUB_ACTIONS: 'true' }).lines;
   assert.equal(annotation.includes('\n'), false);
   assert.match(annotation, /100%25 down%0Aretry later/);
 });
 
-// End to end through the real entrypoint, with `npm` replaced by a shim that answers like a down
+// End to end through the real entrypoint, with `bun` replaced by a shim that answers like a down
 // audit endpoint, so the exit code the workflow sees is the one asserted.
 test(
-  'the script exits by CHECK_AUDIT_REQUIRED when npm audit cannot answer',
+  'the script exits by CHECK_AUDIT_REQUIRED when bun audit cannot answer',
   { skip: process.platform === 'win32' },
   () => {
     const bin = mkdtempSync(join(tmpdir(), 'check-audit-'));
     try {
-      writeFileSync(join(bin, 'npm'), '#!/bin/sh\necho \'{"error":{"summary":"endpoint down"}}\'\nexit 1\n');
-      chmodSync(join(bin, 'npm'), 0o755);
+      writeFileSync(join(bin, 'bun'), '#!/bin/sh\necho \'{"error":{"summary":"endpoint down"}}\'\nexit 1\n');
+      chmodSync(join(bin, 'bun'), 0o755);
       const script = fileURLToPath(new URL('./check-audit.mjs', import.meta.url));
       const run = extra =>
         spawnSync(process.execPath, [script], {

@@ -27,9 +27,9 @@
  *
  *   ci-privilege-gate.spec.ts
  *     invoked scripts: non-root smoke, backup smoke, a Python installer    conservative  is it run
- *     id-token jobs hold `npm publish` and `imagetools create`             conservative  is it run
+ *     id-token jobs hold OIDC publishing and `imagetools create`           conservative  is it run
  *     id-token allow-lists, templates, installers, `${{` in a comment      exact         every line it may run
- *     publish tarball, `npm pack` and `npm publish` order, `python -m build` exact       first occurrence
+ *     Bun publisher tarball, `bun pm pack` and `bun publish` order         exact         first occurrence
  *     java deploy line                                                     both          is there, every one
  *     branch tag: the smoke runs, the last step runs the re-point          conservative  is it run
  *     branch tag: which steps may re-point                                 exact         every one that may

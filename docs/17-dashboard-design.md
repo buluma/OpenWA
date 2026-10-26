@@ -384,7 +384,7 @@ mounted for any admin key.
 
 ## 17.4 Component Library
 
-> **No component framework is installed.** shadcn/ui is _not_ adopted — there is no `npx shadcn`
+> **No component framework is installed.** shadcn/ui is _not_ adopted — there is no `bunx shadcn`
 > init, no `components/ui/` directory, no `cn()` utility, and no `@/components` import alias. The
 > wireframes above are design intent; the implementation is hand-written.
 
@@ -770,13 +770,13 @@ nginx image and no separate dashboard service to deploy.
 
 How it fits together:
 
-- `npm run build:all` builds the API (`dist/`) **and** the dashboard (`dashboard/dist/`). The root
+- `bun run build:all` builds the API (`dist/`) **and** the dashboard (`dashboard/dist/`). The root
   `Dockerfile` does this in its builder stage and copies `dashboard/dist` into the runtime image.
 - `ServeStaticModule` is registered conditionally in `src/app.module.ts`: it only activates when
   `dashboard/dist/index.html` exists, serves it with SPA fallback, and `exclude`s `/api` and
   `/socket.io` so those keep returning real API/WebSocket responses. Opt out with
   `SERVE_DASHBOARD=false`.
-- Run it directly with `npm run prod` (build + serve) or `node dist/main` against a prebuilt image.
+- Run it directly with `bun run prod` (build + serve) or `node dist/main` against a prebuilt image.
 
 In development the build is absent, so serve-static stays inert and the Vite dev server (port
 `2886`, see above) handles the UI with HMR while proxying `/api` + `/socket.io` to the API.
@@ -786,7 +786,7 @@ host the dashboard separately (a CDN, an object store, or its own container), bu
 origin baked in and deploy `dashboard/dist` wherever you like:
 
 ```bash
-VITE_API_URL=https://api.example.com npm run build   # in dashboard/
+VITE_API_URL=https://api.example.com bun run build   # in dashboard/
 ```
 
 `dashboard/src/services/api.ts` reads `VITE_API_URL` and calls that origin instead of same-origin

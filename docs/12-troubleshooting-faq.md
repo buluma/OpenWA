@@ -244,7 +244,7 @@ docker compose restart openwa-api
 > reach into the container (`docker compose exec openwa-api ls /app/data/sessions`) instead. In
 > `docker-compose.dev.yml` the app service is called `openwa` and `./data` is bind-mounted, so the
 > same paths can be read directly from the host. Host-relative `./data/...` commands elsewhere in
-> this document assume a source install (`npm run start:dev`) or that dev bind mount.
+> this document assume a source install (`bun run start:dev`) or that dev bind mount.
 
 Proxy egress (if WhatsApp is blocked on your network) is configured **per session** via the
 `proxyUrl` field on `POST /api/sessions` or with `PATCH /api/sessions/:sessionId/proxy`, both of
@@ -742,7 +742,7 @@ curl -H "X-API-Key: $API_KEY" \
 **Cause:** WhatsApp Web 2.3000.x renamed the internal message-id property that whatsapp-web.js
 reads. OpenWA ships a backport that restores it, applied at install time by
 `scripts/patch-wwebjs-201832.js`. When the install cannot run it — neither GNU `patch` nor `git`
-available, or `npm install --ignore-scripts` — whatsapp-web.js stays unpatched and every operation
+available, or `bun install --ignore-scripts` — whatsapp-web.js stays unpatched and every operation
 that reads a message id fails. Source installs only; the Docker image always applies the backport.
 
 **Solution:**
@@ -758,7 +758,7 @@ node scripts/patch-wwebjs-201832.js
 If that reports a partially patched tree, reinstall the dependency first:
 
 ```bash
-rm -rf node_modules/whatsapp-web.js && npm ci
+rm -rf node_modules/whatsapp-web.js && bun install --frozen-lockfile
 ```
 
 > Pinning `WWEBJS_WEB_VERSION` does **not** work around this — the rename is present in every
@@ -779,7 +779,7 @@ rm -rf node_modules/whatsapp-web.js && npm ci
 cannot recognise fails the image build. Source installs run the Puppeteer compatibility transform
 without best-effort too, because browser teardown depends on it. The other transforms use
 `--best-effort`, where a refusal prints one line into the install transcript and installation continues.
-The usual causes are `npm install --ignore-scripts` and an upstream release whose shape a patcher no longer recognises. Each engine now checks its own
+The usual causes are `bun install --ignore-scripts` and an upstream release whose shape a patcher no longer recognises. Each engine now checks its own
 patches as it starts and names the ones that did not land, so the report arrives on the machine that
 is actually affected rather than in an install log nobody kept.
 
@@ -1144,25 +1144,25 @@ flowchart TD
 
 ```bash
 # From a source checkout: show migration status (executed + pending)
-npm run migration:show
+bun run migration:show
 
 # Run all pending migrations
-npm run migration:run
+bun run migration:run
 
 # Rollback last migration
-npm run migration:revert
+bun run migration:revert
 
 # Inside the released image, which has no ts-node, use the :prod variants against dist/
-docker compose run --rm openwa-api npm run migration:show:prod
-docker compose run --rm openwa-api npm run migration:run:prod
+docker compose run --rm openwa-api bun run migration:show:prod
+docker compose run --rm openwa-api bun run migration:run:prod
 
 # Schema is managed by migrations (there is no schema:sync)
 # The auth/audit DB has parallel :main variants, e.g.:
-npm run migration:run:main
-npm run migration:run:main:prod   # inside the released image
+bun run migration:run:main
+bun run migration:run:main:prod   # inside the released image
 ```
 
-**PostgreSQL crash-loop on boot after upgrade** — if logs show `column "id" is of type uuid but default expression is of type character varying` or `foreign key constraint ... cannot be implemented ... incompatible types: character varying and uuid`, the deployment was previously bootstrapped with `DATABASE_SYNCHRONIZE=true` (native `uuid` columns vs the migrations' `varchar`). A guard migration converts the columns automatically on the next boot; for large `messages` tables, run the migration against the stopped app (`npm run migration:run` from a source checkout, `npm run migration:run:prod` in the image) during a maintenance window. See [14.5 / 14.9 — PostgreSQL crash-loop after upgrading a `DATABASE_SYNCHRONIZE=true` deployment](./14-migration-guide.md). `DATABASE_SYNCHRONIZE=true` is unsupported on PostgreSQL for production.
+**PostgreSQL crash-loop on boot after upgrade** — if logs show `column "id" is of type uuid but default expression is of type character varying` or `foreign key constraint ... cannot be implemented ... incompatible types: character varying and uuid`, the deployment was previously bootstrapped with `DATABASE_SYNCHRONIZE=true` (native `uuid` columns vs the migrations' `varchar`). A guard migration converts the columns automatically on the next boot; for large `messages` tables, run the migration against the stopped app (`bun run migration:run` from a source checkout, `bun run migration:run:prod` in the image) during a maintenance window. See [14.5 / 14.9 — PostgreSQL crash-loop after upgrading a `DATABASE_SYNCHRONIZE=true` deployment](./14-migration-guide.md). `DATABASE_SYNCHRONIZE=true` is unsupported on PostgreSQL for production.
 
 ## 12.7 Docker Issues
 

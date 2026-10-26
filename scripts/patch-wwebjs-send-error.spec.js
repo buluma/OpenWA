@@ -36,7 +36,7 @@ test('applies to the Client.js the installed whatsapp-web.js ships, and the resu
     pristine.split(ANCHOR).length - 1,
     1,
     'the installed Client.js carries neither the anchor nor this capture; after editing FIX, reinstall ' +
-      'whatsapp-web.js (npm ci) so the tree is patched with the current one',
+      'whatsapp-web.js (bun install --frozen-lockfile) so the tree is patched with the current one',
   );
   const { root, client } = makeDependency(pristine);
 

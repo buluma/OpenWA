@@ -12,7 +12,7 @@ test layout and the expected testing workflow for contributors.
 | E2E smoke tests    | Source-controlled `*.e2e-spec.ts` files under `test/`; use the inventory commands below                     |
 | Dashboard checks   | ESLint, test type-check, i18n parity, React/Vite build, and source-controlled Node tests                    |
 | SDK checks         | Path-filtered JavaScript, Python, PHP, Java, and Go SDK CI                                                  |
-| PostgreSQL checks  | Dedicated CI job builds migrations and runs `npm run test:pg-smoke` against PostgreSQL 16                   |
+| PostgreSQL checks  | Dedicated CI job builds migrations and runs `bun run test:pg-smoke` against PostgreSQL 16                   |
 | Coverage gate      | Jest global thresholds plus stricter thresholds for security, auth, engine-adapter, and integration modules |
 
 The exact counts will change as the project evolves. Use the commands below as the source of truth for
@@ -25,39 +25,39 @@ rg --files -g '*.test.ts' dashboard/src | wc -l
 rg --files sdk/javascript/test sdk/python/tests sdk/php/tests sdk/java/src/test sdk/go \
   | rg '(\.test\.ts$|test_.*\.py$|Test\.php$|Test\.java$|_test\.go$)' \
   | wc -l
-npm test -- --runInBand
-npm run test:e2e -- --runInBand
-npm --prefix dashboard run test:unit
+bun run test -- --runInBand
+bun run test:e2e -- --runInBand
+cd dashboard && bun run test:unit
 ```
 
 ## 9.2 Test Commands
 
 | Command                                                          | Purpose                                                                                                      |
 | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `npm test`                                                       | Run backend Jest unit tests from `src/`                                                                      |
-| `npm test -- --runInBand`                                        | Run backend tests serially; useful for local debugging and clean output                                      |
-| `npm run test:cov`                                               | Run backend tests with coverage and coverage thresholds                                                      |
-| `npm run test:e2e`                                               | Run smoke-level e2e tests from `test/`                                                                       |
-| `npm run test:docs`                                              | Run the docs and manifest drift gates that `npm test` excludes                                               |
-| `npm run test:pg-smoke`                                          | Run the PostgreSQL migration and UUID-default smoke test                                                     |
-| `npm run test:scripts`                                           | Run the repo-level script tests on the Node test runner                                                      |
-| `npm run build && npm run test:engine-real`                      | Exercise inbound messages and outbound recipient preparation with the real Baileys library and built adapter |
+| `bun run test`                                                   | Run backend Jest unit tests from `src/`                                                                      |
+| `bun run test -- --runInBand`                                    | Run backend tests serially; useful for local debugging and clean output                                      |
+| `bun run test:cov`                                               | Run backend tests with coverage and coverage thresholds                                                      |
+| `bun run test:e2e`                                               | Run smoke-level e2e tests from `test/`                                                                       |
+| `bun run test:docs`                                              | Run the docs and manifest drift gates that `bun run test` excludes                                           |
+| `bun run test:pg-smoke`                                          | Run the PostgreSQL migration and UUID-default smoke test                                                     |
+| `bun run test:scripts`                                           | Run the repo-level script tests on the Node test runner                                                      |
+| `bun run build && bun run test:engine-real`                      | Exercise inbound messages and outbound recipient preparation with the real Baileys library and built adapter |
 | `OPENWA_SMOKE_IMAGE=<image> ./scripts/smoke-test-engine-libs.sh` | Import Baileys and launch the browser inside a built image                                                   |
 | `./scripts/smoke-test-backup-restore.sh`                         | Run the backup/restore smoke test used by the `scripts-smoke` job                                            |
-| `npm run lint`                                                   | Run backend ESLint with type-aware rules                                                                     |
-| `npm run format:check`                                           | Check Prettier formatting for backend source and specs                                                       |
-| `npx tsc --noEmit -p tsconfig.json`                              | Type-check backend source, unit specs, and e2e specs                                                         |
-| `npm run openapi:check`                                          | Verify the committed OpenAPI snapshot                                                                        |
-| `npm run check:versions`                                         | Verify documentation and package version consistency                                                         |
-| `npm run check:dockerignore`                                     | Verify the Docker build context that `.dockerignore` defines                                                 |
-| `cd dashboard && npm run lint`                                   | Run dashboard ESLint                                                                                         |
-| `cd dashboard && npm run typecheck`                              | Type-check dashboard test files                                                                              |
-| `cd dashboard && npm run test:unit`                              | Run dashboard pure utility/unit tests                                                                        |
-| `cd dashboard && npm run test:cov`                               | Measure dashboard unit-test coverage (on demand, no enforced floor)                                          |
-| `cd dashboard && npm run i18n:check`                             | Verify dashboard locale key parity                                                                           |
-| `cd dashboard && npm run build`                                  | Type-check and build the dashboard                                                                           |
-| `cd sdk/javascript && npm test && npm run typecheck`             | Type-check and unit-test the JavaScript SDK                                                                  |
-| `cd sdk/javascript && npm run build && npm run smoke`            | Build the JavaScript SDK, then smoke-load both builds and send requests through each client                  |
+| `bun run lint`                                                   | Run backend ESLint with type-aware rules                                                                     |
+| `bun run format:check`                                           | Check Prettier formatting for backend source and specs                                                       |
+| `bunx tsc --noEmit -p tsconfig.json`                             | Type-check backend source, unit specs, and e2e specs                                                         |
+| `bun run openapi:check`                                          | Verify the committed OpenAPI snapshot                                                                        |
+| `bun run check:versions`                                         | Verify documentation and package version consistency                                                         |
+| `bun run check:dockerignore`                                     | Verify the Docker build context that `.dockerignore` defines                                                 |
+| `cd dashboard && bun run lint`                                   | Run dashboard ESLint                                                                                         |
+| `cd dashboard && bun run typecheck`                              | Type-check dashboard test files                                                                              |
+| `cd dashboard && bun run test:unit`                              | Run dashboard pure utility/unit tests                                                                        |
+| `cd dashboard && bun run test:cov`                               | Measure dashboard unit-test coverage (on demand, no enforced floor)                                          |
+| `cd dashboard && bun run i18n:check`                             | Verify dashboard locale key parity                                                                           |
+| `cd dashboard && bun run build`                                  | Type-check and build the dashboard                                                                           |
+| `cd sdk/javascript && bun run test && bun run typecheck`         | Type-check and unit-test the JavaScript SDK                                                                  |
+| `cd sdk/javascript && bun run build && bun run smoke`            | Build the JavaScript SDK, then smoke-load both builds and send requests through each client                  |
 | `cd sdk/python && pytest`                                        | Run the Python SDK tests                                                                                     |
 | `cd sdk/php && ./vendor/bin/phpunit`                             | Run the PHP SDK tests                                                                                        |
 | `cd sdk/java && mvn -B verify`                                   | Run the Java SDK tests                                                                                       |
@@ -246,7 +246,7 @@ The stricter scoped gates protect security-sensitive code and high-risk boundary
 security, engine-adapter, or integration-fabric behavior, add focused regression tests instead of relying
 on broad integration coverage.
 
-The dashboard is outside these floors. `npm --prefix dashboard run test:cov` measures its coverage on
+The dashboard is outside these floors. `cd dashboard && bun run test:cov` measures its coverage on
 demand (Node's built-in coverage, test files and `src/test-helpers/` excluded); no CI floor is enforced.
 
 ## 9.6 CI Checks
@@ -257,7 +257,7 @@ request's superseded run; push runs on `main` are never cancelled or queued behi
 | Job             | Checks                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `lint`          | backend ESLint, full-program TypeScript check, formatting, version consistency, .dockerignore context, OpenAPI snapshot, SDK routes and webhook events against the contract, contract coverage per SDK, SDK docs against the shipped client surface, client wire shapes (`check:contract-shapes` — the JavaScript SDK's, dashboard's, Python's, Go's and Java's hand-written types against the OpenAPI schemas; the PHP client returns untyped arrays and has no types layer to gate)                                                              |
-| `audit`         | dependency security audit of all three npm trees (root, `dashboard/` and `sdk/javascript/`); when npm's audit endpoint cannot answer, the root audit skips with a warning annotation here while the dashboard and SDK audits, a plain `npm audit`, fail closed, so the job still goes red until a re-run; the release gate and the weekly scan fail (`CHECK_AUDIT_REQUIRED=1`)                                                                                                                                                                     |
+| `audit`         | dependency security audit of all three Bun trees (root, `dashboard/` and `sdk/javascript/`); when the registry audit endpoint cannot answer, the root audit skips with a warning annotation here while the dashboard and SDK audits fail closed, so the job still goes red until a re-run; the release gate and the weekly scan fail (`CHECK_AUDIT_REQUIRED=1`)                                                                                                                                                                                    |
 | `test`          | backend coverage run, repo-file drift gates (`test:docs`), script unit tests (node:test), e2e smoke tests                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `test-postgres` | real PostgreSQL 16 service, backend build, migration smoke, and the PostgreSQL specs (FTS provider, boot-migration lock, message list ordering, entity synchronize, UTC pin, webhook recovery, send idempotency keys, replace-all import, session content lifetimes, two-node session delete, lid mapping ownership)                                                                                                                                                                                                                               |
 | `dashboard`     | dashboard install, lint, formatting, type-check, i18n parity, build, unit tests                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
@@ -325,7 +325,7 @@ for business logic and e2e tests for wiring, guards, global pipes, app boot, and
 Use these checks when changing Docker, Chromium, dashboard serving, or session startup behavior.
 
 ```bash
-npm run build:all
+bun run build:all
 node dist/main
 ```
 
@@ -361,11 +361,11 @@ Live WhatsApp checks require an operator-owned account and should not be part of
   broker. Those suites skip themselves when no Redis is reachable, so they stay green on a machine without one;
   under GitHub Actions they fail instead, so a workflow that loses its Redis service cannot report them green.)
 - Performance testing is not automated.
-- Dashboard browser/visual UI tests are not currently automated; dashboard pure utility tests run via `npm --prefix dashboard run test:unit`.
+- Dashboard browser/visual UI tests are not currently automated; dashboard pure utility tests run via `cd dashboard && bun run test:unit`.
 
 These gaps are intentional because the project prioritizes deterministic tests: no job needs an
 operator-owned WhatsApp account, cloud credentials, or a Docker socket, and neither service container CI
-starts is required locally — `npm test` and `npm run test:e2e` stay on SQLite with the queue disabled. Add
+starts is required locally — `bun run test` and `bun run test:e2e` stay on SQLite with the queue disabled. Add
 opt-in integration jobs only when they are isolated, documented, and do not make normal contributor
 workflows brittle.
 

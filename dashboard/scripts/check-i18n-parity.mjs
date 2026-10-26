@@ -16,7 +16,7 @@
  *      "1000000 abonné". The bare key covers `one`. LEGACY_PLURAL_CATEGORIES adds a category a
  *      supported browser still selects from older CLDR data (Hebrew `many`).
  *
- * Wire into CI with: `npm run i18n:check`
+ * Wire into CI with: `bun run i18n:check`
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';

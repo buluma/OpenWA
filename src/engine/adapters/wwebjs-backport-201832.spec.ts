@@ -69,7 +69,7 @@ describe('patch-wwebjs-201832 (build-time backport of upstream #201832)', () => 
    * A pristine (unpatched) copy of the installed whatsapp-web.js.
    *
    * The install itself is not a reliable fixture: `postinstall` applies this same backport, so
-   * node_modules is patched on a normal `npm install` but pristine in the Docker builder stage
+   * node_modules is patched on a normal `bun install` but pristine in the Docker builder stage
    * (which installs before `scripts/` is copied). Reverse the constructor rewrites on the copy so
    * every case starts from the same known-unpatched shape either way.
    */
@@ -278,7 +278,7 @@ describe('patch-wwebjs-201832 (build-time backport of upstream #201832)', () => 
     expect(() => applyBackport(dir)).toThrow(/version skew/);
   });
 
-  // `npm ci` fires the postinstall hook (--best-effort) BEFORE the image build's strict run, so
+  // `bun install` fires the postinstall hook (--best-effort) BEFORE the image build's strict run, so
   // --best-effort decides what the strict run inherits. Both directions are load-bearing.
   describe('--best-effort', () => {
     it('still fails when the tree was already written', () => {
@@ -314,7 +314,7 @@ describe('patch-wwebjs-201832 (build-time backport of upstream #201832)', () => 
 
     it('falls back to `git apply` when only `patch` is missing', () => {
       // The Windows-outside-Git-Bash case, and the one that let #889 happen: git.exe is on PATH but
-      // patch.exe ships only inside Git Bash, so the backport was skipped and `npm install` still
+      // patch.exe ships only inside Git Bash, so the backport was skipped and `bun install` still
       // reported success. Anyone installing from source has git by definition, so the dep gets
       // patched instead of silently shipping broken.
       const dir = copyWwjs();
@@ -339,7 +339,7 @@ describe('patch-wwebjs-201832 (build-time backport of upstream #201832)', () => 
     it('degrades when neither `patch` nor git is installed, leaving the tree pristine', () => {
       const dir = copyWwjs();
       // With no applier at all (a stripped container, a Baileys-only setup), nothing was written and a
-      // warning beats breaking `npm install` — the trade this flag exists to make. Emptying PATH is what
+      // warning beats breaking `bun install` — the trade this flag exists to make. Emptying PATH is what
       // makes both lookups fail; node itself is invoked by absolute path and is unaffected.
       const emptyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wwjs-nopath-'));
       tmpDirs.push(emptyDir);
@@ -380,7 +380,7 @@ describe('patch-wwebjs-201832 (build-time backport of upstream #201832)', () => 
     // #889: both appliers reject a patch whose lines end CRLF — a bare \r is not one of the
     // ' '/'+'/'-'/'@' markers a unified diff allows, and line 12 of this patch is an empty context line,
     // so both fail exactly there. On Windows core.autocrlf=true checks the file out that way, so the
-    // git fallback added FOR Windows could never run there and `npm install` died on the attempt.
+    // git fallback added FOR Windows could never run there and `bun install` died on the attempt.
     it('applies even when the patch file was checked out with CRLF line endings', () => {
       const dir = copyWwjs();
       const script = stageScriptWith(fs.readFileSync(PATCH_FILE, 'utf8').replace(/\r?\n/g, '\r\n'));
@@ -400,7 +400,7 @@ describe('patch-wwebjs-201832 (build-time backport of upstream #201832)', () => 
 
     // A patch the applier refuses to parse fails BEFORE writing anything, so the tree is pristine and
     // `--best-effort` must still degrade. Treating that as a half-patched tree is what turned a skippable
-    // install warning into a hard `npm install` failure on every native Windows source install.
+    // install warning into a hard `bun install` failure on every native Windows source install.
     it('degrades on an unparseable patch instead of failing the install', () => {
       const dir = copyWwjs();
       const script = stageScriptWith('this is not a diff\n');

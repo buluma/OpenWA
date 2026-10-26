@@ -52,20 +52,22 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: ${{ matrix.node }}
-          cache: 'npm'
-          cache-dependency-path: sdk/javascript/package-lock.json
       # The lane that runs the tests installs with --engine-strict, so a locked toolchain that drops
       # its Node fails here, naming the package, instead of warning and then testing on an
       # unsupported runtime or failing at startup on a skipped native binding. The condition is the
       # test step's own.
-      - run: npm ci --engine-strict=${{ matrix.node == '22' }}
-      - run: npm test
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: .bun-version
+      - run: bun install --frozen-lockfile
+      - run: bun run test
         if: matrix.node == '22'
       # The build tsconfigs exclude test/, and vitest strips types without checking them, so the
       # type-level wire contract in test/*.test-d.ts only gates if tsc runs over test/ too (#754).
-      - run: npm run typecheck
-      - run: npm run build
-      - run: npm run smoke # packaging plus request smoke; must run after build
+      - run: bun run typecheck
+      - run: bun run build
+      - run: bun run smoke # packaging plus request smoke; must run after build
 
   python:
     name: Python SDK (${{ matrix.python }})

@@ -5,7 +5,7 @@
 // start, no sessions run. The version is sourced from package.json via swagger.config.ts, so the
 // snapshot tracks releases automatically.
 //
-// Usage: npx ts-node scripts/export-openapi.ts <output-path>
+// Usage: bunx ts-node scripts/export-openapi.ts <output-path>
 import '../src/config/load-env';
 import { NestFactory } from '@nestjs/core';
 import { SwaggerModule } from '@nestjs/swagger';
@@ -51,7 +51,7 @@ async function main() {
   // snapshot writes, which the documented usage explicitly allows.
   const out = process.argv[2];
   if (!out) {
-    console.error('Usage: npx ts-node scripts/export-openapi.ts <output-path>');
+    console.error('Usage: bunx ts-node scripts/export-openapi.ts <output-path>');
     process.exit(1);
   }
   // Imported after the env pins above so AppModule's top-level reads the hermetic values. Uses

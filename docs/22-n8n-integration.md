@@ -36,7 +36,7 @@ OpenWA provides official n8n community nodes for integrating WhatsApp automation
 
 ```bash
 cd ~/.n8n/nodes
-npm install @rmyndharis/n8n-nodes-openwa
+bun add @rmyndharis/n8n-nodes-openwa
 ```
 
 ## Nodes
@@ -310,19 +310,19 @@ Always use the correct format for chat IDs:
 ```bash
 git clone https://github.com/rmyndharis/OpenWA-n8n.git
 cd OpenWA-n8n
-npm install
-npm run build
+bun install
+bun run build
 ```
 
 ### Local Development
 
 ```bash
 # Watch mode
-npm run dev
+bun run dev
 
 # Link to local n8n
 cd ~/.n8n/nodes
-npm link /path/to/OpenWA-n8n
+bun add /path/to/OpenWA-n8n
 ```
 
 ### Testing

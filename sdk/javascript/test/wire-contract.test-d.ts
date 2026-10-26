@@ -1,5 +1,5 @@
 /**
- * Type-level contract test for the engine-resource endpoints — `tsc` is the gate, which `npm test`
+ * Type-level contract test for the engine-resource endpoints — `tsc` is the gate, which `bun run test`
  * runs ahead of vitest (`.test-d.ts` sits outside vitest's `test/**\/*.test.ts` include, so there is
  * no suite to run here; the build tsconfigs exclude `test/`, so nothing else would check it).
  *

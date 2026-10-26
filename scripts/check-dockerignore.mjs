@@ -14,7 +14,7 @@
  *      source, docker-entrypoint.sh, TS configs, and every file the Dockerfile COPYs or ADDs by
  *      name, derived from it) still passes.
  *
- * Run locally: `npm run check:dockerignore`. Runs in CI (lint job).
+ * Run locally: `bun run check:dockerignore`. Runs in CI (lint job).
  */
 import { readFileSync, readdirSync } from 'node:fs';
 import { posix } from 'node:path';
@@ -92,7 +92,7 @@ function ignored(path) {
 
 // Must NEVER reach the build context — grouped by category, mirroring the .dockerignore sections.
 const mustReject = [
-  // Dependencies (reinstalled via npm ci in the image)
+  // Dependencies (reinstalled via bun install --frozen-lockfile in the image)
   'node_modules/typescript/package.json',
   'dashboard/node_modules/vite/package.json',
   // Build output / local compiler caches
@@ -140,13 +140,13 @@ const mustReject = [
 // Must STILL reach the build context — the multi-stage build fails without any of these.
 const mustKeep = [
   'package.json',
-  'package-lock.json',
+  'bun.lock',
   'nest-cli.json',
   'tsconfig.json',
   'tsconfig.build.json',
   'src/main.ts',
   'dashboard/package.json',
-  'dashboard/package-lock.json',
+  'dashboard/bun.lock',
   'dashboard/index.html',
   'dashboard/vite.config.ts',
   'dashboard/src/main.tsx',
@@ -244,7 +244,7 @@ for (const path of keep) {
 if (errors.length) {
   console.error('\n✖ Docker-context check failed:');
   for (const e of errors) console.error(`  - ${e}`);
-  console.error('\nFix .dockerignore so non-build material stays out and build inputs stay in, then re-run `npm run check:dockerignore`.\n');
+  console.error('\nFix .dockerignore so non-build material stays out and build inputs stay in, then re-run `bun run check:dockerignore`.\n');
   process.exit(1);
 }
 console.log(`✓ Docker-context check OK (${rules.length} .dockerignore rules, ${mustReject.length} rejected / ${keep.length} kept paths asserted).`);

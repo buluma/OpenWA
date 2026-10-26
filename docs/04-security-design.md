@@ -136,7 +136,7 @@ found where it was saved, or replaced. Try these in order. If every key stopped 
 
    ```bash
    GEN="require('./dist/config/load-env'); const key = 'owa_k1_' + require('crypto').randomBytes(32).toString('hex'); console.log('key:', key); console.log('prefix:', key.slice(0, 12)); console.log('hash:', require('./dist/modules/auth/api-key-hash').hashApiKey(key, process.env.API_KEY_PEPPER))"
-   node -e "$GEN"                                               # source install, after npm run build
+   node -e "$GEN"                                               # source install, after bun run build
    docker compose run --rm --no-deps openwa-api node -e "$GEN"  # compose deployment
    ```
 
@@ -620,7 +620,7 @@ flowchart TB
 - [ ] SQL injection prevention (parameterized queries)
 - [ ] XSS prevention (output encoding)
 - [ ] CSRF protection (if using cookies)
-- [ ] Secure dependencies (npm audit)
+- [ ] Secure dependencies (bun audit)
 - [ ] No secrets in code
 
 ### Deployment
@@ -764,28 +764,28 @@ async function rotateEncryptionKey(oldKey: string, newKey: string): Promise<void
 
 ## 4.13 Dependency Security
 
-### npm Audit Workflow
+### Bun Audit Workflow
 
 ```bash
 # Check for vulnerabilities
-npm audit
+bun audit
 
 # Auto-fix non-breaking vulnerabilities
-npm audit fix
+bun audit fix
 
 # View detailed report
-npm audit --json > audit-report.json
+bun audit --json > audit-report.json
 ```
 
 ### GitHub Dependabot Configuration
 
 ```yaml
-# .github/dependabot.yml, root npm ecosystem only (the file also covers /dashboard,
+# .github/dependabot.yml, root Bun ecosystem only (the file also covers /dashboard,
 # /sdk/javascript, /sdk/python, /sdk/java, /sdk/php, /sdk/go, github-actions, docker and docker-compose). The comment above each
 # ignore is omitted here.
 version: 2
 updates:
-  - package-ecosystem: npm
+  - package-ecosystem: bun
     directory: /
     schedule:
       interval: weekly
@@ -826,7 +826,7 @@ tar-stream from 3.2.1). Each ignore's reason and lift condition is the comment a
 
 ### Security Scanning in CI
 
-> **Aspirational template, not in the repo.** There is no Snyk and no CodeQL workflow today. The actual dependency check is a dedicated `audit` job ("Security audit") in `ci.yml`, on push/PR. It is deliberately its own job rather than a step inside Lint: an advisory published against an unrelated dependency would otherwise abort the job before ESLint, the type-check and the drift gates ever ran. It runs `npm run check:audit` over the root tree and `npm audit --audit-level=high` over `dashboard/` and `sdk/javascript/`. All three checks use the HIGH threshold to block HIGH and CRITICAL advisories. `check:audit` applies that threshold per advisory instead of all-or-nothing: an advisory with no patched version can be excused by id in `scripts/check-audit.mjs`, with its reason and its removal condition recorded beside it, rather than dropping the whole job to `critical`; an allowlist entry whose advisory has since gone fails the job too, so an exception cannot outlive its cause. The dashboard and the SDK keep the plain form: they have nothing to excuse and stay stricter than the root. Between releases, `.github/workflows/security-scan.yml` (Scheduled Security Scan) repeats that job every Wednesday at 03:00 UTC and on demand, together with the release Trivy scan against the published `latest` image on amd64 and arm64, and a `base-image-drift` job that fails when the Dockerfile's two `node:22-slim` FROM digests disagree, or when the pin differs from what the tag serves today and either the tag has served that image for 7 or more days, or for 3 or more days with the pin last changed 28 or more days ago. The workflow below is a recommended setup to add if you want Snyk and SAST; its scheduled `npm audit` is already covered by `security-scan.yml`.
+> **Aspirational template, not in the repo.** There is no Snyk and no CodeQL workflow today. The actual dependency check is a dedicated `audit` job ("Security audit") in `ci.yml`, on push/PR. It is deliberately its own job rather than a step inside Lint: an advisory published against an unrelated dependency would otherwise abort the job before ESLint, the type-check and the drift gates ever ran. It runs `bun run check:audit` over the root tree and `bun audit --audit-level=high` over `dashboard/` and `sdk/javascript/`. All three checks use the HIGH threshold to block HIGH and CRITICAL advisories. `check:audit` applies that threshold per advisory instead of all-or-nothing: an advisory with no patched version can be excused by id in `scripts/check-audit.mjs`, with its reason and its removal condition recorded beside it, rather than dropping the whole job to `critical`; an allowlist entry whose advisory has since gone fails the job too, so an exception cannot outlive its cause. The dashboard and the SDK keep the plain form: they have nothing to excuse and stay stricter than the root. Between releases, `.github/workflows/security-scan.yml` (Scheduled Security Scan) repeats that job every Wednesday at 03:00 UTC and on demand, together with the release Trivy scan against the published `latest` image on amd64 and arm64, and a `base-image-drift` job that fails when the Dockerfile's two `node:22-slim` FROM digests disagree, or when the pin differs from what the tag serves today and either the tag has served that image for 7 or more days, or for 3 or more days with the pin last changed 28 or more days ago. The workflow below is a recommended setup to add if you want Snyk and SAST; its scheduled `bun audit` is already covered by `security-scan.yml`.
 
 ```yaml
 # .github/workflows/security.yml
@@ -850,10 +850,10 @@ jobs:
           node-version: '22'
 
       - name: Install dependencies
-        run: npm ci
+        run: bun install --frozen-lockfile
 
-      - name: Run npm audit
-        run: npm audit --audit-level=high
+      - name: Run bun audit
+        run: bun audit --audit-level=high
 
       - name: Run Snyk security scan
         uses: snyk/actions/node@master
@@ -868,7 +868,7 @@ jobs:
 
 ### Allowed/Blocked Packages
 
-Security pins for transitive dependencies live in the `overrides` field of `package.json` (for example `"multer": "2.4.0"` and `"ip-address": "^10.7.1"`), and the `audit` CI job gates regressions through `npm run check:audit` (see above). No install hook fetches an unpinned package: `postinstall` runs `npm ci` against the dashboard lockfile and the repository's own patch scripts.
+Security pins for transitive dependencies live in the `overrides` field of `package.json` (for example `"multer": "2.4.0"` and `"ip-address": "^10.7.1"`), and the `audit` CI job gates regressions through `bun run check:audit` (see above). No install hook fetches an unpinned package: `postinstall` runs `bun install --frozen-lockfile` against the dashboard lockfile and the repository's own patch scripts.
 
 ### Vulnerability Response Matrix
 

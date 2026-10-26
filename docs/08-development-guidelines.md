@@ -70,15 +70,15 @@ capability services; they must not import `IWhatsAppEngine` or `EngineRegistry`,
 or resolve an engine via `engines.require()` / `engines.get()`.
 
 ```bash
-npm run lint
-npm run lint:fix
+bun run lint
+bun run lint:fix
 ```
 
 The dashboard has its own package scripts:
 
 ```bash
 cd dashboard
-npm run lint
+bun run lint
 ```
 
 ### Naming Conventions
@@ -467,9 +467,9 @@ describe('App (e2e)', () => {
 Run the normal backend checks before opening a PR:
 
 ```bash
-npm test -- --runInBand
-npm run test:e2e -- --runInBand
-npm run lint
+bun run test -- --runInBand
+bun run test:e2e -- --runInBand
+bun run lint
 ```
 
 Coverage thresholds are enforced by Jest in `package.json`. Security-sensitive code under
@@ -575,7 +575,7 @@ Add a new one only when the condition is engine-agnostic and recurs; a one-off s
 ```bash
 # Required
 - Node.js 22.19 or newer (22 LTS)
-- npm 10+
+- Bun 1.4.4 (pinned in `.bun-version`)
 - Docker & Docker Compose
 - Git
 
@@ -590,9 +590,8 @@ Add a new one only when the condition is engine-agnostic and recurs; a one-off s
 > including on Windows outside Git Bash. With neither available the install still succeeds, but the
 > whatsapp-web.js engine then fails on every send; see `docs/12-troubleshooting-faq.md`.
 >
-> The committed lockfile resolves dependencies from the npm registry and works with npm 12's default
-> Git-dependency block. Do not work around `EALLOWGIT` by changing npm or Git configuration globally;
-> update to a current lockfile instead.
+> Keep `bun.lock` in sync with dependency changes. Use `bun install --frozen-lockfile` to confirm the
+> committed dependency graph installs reproducibly.
 
 ### Quick Start
 
@@ -602,13 +601,13 @@ git clone https://github.com/rmyndharis/OpenWA.git
 cd OpenWA
 
 # 2. Install the locked dependencies (also installs dashboard dependencies)
-npm ci
+bun install --frozen-lockfile
 
 # 3. Start API + dashboard in development mode
-npm run dev
+bun run dev
 ```
 
-Use `npm install` only when intentionally changing dependencies and updating the lockfile.
+Use `bun install` only when intentionally changing dependencies and updating the lockfile.
 
 On first boot the API creates `data/.env.generated` with a minimal SQLite/local-storage
 configuration. A project-level `.env` is optional; real process environment variables take precedence
@@ -785,7 +784,7 @@ ENABLE_SWAGGER=false
       "name": "Debug NestJS",
       "type": "node",
       "request": "launch",
-      "runtimeExecutable": "npm",
+      "runtimeExecutable": "bun",
       "runtimeArgs": ["run", "start:debug"],
       "console": "integratedTerminal",
       "restart": true,
@@ -795,7 +794,7 @@ ENABLE_SWAGGER=false
       "name": "Debug Tests",
       "type": "node",
       "request": "launch",
-      "runtimeExecutable": "npm",
+      "runtimeExecutable": "bun",
       "runtimeArgs": ["run", "test:debug"],
       "console": "integratedTerminal"
     }
@@ -866,18 +865,18 @@ events.forEach(event => {
 
 ```bash
 # Run single test file
-npm test -- session.service.spec.ts
+bun run test -- session.service.spec.ts
 
 # Run tests with verbose output
-npm test -- --verbose
+bun run test -- --verbose
 
 # Check for TypeScript errors without emitting (the Nest CLI has no --noEmit; call tsc directly).
 # Use the root tsconfig, not tsconfig.build.json — it is the only one that also type-checks the
 # colocated *.spec.ts files, which is what CI gates on.
-npx tsc --noEmit -p tsconfig.json
+bunx tsc --noEmit -p tsconfig.json
 
 # Lint with auto-fix
-npm run lint -- --fix
+bun run lint -- --fix
 
 # Debug database queries (TypeORM) — add to .env:
 # DATABASE_LOGGING=true
@@ -1022,13 +1021,13 @@ timeouts.
 
 ```bash
 # Check migration status
-npm run migration:show
+bun run migration:show
 
 # Revert last migration
-npm run migration:revert
+bun run migration:revert
 
 # Regenerate migration
-npm run migration:generate --name=FixMigration
+bun run migration:generate --name=FixMigration
 ```
 
 ### TypeScript/NestJS Issues
@@ -1094,8 +1093,8 @@ services:
 2. Create feature branch: `git checkout -b feat/amazing-feature`
 3. Make changes following our coding standards
 4. Write/update tests
-5. Run linter: `npm run lint`
-6. Run tests: `npm test`
+5. Run linter: `bun run lint`
+6. Run tests: `bun run test`
 7. Commit: `git commit -m 'feat(scope): add amazing feature'`
 8. Push: `git push origin feat/amazing-feature`
 9. Open Pull Request

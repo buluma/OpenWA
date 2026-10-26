@@ -4,7 +4,7 @@
 # ===== Stage 1: Builder =====
 # Pin the builder to the BUILD host's platform (not the target's). It only produces arch-INDEPENDENT
 # artifacts (the NestJS dist/ JS and the static dashboard SPA), so it never needs to run emulated for
-# the non-native target. On a multi-arch buildx build this avoids QEMU emulating the whole npm ci +
+# the non-native target. On a multi-arch buildx build this avoids QEMU emulating the whole Bun install +
 # Vite build for arm64 — which is slow AND is where the arm64 lightningcss (Vite 8's native CSS
 # minifier) optional dependency fails to install ("Cannot find module lightningcss.linux-arm64-gnu.node").
 # The per-arch runtime deps are installed natively in the target-platform production stage below.
@@ -15,7 +15,10 @@
 # security-scan.yml fails once the pin differs from what the tag serves and either the tag has
 # served that image for 7 or more days, or for 3 or more days with the pin last changed 28 or more
 # days ago. Update both stages together.
+FROM oven/bun:1.4.4 AS bun-cli
+
 FROM --platform=$BUILDPLATFORM docker.io/node:22-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d AS builder
+COPY --from=bun-cli /usr/local/bin/bun /usr/local/bin/bun
 
 WORKDIR /app
 
@@ -27,9 +30,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy package files
-COPY package*.json ./
+COPY package.json bun.lock ./
 
-# The postinstall hook is a real file (scripts/postinstall.js), and `npm ci` fails outright when
+# The postinstall hook is a real file (scripts/postinstall.js), and `bun install --frozen-lockfile` fails outright when
 # a lifecycle script is missing — copy it BEFORE the install. dashboard/ and the backport patcher
 # are deliberately still absent at this point, so the hook cleanly no-ops here (dashboard deps are
 # installed explicitly below; the patcher only matters for the production stage).
@@ -37,38 +40,39 @@ COPY scripts/postinstall.js ./scripts/
 
 # Install all dependencies INCLUDING devDependencies — the build needs them (`nest` from
 # @nestjs/cli, plus `vite`/`typescript` for the dashboard). `--include=dev` is REQUIRED, not
-# cosmetic: npm omits devDependencies whenever NODE_ENV=production is present in the build env.
+# cosmetic: Bun omits devDependencies whenever NODE_ENV=production is present in the build env.
 # Coolify (and similar PaaS) promote every ${VAR} referenced in the compose file to a build-time
 # variable, so docker-compose.yml's `NODE_ENV=${NODE_ENV:-production}` leaks NODE_ENV=production
-# into this stage and a bare `npm ci` would skip @nestjs/cli → `sh: 1: nest: not found` (exit 127).
+# into this stage and a bare `bun install --frozen-lockfile` would skip @nestjs/cli → `sh: 1: nest: not found` (exit 127).
 # (docker-compose.dev.yml forwards `NODE_ENV=${NODE_ENV:-development}`, so the dev build only sees
 # production when the host sets it.)
 # This stage only builds dist/ and the dashboard SPA and never launches a browser; the production
 # stage downloads Chrome explicitly. Skip the Puppeteer postinstall download so @puppeteer/browsers 3
 # does not try to extract a zip here, where no archiver is installed.
-RUN PUPPETEER_SKIP_DOWNLOAD=true npm ci --include=dev
+RUN PUPPETEER_SKIP_DOWNLOAD=true bun install --frozen-lockfile
 
 # Copy source code
 COPY . .
 
-# Build the API (dist/) and the dashboard SPA (dashboard/dist/). The root `npm ci` above
+# Build the API (dist/) and the dashboard SPA (dashboard/dist/). The root `bun install --frozen-lockfile` above
 # ran before the dashboard source was copied, so its postinstall hook skipped the dashboard
-# deps - install them explicitly here (npm ci, reproducible from dashboard/package-lock.json).
+# deps - install them explicitly here (bun install --frozen-lockfile, reproducible from dashboard/bun.lock).
 # `--include=dev` for the same reason as above: the dashboard build needs vite/typescript
 # (devDependencies), which a NODE_ENV=production build env would otherwise omit.
 # Drop the incremental-build cache afterwards: it is pinned inside dist/ (so nest's deleteOutDir
 # wipes it with the output), and the production stage copies dist/ wholesale — it would otherwise
 # ship dead compiler metadata in every image.
-RUN npm run build && npm run dashboard:ci -- --include=dev && npm run dashboard:build && rm -f dist/*.tsbuildinfo
+RUN bun run build && bun run dashboard:ci && bun run dashboard:build && rm -f dist/*.tsbuildinfo
 
 # ===== Stage 2: Production =====
 # Same digest-pinned node:22-slim base as the builder stage.
 FROM docker.io/node:22-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d AS production
+COPY --from=bun-cli /usr/local/bin/bun /usr/local/bin/bun
 
 # Run the app with production defaults from the first boot: an unset NODE_ENV selects the
 # development branch of the CORS/Swagger/DTO-error-detail/default-secret hardening (main.ts
 # warns about exactly this case). Both compose files and the Helm chart already set it; a plain
-# `docker run` of this image did not. The npm installs below pin --omit=dev explicitly, so this
+# `docker run` of this image did not. The Bun installs below pin --omit=dev explicitly, so this
 # changes nothing about which dependencies land in the image.
 ENV NODE_ENV=production
 
@@ -183,12 +187,12 @@ RUN groupadd -r -g 997 openwa && useradd -r -u 997 -g openwa openwa
 WORKDIR /app
 
 # Copy package files
-COPY package*.json ./
+COPY package.json bun.lock ./
 
 # Backport upstream whatsapp-web.js#201832 (id._serialized -> id.$1 normalization,
 # broken by WA Web 2.3000.x ~2026-07-14) into the installed dep at build time.
 # The patcher self-disables once whatsapp-web.js ships the fix upstream.
-# scripts/postinstall.js rides along so a bare local `npm ci` keeps working, but the
+# scripts/postinstall.js rides along so a bare local `bun install --frozen-lockfile` keeps working, but the
 # --ignore-scripts install below skips the hook here: the explicit fatal run right
 # after is the sole (and stricter) applier for the image.
 COPY scripts/postinstall.js scripts/patch-wwebjs-201832.js scripts/wwebjs-201832.patch scripts/patch-wwebjs-newsletter-preview.js scripts/patch-wwebjs-status.js scripts/patch-wwebjs-ready-sync.js scripts/patch-wwebjs-participant-arity.js scripts/patch-wwebjs-block.js scripts/patch-wwebjs-group-description.js scripts/patch-wwebjs-media-id.js scripts/patch-wwebjs-send-error.js scripts/patch-wwebjs-puppeteer.js scripts/patch-baileys-appstate.js scripts/patch-baileys-newsletter-create.js scripts/patch-baileys-pairing.js ./scripts/
@@ -201,7 +205,7 @@ COPY scripts/postinstall.js scripts/patch-wwebjs-201832.js scripts/wwebjs-201832
 # patcher is added without being copied AND run here — a hand-written list loses one silently, and
 # the Baileys one shipped in postinstall for a whole release without ever reaching the image.
 #
-# --ignore-scripts: this stage has no compiler toolchain, and npm still auto-runs
+# --ignore-scripts: this stage has no compiler toolchain, and Bun may run
 # `node-gyp rebuild` for any package shipping a binding.gyp without its own install
 # script (better-sqlite3's major bump ships N-API prebuilds inside the package, so
 # its runtime loader picks prebuilds/<platform>-<arch>.node — compiling here would
@@ -209,7 +213,7 @@ COPY scripts/postinstall.js scripts/patch-wwebjs-201832.js scripts/wwebjs-201832
 # msgpackr-extract) are optional=true with runtime fallbacks. The patchers that DO
 # need to run are the explicit fatal invocations below; baileys' preinstall is only
 # a node-version check that the engines field enforces anyway.
-RUN npm ci --omit=dev --ignore-scripts \
+RUN bun install --frozen-lockfile --production --ignore-scripts \
     && node scripts/patch-wwebjs-201832.js \
     && node scripts/patch-wwebjs-newsletter-preview.js \
     && node scripts/patch-wwebjs-status.js \
@@ -223,27 +227,7 @@ RUN npm ci --omit=dev --ignore-scripts \
     && node scripts/patch-baileys-newsletter-create.js \
     && node scripts/patch-baileys-pairing.js \
     && node scripts/patch-wwebjs-puppeteer.js \
-    && npm cache clean --force
-
-# Replace the npm the base image bundles. npm is not on the request path — the entrypoint runs
-# `node dist/main` — but it stays in the image because the operator runbooks drive it
-# (`docker compose run --rm openwa-api npm run migration:run:prod`), and its own bundled dependency
-# tree is what the release image scan reports. node:22-slim ships npm 10.9 (10.9.9 at the pinned digest),
-# whose bundle has carried a critical node-tar advisory plus sigstore/picomatch ones; npm 12 fixes
-# all three.
-# Deliberately AFTER `npm ci`, so the application tree is still resolved by the npm the lockfile
-# was generated with and only the global CLI is swapped. Pinned to the exact patch release —
-# a floating npm@12 would make the image's bundled npm tree depend on when the build happened.
-# npm 12.2.1 still bundles Undici 6.29.0. Replace only that package with its compatible patch;
-# npm's bundled private packages prevent reinstalling its dependency tree from the registry.
-RUN npm install -g npm@12.2.1 && \
-    node -e "if (require('/usr/local/lib/node_modules/npm/node_modules/undici/package.json').version !== '6.29.0') throw new Error('Recheck npm Undici replacement');" && \
-    npm_http_patch_dir=$(mktemp -d) && \
-    npm install --prefix "$npm_http_patch_dir" --no-save --package-lock=false --ignore-scripts --no-audit --fund=false undici@6.29.1 && \
-    rm -rf /usr/local/lib/node_modules/npm/node_modules/undici && \
-    mv "$npm_http_patch_dir/node_modules/undici" /usr/local/lib/node_modules/npm/node_modules/undici && \
-    rm -rf "$npm_http_patch_dir" && \
-    npm cache clean --force
+    && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 
 # amd64: download Chrome for Testing via Puppeteer and symlink it.
 # arm64: use Debian's chromium installed above (a choice; see the note at that install).

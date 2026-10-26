@@ -23,7 +23,7 @@
  *      tag to appVersion, so a stale one deploys a tag that does not exist yet. The chart's own
  *      `version:` is intentionally left alone: it tracks packaging changes on its own cadence.
  *
- * Run locally: `npm run check:versions`. Runs in CI (lint job).
+ * Run locally: `bun run check:versions`. Runs in CI (lint job).
  */
 import { readFileSync } from 'node:fs';
 
@@ -138,7 +138,7 @@ if (minorMatch) {
 if (errors.length) {
   console.error(`\n✖ Version consistency check failed (package.json = ${version}):`);
   for (const e of errors) console.error(`  - ${e}`);
-  console.error('\nFix the above so docs track the release automatically, then re-run `npm run check:versions`.\n');
+  console.error('\nFix the above so docs track the release automatically, then re-run `bun run check:versions`.\n');
   process.exit(1);
 }
 console.log(`✓ Version consistency OK (package.json = ${version}).`);

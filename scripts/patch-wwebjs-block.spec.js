@@ -24,7 +24,7 @@ const {
  *
  * The fixture is the INSTALLED Contact.js rather than a hand-written approximation: a synthetic
  * fixture can only prove the patcher matches a shape I wrote, not the shape upstream ships. When the
- * installed tree is already patched (postinstall runs on `npm install`), the patch is reversed to
+ * installed tree is already patched (postinstall runs on `bun install`), the patch is reversed to
  * recover the pristine text, so the suite behaves the same before and after a local install.
  */
 const INSTALLED_CONTACT = path.join(

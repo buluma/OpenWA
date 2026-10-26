@@ -20,7 +20,7 @@
  * list openapi.json, so changing the contract alone runs none of it — and it never runs on a release
  * tag at all.
  *
- * Run locally: `npm run check:sdk-routes`.
+ * Run locally: `bun run check:sdk-routes`.
  */
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -148,7 +148,7 @@ for (const sdk of SEND_MEDIA_VERBS) {
 if (errors.length) {
   console.error('\n✖ SDK routes drifted from the committed contract:');
   for (const e of errors) console.error(`  - ${e}`);
-  console.error('\nRegenerate the contract (`npm run openapi:export`) or fix the SDK path.\n');
+  console.error('\nRegenerate the contract (`bun run openapi:export`) or fix the SDK path.\n');
   process.exit(1);
 }
 console.log(`✓ SDK routes OK (${scanned} literals across ${SDKS.length} SDKs against ${known.size} contract paths).`);

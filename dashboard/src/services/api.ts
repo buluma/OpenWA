@@ -1047,6 +1047,10 @@ export const sessionApi = {
     request<{ messages: ChatMessage[]; total: number }>(
       `/sessions/${id}/messages?chatId=${encodeURIComponent(chatId)}&limit=${limit}&offset=${offset}`,
     ),
+  getChatMedia: (id: string, chatId: string, limit = 30, offset = 0) =>
+    request<{ messages: ChatMessage[]; total: number }>(
+      `/sessions/${id}/messages?chatId=${encodeURIComponent(chatId)}&mediaOnly=true&limit=${limit}&offset=${offset}`,
+    ),
   // Live history straight from WhatsApp (bypasses the DB) — backfills a thread the gateway never
   // captured, e.g. a freshly paired session whose persisted store is still empty.
   // includeMedia downloads the media payload (base64) for history messages so stickers/images/
@@ -1217,6 +1221,59 @@ export const contactApi = {
         .map(encodeURIComponent)
         .join(',')}`,
     ),
+  remove: (sessionId: string, contactId: string) =>
+    request<{ success: boolean; message: string }>(`/sessions/${sessionId}/contacts/${encodeURIComponent(contactId)}`, {
+      method: 'DELETE',
+    }),
+};
+
+export type PrivacyVisibility = 'all' | 'contacts' | 'contact_blacklist' | 'none';
+export type PrivacyOnlineVisibility = 'all' | 'match_last_seen';
+export type PrivacyGroupAddVisibility = 'all' | 'contacts' | 'contact_blacklist';
+export type PrivacyMessagesVisibility = 'all' | 'contacts';
+export type PrivacyCallVisibility = 'all' | 'known';
+export type PrivacyReadReceipts = 'all' | 'none';
+
+export interface UpdatePrivacySettingsInput {
+  lastSeen?: PrivacyVisibility;
+  online?: PrivacyOnlineVisibility;
+  profilePicture?: PrivacyVisibility;
+  status?: PrivacyVisibility;
+  readReceipts?: PrivacyReadReceipts;
+  groupsAdd?: PrivacyGroupAddVisibility;
+  call?: PrivacyCallVisibility;
+  messages?: PrivacyMessagesVisibility;
+  disableLinkPreviews?: boolean;
+  defaultDisappearingMode?: number;
+}
+
+export const privacyApi = {
+  getSettings: (sessionId: string) => request<Record<string, string>>(`/sessions/${sessionId}/privacy/settings`),
+  getBlocklist: (sessionId: string) => request<{ blocklist: string[] }>(`/sessions/${sessionId}/privacy/blocklist`),
+  updateSettings: (sessionId: string, data: UpdatePrivacySettingsInput) =>
+    request<{ success: boolean }>(`/sessions/${sessionId}/privacy/settings`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+};
+
+export interface QuickReplyInput {
+  id?: string;
+  shortcut: string;
+  message: string;
+  keywords?: string[];
+}
+
+export const quickReplyApi = {
+  upsert: (sessionId: string, data: QuickReplyInput) =>
+    request<{ success: boolean; id: string }>(`/sessions/${sessionId}/quick-replies`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  remove: (sessionId: string, id: string) =>
+    request<{ success: boolean; message: string }>(`/sessions/${sessionId}/quick-replies/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    }),
 };
 
 // =============================================================================

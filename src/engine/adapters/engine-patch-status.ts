@@ -7,7 +7,7 @@ import * as path from 'path';
  * The patches are applied two ways, and only one of them is loud. The Docker production stage runs
  * every patcher WITHOUT `--best-effort`, so an unrecognised source shape fails the image build. A
  * source install runs them through `scripts/postinstall.js` WITH `--best-effort`, where a patcher
- * that cannot apply prints one line into a long `npm install` transcript and the install still
+ * that cannot apply prints one line into a long `bun install` transcript and the install still
  * succeeds. The operator then runs a tree that is missing a fix, and the symptom arrives later as
  * exactly the opaque failure the patch existed to remove: an unnamed 500, a send that reports no
  * message, a resync loop that never ends. None of those errors name their cause.
@@ -100,7 +100,7 @@ export function unappliedPatchesMessage(family: PatchFamily, names: string[]): s
     `patches: ${names.join(', ')}. The capabilities each one repairs will fail with errors that ` +
     'name no cause. The install skipped them, usually because it ran with --ignore-scripts or ' +
     'because a patcher refused a source shape it did not recognise. Apply them with ' +
-    `\`node scripts/${names[0]}.js\` (or reinstall with \`npm install\`) and restart. ` +
+    `\`node scripts/${names[0]}.js\` (or reinstall with \`bun install\`) and restart. ` +
     'See docs/12-troubleshooting-faq.md.'
   );
 }

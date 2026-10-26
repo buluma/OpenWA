@@ -1,6 +1,6 @@
 /**
  * Unit tests for the failure hint in scripts/smoke-test-docker-proxy.sh (node:test, no deps).
- * Run: `npm run test:scripts`.
+ * Run: `bun run test:scripts`.
  *
  * A shim curl answers /api/health with 200 and /api/infra/status with SHIM_CODE, so the admin-API
  * check fails without a running stack and its message can be read.

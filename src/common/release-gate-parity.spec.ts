@@ -14,12 +14,12 @@ import { executableLines, executableLinesConservative } from './workflow-lines';
  * test:docs ran only on branches, so an SDK wire-shape regression or a repo-file drift could ride a
  * tag to publication while the same commit would have failed CI.
  *
- * This locks the invariant structurally: every gate command (npm/npx lines) in ci.yml's lint and
+ * This locks the invariant structurally: every gate command (bun/bunx lines) in ci.yml's lint and
  * test jobs must also run in release.yml's lint and test jobs (the workflow header and the check:audit step comment both state
  * the invariant; this spec makes it enforced). The release jobs may run MORE
  * (its lint also carries the audit gate); only the subset direction is asserted. The dashboard,
  * scripts-smoke and chart jobs run `cd dashboard && …`, shellcheck, scripts and helm rather than
- * bare npm/npx lines, so for them every whole `run` step is compared instead.
+ * bare bun/bunx lines, so for them every whole `run` step is compared instead.
  */
 
 const workflowDir = path.join(__dirname, '..', '..', '.github', 'workflows');
@@ -35,18 +35,18 @@ const jobSteps = (file: string, job: string): Step[] => {
 };
 
 // The shell skips a space and a tab and nothing else, so only those come off a line: String.trim() would also
-// drop U+00A0 and the other blanks the shell reads as part of a word, and count `<U+00A0>npm run x` as the
-// command `npm run x` when the shell runs one named `<U+00A0>npm` (127).
+// drop U+00A0 and the other blanks the shell reads as part of a word, and count `<U+00A0>bun run x` as the
+// command `bun run x` when the shell runs one named `<U+00A0>bun` (127).
 const stripBlanks = (text: string): string => text.replace(/^[ \t]+|[ \t]+$/g, '');
 
-// The lines of these scripts that are an npm or npx command. They are compared whole, so they are read
+// The lines of these scripts that are an bun or bunx command. They are compared whole, so they are read
 // exactly; a caller that looks for a name inside them passes the conservative reading.
 const commandLines = (runs: string[], read: (run: string) => string = executableLines): string[] =>
   runs.flatMap(run =>
     read(run)
       .split('\n')
       .map(stripBlanks)
-      .filter(line => /^npx |^npm /.test(line)),
+      .filter(line => /^bunx |^bun /.test(line)),
   );
 
 const gateCommands = (file: string, job: string, read: (run: string) => string = executableLines): string[] =>
@@ -82,12 +82,12 @@ describe('release gate parity (the tag path runs every branch gate)', () => {
 
   it('does not count as a gate command a line that begins with a blank the shell does not skip', () => {
     const nbsp = String.fromCharCode(0xa0);
-    expect(commandLines([`${nbsp}npm run lint\n  npm run test \t\n\t${nbsp}npx tsc`])).toEqual(['npm run test']);
+    expect(commandLines([`${nbsp}bun run lint\n  bun run test \t\n\t${nbsp}bunx tsc`])).toEqual(['bun run test']);
   });
 
   it('the two gates this spec was born from still run on the tag path', () => {
-    expect(gateCommands('release.yml', 'lint')).toContain('npm run check:contract-shapes');
-    expect(gateCommands('release.yml', 'test')).toContain('npm run test:docs');
+    expect(gateCommands('release.yml', 'lint')).toContain('bun run check:contract-shapes');
+    expect(gateCommands('release.yml', 'test')).toContain('bun run test:docs');
     // The postgres lane names its specs inline, so a spec added to ci.yml alone would otherwise
     // leave the tag path running a strictly weaker suite than the branch it was cut from.
     expect(gateCommands('release.yml', 'test-postgres', executableLinesConservative).join(' ')).toContain(
@@ -323,7 +323,7 @@ describe('one prerelease rule across the GitHub Release and the image channels',
 });
 
 /**
- * check:audit skips when npm's audit endpoint cannot answer, so an npm outage does not block every
+ * check:audit skips when bun's audit endpoint cannot answer, so an bun outage does not block every
  * merge. The release and the weekly scan must not take that skip: one would publish, the other would
  * report the week clean, with no advisory checked. CHECK_AUDIT_REQUIRED=1 turns the skip into a failure.
  */
@@ -334,11 +334,11 @@ describe('the release and weekly audits fail when the audit cannot run', () => {
     yaml.load(fs.readFileSync(path.join(workflowDir, file), 'utf8')) as AuditWorkflow;
   // The steps that run the audit as a reading sees it. Both are used, for different questions: a step that
   // CERTAINLY runs it (conservative) has to be there, and every step that MAY run it (exact) is held to the
-  // rule, or an extra one written as `echo x<U+00A0>#; npm run check:audit` takes the skip unseen.
+  // rule, or an extra one written as `echo x<U+00A0>#; bun run check:audit` takes the skip unseen.
   const auditSteps = (workflow: AuditWorkflow, read: (run: string) => string): AuditStep[] =>
     Object.values(workflow.jobs ?? {})
       .flatMap(job => job.steps ?? [])
-      .filter(step => read(step.run ?? '').includes('npm run check:audit'));
+      .filter(step => read(step.run ?? '').includes('bun run check:audit'));
   const unrequired = (workflow: AuditWorkflow): string[] => [
     ...(auditSteps(workflow, executableLinesConservative).length === 0 ? ['no step certainly runs the audit'] : []),
     ...auditSteps(workflow, executableLines)
@@ -358,12 +358,12 @@ describe('the release and weekly audits fail when the audit cannot run', () => {
     for (const code of [0xa0, 0x3000, 0xfeff, 0x2028]) {
       const blank = String.fromCharCode(code);
       const extra = copy();
-      anyJob(extra).push({ run: `echo x${blank}#; npm run check:audit` });
+      anyJob(extra).push({ run: `echo x${blank}#; bun run check:audit` });
       expect([code, unrequired(extra)]).toEqual([code, ['a step that may run the audit does not require it']]);
     }
     // The same line behind a space is a comment, and the real step with its requirement taken off is not.
     const comment = copy();
-    anyJob(comment).push({ run: 'echo x # npm run check:audit' });
+    anyJob(comment).push({ run: 'echo x # bun run check:audit' });
     expect(unrequired(comment)).toEqual([]);
     const lax = copy();
     for (const step of auditSteps(lax, executableLines)) step.env = { CHECK_AUDIT_REQUIRED: '0' };
@@ -371,7 +371,7 @@ describe('the release and weekly audits fail when the audit cannot run', () => {
     // A step that only names the audit behind such a blank and a `#` is no audit: one must really run.
     const named = copy();
     for (const step of auditSteps(named, executableLines))
-      step.run = `echo x${String.fromCharCode(0xa0)}# npm run check:audit`;
+      step.run = `echo x${String.fromCharCode(0xa0)}# bun run check:audit`;
     expect(unrequired(named)).toContain('no step certainly runs the audit');
   });
 
@@ -391,18 +391,15 @@ describe('the release and weekly audits fail when the audit cannot run', () => {
 });
 
 /**
- * Each npm tree has its own lockfile, and `npm audit` in one directory never sees another's. A tree
+ * Each bun tree has its own lockfile, and `bun audit` in one directory never sees another's. A tree
  * the merge and weekly audits skip, or that Dependabot does not watch, collects advisories unseen.
  */
-describe('every npm tree is audited and kept current', () => {
+describe('every bun tree is audited and kept current', () => {
   const root = path.join(__dirname, '..', '..');
   const trees = (): string[] =>
-    spawnSync('git', ['ls-files', '--', '*package-lock.json'], { cwd: root, encoding: 'utf8' })
-      .stdout.split('\n')
-      .filter(Boolean)
-      .map(file => path.posix.dirname(file).replace(/^\.$/, ''));
+    ['', 'dashboard', 'sdk/javascript'].filter(tree => fs.existsSync(path.join(root, tree, 'bun.lock')));
   const auditCommand = (tree: string): string =>
-    tree === '' ? 'npm run check:audit' : `cd ${tree} && npm audit --audit-level=high`;
+    tree === '' ? 'bun run check:audit' : `cd ${tree} && bun audit --audit-level=high`;
 
   it('finds every tree', () => {
     expect(trees()).toEqual(expect.arrayContaining(['', 'dashboard', 'sdk/javascript']));
@@ -424,7 +421,7 @@ describe('every npm tree is audited and kept current', () => {
     return workflow.jobs[job].steps.flatMap((step, index) =>
       executableLines(step.run ?? '')
         .split('\n')
-        .map(line => /^(?:cd (\S+) && )?npm (?:run check:audit|audit --audit-level=high)$/.exec(stripBlanks(line)))
+        .map(line => /^(?:cd (\S+) && )?bun (?:run check:audit|audit --audit-level=high)$/.exec(stripBlanks(line)))
         .flatMap(match =>
           match ? [{ index, step, tree: path.posix.join(cwd, match[1] ?? '').replace(/^\.$/, '') }] : [],
         ),
@@ -433,7 +430,7 @@ describe('every npm tree is audited and kept current', () => {
   const releaseAudits = (file: string, job: string) => auditsOf(releaseWorkflow(file), job);
 
   // A tag starts only its own release workflow, so each one audits the trees it publishes: the image
-  // carries the root and the dashboard, the npm package is built from the SDK. Exact, so moving a
+  // carries the root and the dashboard, the bun package is built from the SDK. Exact, so moving a
   // tree from one path to the other is a deliberate edit here.
   it.each([
     ['release.yml', 'lint', ['', 'dashboard']],
@@ -447,11 +444,11 @@ describe('every npm tree is audited and kept current', () => {
     ).toEqual([]);
   });
 
-  // `npm audit` reads the lockfile alone, so a high advisory stops the build job before `npm ci`
+  // `bun audit` reads the lockfile alone, so a high advisory stops the build job before `bun ci`
   // runs any of the toolchain. Every step that may install, on any line of its script and not only as the
   // whole of one, comes after the audit, so the install is read exactly.
-  // `npm ci`, `npm install`, `npm i` and `npm add`, with options before the subcommand (`npm --prefix x ci`).
-  const INSTALL = /\bnpm(?:[ \t]+-\S+(?:[ \t]+[^\s-]\S*)?)*[ \t]+(?:ci|install|i|add)\b/;
+  // `bun ci`, `bun install`, `bun i` and `bun add`, with options before the subcommand (`bun --prefix x ci`).
+  const INSTALL = /\bbun(?:[ \t]+-\S+(?:[ \t]+[^\s-]\S*)?)*[ \t]+(?:ci|i|install|add)\b/;
   const installProblems = (workflow: ReleaseWorkflow, job: string): string[] => {
     const audit = auditsOf(workflow, job)[0]?.index ?? -1;
     const installs = workflow.jobs[job].steps.flatMap((step, index) =>
@@ -480,26 +477,26 @@ describe('every npm tree is audited and kept current', () => {
     const before = [`step ${auditAt + 1} may install before the audit`];
     // After another command of the same script, and as the second command of a line.
     for (const run of [
-      'echo start\nnpm ci',
-      'cd . && npm install',
-      'npm i left-pad',
-      'echo x; npm ci --ignore-scripts',
-      'npm --prefix . ci',
-      'npm --no-fund --loglevel silent add left-pad',
-      'if true; then\n  npm ci\nfi',
+      'echo start\nbun ci',
+      'cd . && bun install',
+      'bun i left-pad',
+      'echo x; bun ci --ignore-scripts',
+      'bun install --frozen-lockfile',
+      'bun --no-fund --loglevel silent add left-pad',
+      'if true; then\n  bun ci\nfi',
     ]) {
       expect([run, installProblems(early(run), 'build')]).toEqual([run, before]);
     }
     // Words that only look like one, and a comment, are not an install.
-    for (const run of ['npm run install-hooks', 'npm pack # npm ci', '# npm ci']) {
+    for (const run of ['bun run install-hooks', 'bun pack # bun ci', '# bun ci']) {
       expect([run, installProblems(early(run), 'build')]).toEqual([run, []]);
     }
     const none = copy();
-    none.jobs.build.steps = none.jobs.build.steps.filter(step => !/npm ci/.test(step.run ?? ''));
+    none.jobs.build.steps = none.jobs.build.steps.filter(step => !INSTALL.test(executableLines(step.run ?? '')));
     expect(installProblems(none, 'build')).toEqual(['no install step']);
   });
 
-  // The clients that are not npm packages publish runtime dependencies of their own, and the audit steps
+  // The clients that are not bun packages publish runtime dependencies of their own, and the audit steps
   // above cannot see those manifests, so an advisory in one is raised only by Dependabot.
   it.each([
     ['pip', 'sdk/python/pyproject.toml'],
@@ -520,65 +517,32 @@ describe('every npm tree is audited and kept current', () => {
     const dependabot = yaml.load(fs.readFileSync(path.join(root, '.github', 'dependabot.yml'), 'utf8')) as {
       updates: Array<{ 'package-ecosystem': string; directory: string }>;
     };
-    const watched = dependabot.updates.filter(u => u['package-ecosystem'] === 'npm').map(u => u.directory);
+    const watched = dependabot.updates.filter(u => u['package-ecosystem'] === 'bun').map(u => u.directory);
     expect(trees().filter(tree => !watched.includes(`/${tree}`))).toEqual([]);
   });
 });
 
 /**
- * The SDK's engines floor (>=18) is for the published package; its test toolchain needs a newer
- * Node. npm only warns when a locked package's engines exclude the running Node, so a toolchain bump
- * that drops a lane's Node still installs there, then tests on an unsupported runtime or fails at
- * startup on an optional native binding npm skipped. Each job that runs the SDK tests installs under
- * --engine-strict on exactly the lanes the test step runs on.
+ * Bun owns the JS SDK lockfile and setup action; Node remains the runtime compatibility matrix.
  */
-describe('the JavaScript SDK tests run only on a Node their toolchain supports', () => {
-  type LaneStep = { run?: string; if?: string };
-  const lane = (file: string, job: string): LaneStep[] =>
-    (
-      yaml.load(fs.readFileSync(path.join(workflowDir, file), 'utf8')) as {
-        jobs: Record<string, { steps: LaneStep[] }>;
-      }
-    ).jobs[job].steps;
-  // A line of its own anywhere in a script counts, read exactly: `echo start` above `npm ci` in one run is
-  // still an install, and a step that may run the tests is held to the lane as well.
-  const engineStrictProblems = (steps: LaneStep[]): string[] => {
-    const lines = (step: LaneStep): string => executableLines(step.run ?? '');
-    const installs = steps.filter(step => /^[ \t]*npm ci\b/m.test(lines(step)));
-    const tests = steps.filter(step => /^[ \t]*npm test\b/m.test(lines(step)));
-    if (installs.length !== 1) return [`${installs.length} steps may install, expected 1`];
-    if (tests.length !== 1) return [`${tests.length} steps may run the tests, expected 1`];
-    const gate = tests[0].if;
-    const want = gate ? `npm ci --engine-strict=\${{ ${gate} }}` : 'npm ci --engine-strict';
-    return [
-      ...(installs[0].if === undefined ? [] : ['the install has a condition of its own']),
-      ...(installs[0].run === want ? [] : [`the install is ${installs[0].run ?? ''}, expected ${want}`]),
-    ];
-  };
-
-  it.each([
-    ['sdk-ci.yml', 'javascript'],
-    ['js-sdk-release.yml', 'build'],
-  ])('%s %s installs under --engine-strict wherever it runs npm test', (file, job) => {
-    expect(engineStrictProblems(lane(file, job))).toEqual([]);
-  });
-
-  it.each([
-    ['sdk-ci.yml', 'javascript'],
-    ['js-sdk-release.yml', 'build'],
-  ])('%s %s: refuses a second install, or tests that run beside one without the flag', (file, job) => {
-    const copy = (): LaneStep[] => JSON.parse(JSON.stringify(lane(file, job))) as LaneStep[];
-    const second = copy();
-    second.unshift({ run: 'echo start\nnpm ci' });
-    expect(engineStrictProblems(second)).toEqual(['2 steps may install, expected 1']);
-    const tests = copy();
-    tests.push({ run: 'echo start\nnpm test' });
-    expect(engineStrictProblems(tests)).toEqual(['2 steps may run the tests, expected 1']);
-    const loose = copy();
-    for (const step of loose) if (/^[ \t]*npm ci\b/m.test(step.run ?? '')) step.run = 'npm ci';
-    expect(engineStrictProblems(loose)).toEqual([
-      expect.stringMatching(/^the install is npm ci, expected npm ci --engine-strict/),
-    ]);
+describe('the JavaScript SDK runs on its declared Node runtime floor', () => {
+  const root = path.join(__dirname, '..', '..');
+  it('keeps the CI matrix at or above the published package floor', () => {
+    const manifest = JSON.parse(fs.readFileSync(path.join(root, 'sdk/javascript/package.json'), 'utf8')) as {
+      engines: { node: string };
+    };
+    const workflow = yaml.load(fs.readFileSync(path.join(workflowDir, 'sdk-ci.yml'), 'utf8')) as {
+      jobs: {
+        javascript: {
+          strategy: { matrix: { node: string[] } };
+          steps: Array<{ uses?: string; with?: Record<string, string> }>;
+        };
+      };
+    };
+    const floor = Number(manifest.engines.node.match(/\d+/)?.[0]);
+    expect(floor).toBeGreaterThan(0);
+    expect(workflow.jobs.javascript.strategy.matrix.node.map(Number).every(version => version >= floor)).toBe(true);
+    expect(workflow.jobs.javascript.steps.some(step => step.uses?.startsWith('oven-sh/setup-bun@'))).toBe(true);
   });
 });
 
@@ -708,7 +672,7 @@ describe('both paths exercise the real engine libraries', () => {
   };
 
   it.each(['ci.yml', 'release.yml'])('%s build job runs the real-library lane', file => {
-    expect(jobRun(file, 'build')).toContain('npm run test:engine-real');
+    expect(jobRun(file, 'build')).toContain('bun run test:engine-real');
   });
 
   it('ci.yml loads both engine libraries in the built image', () => {

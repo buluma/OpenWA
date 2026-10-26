@@ -3,7 +3,7 @@ import { join } from 'node:path';
 
 /**
  * docs/10 once carried a hand-written full Dockerfile that drifted from the real one: a bare
- * `npm ci` in the builder, `npm ci --only=production` without the patchers, and a CMD that no image
+ * `bun install` in the builder, a production-only install without the patchers, and a CMD that no image
  * built from it could start. The docs now quote an excerpt, and this keeps every quoted directive
  * present in the real Dockerfile, so the excerpt cannot drift the same way.
  */
@@ -36,7 +36,7 @@ describe('docs/10 Dockerfile excerpt matches the Dockerfile', () => {
   it('never prescribes the stale install or health probe forms', () => {
     for (const doc of ['10-devops-infrastructure.md', '12-troubleshooting-faq.md']) {
       const text = read('docs', doc);
-      expect(text).not.toContain('npm ci --only=production');
+      expect(text).not.toContain('bun install --production');
       // The probe targets readiness, as the image and both compose files do, not the bare /api/health.
       expect(text).not.toMatch(/localhost:2785\/api\/health(?:'|"| \|\|)/);
     }

@@ -9,8 +9,8 @@ import {
   IsArray,
   ArrayMinSize,
   ArrayMaxSize,
-  MaxLength,
   IsIn,
+  MaxLength,
   Validate,
 } from 'class-validator';
 import { ToStrictArray, ToStrictBoolean, ToStrictNumber, ToStrictString } from '../../../common/utils/strict-boolean';

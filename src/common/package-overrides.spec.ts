@@ -8,9 +8,10 @@ import { join } from 'node:path';
  */
 describe('package.json overrides', () => {
   type Overrides = { [name: string]: string | Overrides };
-  const read = (file: string): unknown => JSON.parse(readFileSync(join(__dirname, '..', '..', file), 'utf8'));
+  const read = (file: string): unknown =>
+    JSON.parse(readFileSync(join(__dirname, '..', '..', file), 'utf8').replace(/,\s*([}\]])/g, '$1'));
   const pkg = read('package.json') as { overrides?: Overrides };
-  const lock = read('package-lock.json') as { packages: Record<string, unknown> };
+  const lock = read('bun.lock') as { packages: Record<string, unknown> };
 
   /** Every package an override names, at any depth, without its `@<range>` selector. */
   const named = (overrides: Overrides): string[] =>
@@ -20,7 +21,7 @@ describe('package.json overrides', () => {
     ]);
 
   it('names only packages the lockfile installs', () => {
-    const installed = new Set(Object.keys(lock.packages).map(path => path.replace(/^.*node_modules\//, '')));
+    const installed = new Set(Object.keys(lock.packages));
     const names = [...new Set(named(pkg.overrides ?? {}))];
     // Vacuity guard: an unparsed overrides block would pass the check below.
     expect(names.length).toBeGreaterThan(5);

@@ -1,4 +1,4 @@
-import { buildMessageMetadata, storableWaMessageId, MEDIA_MESSAGE_TYPES } from './message-row.mapper';
+import { buildMessageMetadata, storableWaMessageId, MEDIA_MESSAGE_TYPES, rowCreatedAt } from './message-row.mapper';
 import type { IncomingMessage, MessageType } from '../../engine/interfaces/whatsapp-engine.interface';
 
 const msg = (over: Partial<IncomingMessage> = {}): IncomingMessage => ({ type: 'chat', ...over }) as IncomingMessage;
@@ -105,5 +105,22 @@ describe('storableWaMessageId', () => {
 
   it('maps undefined to undefined', () => {
     expect(storableWaMessageId(undefined)).toBeUndefined();
+  });
+});
+
+describe('rowCreatedAt', () => {
+  const now = new Date('2026-10-18T06:00:00Z');
+
+  it('uses the WhatsApp send time (epoch seconds) so a replayed backlog keeps its real day', () => {
+    expect(rowCreatedAt(1790000000, now)).toEqual(new Date(1790000000 * 1000));
+  });
+
+  it('never stamps a time ahead of the host clock', () => {
+    expect(rowCreatedAt(now.getTime() / 1000 + 120, now)).toEqual(now);
+  });
+
+  it('leaves createdAt to the DB default when the engine gave no timestamp', () => {
+    expect(rowCreatedAt(0, now)).toBeUndefined();
+    expect(rowCreatedAt(undefined, now)).toBeUndefined();
   });
 });

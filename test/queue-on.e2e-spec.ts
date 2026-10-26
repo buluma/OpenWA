@@ -104,7 +104,7 @@ const waitFor = async (predicate: () => boolean | Promise<boolean>, timeoutMs = 
  * (or `docker compose --profile redis up -d redis`); point elsewhere with
  * QUEUE_TEST_REDIS_HOST/QUEUE_TEST_REDIS_PORT. CI runs it against the redis service of the Test job.
  * With no Redis reachable the whole suite self-skips (see REDIS_AVAILABLE above), so a bare
- * `npm run test:e2e` on a Redis-less box stays green; on GitHub Actions it fails instead.
+ * `bun run test:e2e` on a Redis-less box stays green; on GitHub Actions it fails instead.
  */
 describeQueueOn('Queued dispatch paths (e2e, QUEUE_ENABLED=true)', () => {
   let app: INestApplication<App>;

@@ -25,7 +25,7 @@ if (sqlitePathCollision) {
  * Mirrors the runtime main connection exactly: SQLite at ./data/main.sqlite, auth/audit entities,
  * migrations-main. synchronize is always false here — the CLI manages schema via migrations.
  *
- * Usage: `npm run migration:run:main` (dev) / `migration:run:main:prod` (compiled).
+ * Usage: `bun run migration:run:main` (dev) / `migration:run:main:prod` (compiled).
  */
 const mainDataSource = new DataSource({
   type: 'better-sqlite3',

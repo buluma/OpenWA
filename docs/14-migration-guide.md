@@ -406,9 +406,9 @@ docker compose up -d
 > tables named in its `migrationOrder`, which mirrors `EXPORT_TABLES` in
 > `src/modules/infra/export-tables.ts` as of this release; a table added later is skipped silently.
 >
-> It uses the standalone `sqlite3` npm package, which is no longer part of
+> It uses the standalone `sqlite3` bun pm package, which is no longer part of
 > OpenWA's dependencies (the app itself uses `better-sqlite3`). Install it ad hoc before running:
-> `npm install --no-save sqlite3`.
+> `bun install --no-save sqlite3`.
 >
 > The `SQLITE_PATH` / `DATABASE_URL` variables below are inputs to this standalone script only —
 > they are **not** OpenWA configuration. The application itself reads `DATABASE_TYPE` plus
@@ -634,7 +634,7 @@ docker compose down
 #         migrate-sqlite-to-postgres.ts first; it is not shipped in the repo. SQLITE_PATH and
 #         DATABASE_URL are inputs to the script only.
 export DATABASE_URL='postgresql://openwa:<strong password>@db.example.com:5432/openwa'
-SQLITE_PATH=./data/openwa.sqlite npx ts-node migrate-sqlite-to-postgres.ts
+SQLITE_PATH=./data/openwa.sqlite bunx ts-node migrate-sqlite-to-postgres.ts
 
 # Step 6: Verify migration
 psql "$DATABASE_URL" -c "SELECT COUNT(*) FROM sessions;"
@@ -806,8 +806,8 @@ them on PostgreSQL, and on SQLite unless `DATABASE_SYNCHRONIZE=true` puts the da
 mode. The Main (auth/audit) connection runs its own `migrations-main/` chain at every boot. The chain is
 idempotent, so a `main.sqlite` that an earlier release built with synchronize is adopted in place (rows
 kept, missing columns added, the ledger written). `MAIN_DATABASE_SYNCHRONIZE=true` only adds a
-synchronize pass after the chain. Run the main chain by hand with `npm run migration:run:main` on a
-source checkout, or `docker compose run --rm openwa-api npm run migration:run:main:prod` in the image.
+synchronize pass after the chain. Run the main chain by hand with `bun run migration:run:main` on a
+source checkout, or `docker compose run --rm openwa-api bun run migration:run:main:prod` in the image.
 
 ### Upgrade Steps
 
@@ -868,12 +868,12 @@ Migrations can also be run explicitly against a stopped app — useful when a lo
 outlast an orchestrator's liveness grace:
 
 ```bash
-docker compose run --rm openwa-api npm run migration:run:prod
+docker compose run --rm openwa-api bun run migration:run:prod
 ```
 
 > [!WARNING]
-> Use `migration:run:prod` inside the production image. Plain `npm run migration:run` needs `ts-node` and
-> the TypeScript sources, both stripped by `npm ci --omit=dev` in the released image. The same holds for
+> Use `migration:run:prod` inside the production image. Plain `bun run migration:run` needs `ts-node` and
+> the TypeScript sources, both stripped by `bun install --frozen-lockfile --omit=dev` in the released image. The same holds for
 > the main chain: use `migration:run:main:prod`, not `migration:run:main`.
 
 On PostgreSQL the boot migrations run in one transaction, so an index build on a large table holds back
@@ -1167,11 +1167,11 @@ migration:
 
   pre_checks:
     - name: Staging tests passed
-      command: npm run test:e2e
+      command: bun run test:e2e
       required: true
 
     - name: Security scan
-      command: npm audit --omit=dev
+      command: bun audit --audit-level=high
       required: true
 
   steps:
@@ -1383,7 +1383,7 @@ async function fullImport(options: ImportOptions): Promise<void> {
 ```bash
 docker compose down
 DATABASE_TYPE=postgres DATABASE_HOST=... DATABASE_USERNAME=... \
-  DATABASE_PASSWORD=... DATABASE_NAME=openwa npm run migration:run
+  DATABASE_PASSWORD=... DATABASE_NAME=openwa bun run migration:run
 docker compose up -d
 ```
 
@@ -1409,11 +1409,11 @@ stat ./data/sessions
 psql -h "$DATABASE_HOST" -U "$DATABASE_USERNAME" -d "$DATABASE_NAME" -c "SELECT version();"
 
 # Check migration status (add :main for the auth/audit connection)
-npm run migration:show
+bun run migration:show
 
 # Re-apply the most recent migration (there is no per-migration re-run —
 # migration:run always applies the whole pending chain)
-npm run migration:revert && npm run migration:run
+bun run migration:revert && bun run migration:run
 ```
 
 ---

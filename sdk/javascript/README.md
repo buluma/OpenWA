@@ -9,7 +9,7 @@ Ships dual CJS + ESM builds with bundled type declarations.
 ## Install
 
 ```bash
-npm install @rmyndharis/openwa
+bun add @rmyndharis/openwa
 ```
 
 Requires Node.js >= 18 (relies on the global `fetch`).
@@ -106,36 +106,24 @@ app.post('/openwa/webhook', express.raw({ type: 'application/json' }), async (re
 
 Publishing to npm is done by the
 [`js-sdk-release.yml`](../../.github/workflows/js-sdk-release.yml) workflow,
-which authenticates with **npm Trusted Publishing (OIDC)**. There is no npm
-token in the workflow or in the repository secrets: npm mints a short-lived
-credential from the GitHub OIDC token, and attaches build provenance
-automatically. Nothing long-lived exists to leak, expire, or migrate when
-2FA-bypass tokens lose direct publish in January 2027.
-
-One-time setup, required **before** the first tag — on npmjs.com, open the
-package settings for `@rmyndharis/openwa` and add a Trusted Publisher:
-
-- Provider: **GitHub Actions**
-- Organization: `rmyndharis`
-- Repository: `OpenWA`
-- Workflow filename: `js-sdk-release.yml` (the extension is part of the value)
-
-There are no repository secrets to add. Until the trusted publisher exists npm
-rejects the publish, so configure it first.
-
+which publishes the validated tarball with Bun to the npm registry. Configure the
+repository secret `NPM_CONFIG_TOKEN` with a narrowly scoped npm automation token
+that can publish `@rmyndharis/openwa`. Bun does not yet support npm OIDC trusted
+publishing or provenance generation. The publish job has no checkout and only
+receives the artifact built and tested by the separate build job.
 Cutting a release:
 
 1. Bump `version` in `package.json` and land it on `main`.
 2. Tag that commit `js-sdk-v<version>` (e.g. `js-sdk-v0.7.0`) and push the tag.
    The SDK has its own version line — the monorepo's `v*` tags are the app
    version and never trigger an SDK publish.
-3. The workflow audits the SDK lockfile (`npm audit --audit-level=high`),
+3. The workflow audits the SDK lockfile (`bun audit --audit-level=high`),
    re-runs the SDK's tests, typecheck, build and dual CJS/ESM smoke check
    (packaging plus requests through each build's client), then packs the
    tarball. A second job, the only one that can mint the publish credential,
    uploads that tarball and runs no project code: the published bytes are the
    ones those gates passed, not a later rebuild. It receives the tarball as a
-   workflow artifact and passes its absolute path to `npm publish`, which takes
+   workflow artifact and passes its absolute path to `bun publish`, which takes
    one file, so a missing or a second tarball fails the release.
 
 ## License

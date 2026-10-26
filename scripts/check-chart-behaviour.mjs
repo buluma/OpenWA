@@ -18,7 +18,7 @@
  * that reads as a pass. The control fails on exactly that. Keep the two together; the feature check
  * alone is not evidence.
  *
- * Run locally: `npm run check:chart`. Runs in CI (Helm chart and workflows job). Needs Docker.
+ * Run locally: `bun run check:chart`. Runs in CI (Helm chart and workflows job). Needs Docker.
  */
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -332,7 +332,7 @@ if (failed.length) {
   console.error('\n✖ Chart behaviour check failed:');
   for (const r of failed) console.error(`  - ${r.id}: ${r.detail}`);
   console.error('\nThese assert against the rendered objects, so `helm lint` and `kubeconform` cannot catch them.');
-  console.error('Re-run with `npm run check:chart` after fixing the chart.\n');
+  console.error('Re-run with `bun run check:chart` after fixing the chart.\n');
   process.exit(1);
 }
 for (const r of results) console.log(`  ✓ ${r.id} — ${r.detail}`);

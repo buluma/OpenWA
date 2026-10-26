@@ -63,7 +63,7 @@ All five SDKs expose the same fluent resource surface:
 > `openapi.json` itself, not just from the SDKs — `POST /mcp` is mounted directly
 > on the Express adapter, outside the Nest `/api` routing the Swagger scanner
 > sees, so the exporter cannot emit it. Do not hand-add it to `openapi.json`
-> (`npm run openapi:check` regenerates the file and the diff fails); the route is
+> (`bun run openapi:check` regenerates the file and the diff fails); the route is
 > documented by hand in `docs/06-api-specification.md`, and the docs-contract
 > gate names `POST /mcp` as the one heading allowed outside the contract.
 
@@ -75,7 +75,7 @@ second `create` with the same name answers `409`); afterwards, find its id with
 ## JavaScript / TypeScript
 
 ```bash
-npm install @rmyndharis/openwa
+bun install @rmyndharis/openwa
 ```
 
 ```typescript
@@ -292,7 +292,7 @@ testing, retry, tracing, or metrics. See [`go/README.md`](go/README.md).
 
 ```bash
 # JavaScript
-cd sdk/javascript && npm test && npm run build && npm run smoke
+cd sdk/javascript && bun run test && bun run build && bun run smoke
 # Python
 cd sdk/python && python -m pytest -q
 # PHP

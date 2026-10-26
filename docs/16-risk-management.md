@@ -194,7 +194,7 @@ flowchart TB
 
     M1 --> A1[Input validation, encryption]
     M2 --> A2[Quarterly security review]
-    M3 --> A3[Automated npm audit]
+    M3 --> A3[Automated bun audit]
     M4 --> A4[Documented procedures]
 ```
 
@@ -221,7 +221,7 @@ flowchart TB
 
 ### Dependency Security
 
-- [ ] npm audit clean
+- [ ] bun audit clean
 - [ ] Dependabot alerts reviewed
 - [ ] Dependencies up to date
 - [ ] No known vulnerabilities
@@ -318,7 +318,7 @@ Dependencies (`whatsapp-web.js`, Puppeteer, NestJS, etc.) may have vulnerabiliti
 
 **Mitigation Strategies:**
 
-> **Current state:** the real dependency check is a dedicated `audit` job in `ci.yml` running `npm run check:audit` over the root tree and `npm audit --audit-level=high` over `dashboard/` and `sdk/javascript/` (on push and PR); it is deliberately split out of the `Lint` job so a newly published advisory cannot abort the other quality gates. `check:audit` keeps the `high` threshold but applies it per advisory, so one with no patched version can be excused by id in `scripts/check-audit.mjs` (with its reason and removal condition recorded, and a stale entry failing the job) instead of lowering the bar for everything. `js-sdk-release.yml` audits `sdk/javascript/` before it publishes the SDK. `release.yml` repeats the root and dashboard audits, the two trees the image ships, and additionally runs a Trivy image scan (`CRITICAL,HIGH`, `ignore-unfixed`) against an explicit `.trivyignore` before the release tags are promoted. Dependabot PRs cover npm for `/`, `/dashboard` and `/sdk/javascript`, and pip, maven, composer and gomod for the other four SDKs (weekly), GitHub Actions (monthly), the Dockerfile base image and the `docker-compose.yml` images (weekly; PostgreSQL and Redis majors ignored, and a postgres, redis or pgsty/silo bump fails `compose-parity.spec.ts` until `src/modules/docker/docker.service.ts` carries the same image reference), with version-pinned ignores (seven in the root tree, two in `/dashboard`) whose reasons and lift conditions are recorded in `.github/dependabot.yml`. Between releases, `.github/workflows/security-scan.yml` (Scheduled Security Scan) runs every Wednesday at 03:00 UTC and on demand: it repeats the `audit` job and the release Trivy scan against the published `latest` image on amd64 and arm64, so an advisory those gates would block fails a run within a week of being published; the amd64 Chrome for Testing binary stays outside what Trivy can see (see `.trivyignore`). Its `base-image-drift` job fails when the Dockerfile's two `node:22-slim` FROM digests disagree, or when the pin differs from what the tag serves today and either the tag has served that image for 7 or more days, or for 3 or more days with the pin last changed 28 or more days ago; it backstops a Dependabot digest refresh that is late or left unmerged. There is **no** Snyk integration. The workflow below is a recommended enhancement to add Snyk; its scheduled `npm audit` is already covered by `security-scan.yml`.
+> **Current state:** the real dependency check is a dedicated `audit` job in `ci.yml` running `bun run check:audit` over the root tree and `bun audit --audit-level=high` over `dashboard/` and `sdk/javascript/` (on push and PR); it is deliberately split out of the `Lint` job so a newly published advisory cannot abort the other quality gates. `check:audit` keeps the `high` threshold but applies it per advisory, so one with no patched version can be excused by id in `scripts/check-audit.mjs` (with its reason and removal condition recorded, and a stale entry failing the job) instead of lowering the bar for everything. `js-sdk-release.yml` audits `sdk/javascript/` before it publishes the SDK. `release.yml` repeats the root and dashboard audits, the two trees the image ships, and additionally runs a Trivy image scan (`CRITICAL,HIGH`, `ignore-unfixed`) against an explicit `.trivyignore` before the release tags are promoted. Dependabot PRs cover npm for `/`, `/dashboard` and `/sdk/javascript`, and pip, maven, composer and gomod for the other four SDKs (weekly), GitHub Actions (monthly), the Dockerfile base image and the `docker-compose.yml` images (weekly; PostgreSQL and Redis majors ignored, and a postgres, redis or pgsty/silo bump fails `compose-parity.spec.ts` until `src/modules/docker/docker.service.ts` carries the same image reference), with version-pinned ignores (seven in the root tree, two in `/dashboard`) whose reasons and lift conditions are recorded in `.github/dependabot.yml`. Between releases, `.github/workflows/security-scan.yml` (Scheduled Security Scan) runs every Wednesday at 03:00 UTC and on demand: it repeats the `audit` job and the release Trivy scan against the published `latest` image on amd64 and arm64, so an advisory those gates would block fails a run within a week of being published; the amd64 Chrome for Testing binary stays outside what Trivy can see (see `.trivyignore`). Its `base-image-drift` job fails when the Dockerfile's two `node:22-slim` FROM digests disagree, or when the pin differs from what the tag serves today and either the tag has served that image for 7 or more days, or for 3 or more days with the pin last changed 28 or more days ago; it backstops a Dependabot digest refresh that is late or left unmerged. There is **no** Snyk integration. The workflow below is a recommended enhancement to add Snyk; its scheduled `bun audit` is already covered by `security-scan.yml`.
 
 ```yaml
 # .github/workflows/security.yml
@@ -336,8 +336,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: npm audit
-        run: npm audit --audit-level=high
+      - name: bun audit
+        run: bun audit --audit-level=high
 
       - name: Snyk scan
         uses: snyk/actions/node@master
@@ -349,7 +349,7 @@ jobs:
 
 | Action                                                                                             | Frequency                    |
 | -------------------------------------------------------------------------------------------------- | ---------------------------- |
-| npm audit (`high`, per-advisory allowlist via `check:audit`; dedicated `audit` job in CI)          | Every push / PR              |
+| bun audit (`high`, per-advisory allowlist via `check:audit`; dedicated `audit` job in CI)          | Every push / PR              |
 | Trivy image scan (`CRITICAL,HIGH`, `.trivyignore`)                                                 | Every release                |
 | Scheduled Security Scan (audit, Trivy on `latest` amd64 and arm64, base-image drift)               | Weekly (Wednesday 03:00 UTC) |
 | Snyk scan                                                                                          | Not configured (planned)     |

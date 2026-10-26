@@ -21,12 +21,12 @@ See `docs/03-system-architecture.md` for the bigger picture.
 OpenWA targets **Node.js 22.19 or newer** (`engines.node`).
 
 ```bash
-npm ci
-npm run dev   # API on 2785, dashboard (Vite) on 2886
+bun install --frozen-lockfile
+bun run dev   # API on 2785, dashboard (Vite) on 2886
 ```
 
-Dashboard dependencies install with the root ones (postinstall). `npm run start:dev` runs the API
-alone. Use `npm install` only when intentionally changing dependencies.
+Dashboard dependencies install with the root ones (postinstall). `bun run start:dev` runs the API
+alone. Use `bun install` only when intentionally changing dependencies.
 
 Default storage is SQLite, so no external services are required to run locally.
 
@@ -42,29 +42,29 @@ Please make sure these pass locally:
 Backend:
 
 ```bash
-npm run build               # NestJS build (tsc)
+bun run build               # NestJS build (tsc)
 npx tsc --noEmit            # also type-checks specs, which the build excludes
-npm test                    # unit tests (Jest)
-npm run test:docs           # docs-sync specs, a separate lane `npm test` does not run
-npm run lint                # ESLint
-npm run format              # Prettier (CI runs `format:check`)
+bun run test                    # unit tests (Jest)
+bun run test:docs           # docs-sync specs, a separate lane `bun run test` does not run
+bun run lint                # ESLint
+bun run format              # Prettier (CI runs `format:check`)
 ```
 
 Dashboard, where CI runs each of these as its own step:
 
 ```bash
 cd dashboard
-npm run lint && npm run format:check && npm run typecheck
-npm run i18n:check && npm run build && npm run test:unit
+bun run lint && bun run format:check && bun run typecheck
+bun run i18n:check && bun run build && bun run test:unit
 ```
 
-If you changed a DTO, a route, or an `@ApiResponse`, also run `npm run openapi:export` and
-commit the snapshot, then `npm run openapi:check` and `npm run check:contract-shapes`. The
+If you changed a DTO, a route, or an `@ApiResponse`, also run `bun run openapi:export` and
+commit the snapshot, then `bun run openapi:check` and `bun run check:contract-shapes`. The
 hand-written SDK types are compared against the schemas and will fail CI by field name. A new
 route also needs a method in each of the five SDKs and a row in `docs/18-sdk-design.md`, or an
-entry in the unexposed list of `sdk/README.md`, which `npm run check:sdk-routes`,
+entry in the unexposed list of `sdk/README.md`, which `bun run check:sdk-routes`,
 `check:sdk-coverage`, `check:sdk-events` and `check:sdk-docs` verify, as CI's lint job does
-with `npm run check:versions`.
+with `bun run check:versions`.
 
 - Add or update tests for behavior changes. Backend specs are colocated as `*.spec.ts`
   and run under Jest; dashboard tests are colocated as `*.test.ts` and run under
@@ -78,7 +78,7 @@ with `npm run check:versions`.
 - **Commits:** [Conventional Commits](https://www.conventionalcommits.org/) —
   `feat(...)`, `fix(...)`, `docs(...)`, `chore(...)`, etc.
 - **Style:** single quotes, 2-space indentation, 120-column width, semicolons — all
-  enforced by Prettier + ESLint. Run `npm run format` before committing.
+  enforced by Prettier + ESLint. Run `bun run format` before committing.
 - **Types:** explicit types, avoid `any`.
 - **Requests:** validate request bodies with DTOs + `class-validator`.
 - **Errors & logging:** throw NestJS HTTP exceptions; use the project `LoggerService`

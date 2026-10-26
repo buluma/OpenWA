@@ -2,10 +2,10 @@ name: Scheduled Security Scan
 
 # The PR and tag paths gate every change against the advisories known at merge time, but a newly
 # published advisory burns silently until the next push or dependabot PR — nothing re-runs
-# `npm audit` or the image scan in between. This workflow gives both a run of their own: weekly
+# `bun audit` or the image scan in between. This workflow gives both a run of their own: weekly
 # (and on demand) it re-runs the exact gates CI already uses, against the current dependency trees
 # and the PUBLISHED image, so a fresh CVE in a shipped layer (chromium, the Debian base, the
-# bundled npm CLI) turns something red within days instead of at the next release.
+# bundled base-image tooling) turns something red within days instead of at the next release.
 #
 # Scheduled runs execute on the default branch only. workflow_dispatch exists for on-demand runs —
 # note a workflow is dispatchable only once its file exists on the default branch, so the first
@@ -13,7 +13,7 @@ name: Scheduled Security Scan
 
 on:
   schedule:
-    # Wednesdays 03:00 UTC — offset from Monday's dependabot npm wave so the scan sees the
+    # Wednesdays 03:00 UTC — offset from Monday's Dependabot package wave so the scan sees the
     # dependency graph as it stands AFTER the weekly updates, not mid-churn.
     - cron: '0 3 * * 3'
   workflow_dispatch:
@@ -43,35 +43,34 @@ jobs:
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
           # Both trees are installed below, so both lockfiles belong in the cache key.
-          cache-dependency-path: |
-            package-lock.json
-            dashboard/package-lock.json
-
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: .bun-version
       - name: Install dependencies
-        run: npm ci
+        run: bun install --frozen-lockfile
 
       - name: Security audit
-        # check:audit, not bare `npm audit`: the per-advisory allowlist in scripts/check-audit.mjs
+        # check:audit, not bare `bun audit`: the per-advisory allowlist in scripts/check-audit.mjs
         # applies, so an advisory already excused by id (with its recorded reason and drop
         # condition) does not fire a false weekly alarm. Required here: this job exists to detect
         # advisories, and a skipped audit would report the whole week clean.
         env:
           CHECK_AUDIT_REQUIRED: '1'
-        run: npm run check:audit
+        run: bun run check:audit
 
       # The dashboard is a second dependency tree and the one that reaches a browser; same
       # rationale as the ci.yml audit job.
       - name: Install dashboard dependencies
-        run: cd dashboard && npm ci
+        run: cd dashboard && bun install --frozen-lockfile
 
       - name: Security audit (dashboard)
-        run: cd dashboard && npm audit --audit-level=high
+        run: cd dashboard && bun audit --audit-level=high
 
       # Audited from its lockfile alone; same rationale as the ci.yml audit job.
       - name: Security audit (JavaScript SDK)
-        run: cd sdk/javascript && npm audit --audit-level=high
+        run: cd sdk/javascript && bun audit --audit-level=high
 
   # Dependabot proposes refreshed node:22-slim digests, yet the pin has trailed the tag for weeks
   # (a refresh that is late or left unmerged), and a stale base ages silently: Node patch releases

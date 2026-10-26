@@ -97,7 +97,7 @@ Three automated gates keep the matrix honest:
 ```mermaid
 flowchart TD
     M["engine-capability-matrix.ts<br/>rows derived from the interface,<br/>status + evidence from curated exceptions"] --> SPEC["engine-parity.spec.ts<br/>matrix keys match interface methods<br/>throw-invariants scan"]
-    NM["node_modules<br/>installed engines"] --> SURF["check-upstream-surface.mjs<br/>npm run test:scripts"]
+    NM["node_modules<br/>installed engines"] --> SURF["check-upstream-surface.mjs<br/>bun run test:scripts"]
     SNAP["upstream-surface.snapshot.json<br/>reviewed surface"] --> SURF
     SURF -->|"new or removed symbol"| FAIL["fail until reviewed:<br/>expose / defer / record exclusion"]
     ADAPT["src/engine/adapters/*.ts"] --> INV["engine-inventory-parity.spec.ts<br/>29.5 exposure + 29.5.4 event marks"]
@@ -129,7 +129,7 @@ wrong interface method. Those three remain reader-verified.
 ## 29.3 Install-time patches OpenWA applies to the libraries
 
 OpenWA ships thirteen exact, self-disabling source transforms over the installed engines. Each runs at
-`npm install` (`scripts/postinstall.js`) and again in the Docker production stage. A recognized repaired
+`bun install` (`scripts/postinstall.js`) and again in the Docker production stage. A recognized repaired
 source shape makes the patcher a no-op. Every image transform fails on an unknown shape. The Puppeteer
 compatibility transform also fails a source install; the other transforms run with `--best-effort` there.
 Retire the rc14 pairing backport once an upstream release includes both fixes.

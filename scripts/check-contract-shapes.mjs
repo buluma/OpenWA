@@ -63,7 +63,7 @@ import { readFileSync, readdirSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 // Resolve from the script's own location, not process.cwd() — same reason check-sdk-coverage.mjs
-// does: the gate must run identically from any directory (npm run pins cwd, direct invocation
+// does: the gate must run identically from any directory (bun run pins cwd, direct invocation
 // does not).
 const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url));
 

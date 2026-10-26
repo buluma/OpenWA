@@ -5,7 +5,7 @@
 // `@PrimaryGeneratedColumn('uuid')` insert fails on Postgres with a NOT NULL violation (23502) — the
 // exact failure SQLite hides, because its driver mints the uuid client-side.
 //
-// Runs against the compiled migrations in dist/ (so it matches `migration:run:prod`); `npm run build`
+// Runs against the compiled migrations in dist/ (so it matches `migration:run:prod`); `bun run build`
 // first. Configured from DATABASE_* env vars.
 require('reflect-metadata');
 const path = require('path');

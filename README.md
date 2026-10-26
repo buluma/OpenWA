@@ -214,10 +214,10 @@ git clone https://github.com/rmyndharis/OpenWA.git
 cd OpenWA
 
 # Install the locked dependencies (includes dashboard)
-npm ci
+bun install --frozen-lockfile
 
 # Start API + Dashboard (config is auto-generated on first run)
-npm run dev
+bun run dev
 
 # Access (in dev the dashboard runs on the Vite server with hot reload)
 # Dashboard: http://localhost:2886
@@ -227,9 +227,8 @@ npm run dev
 
 The first boot writes the admin API key to `data/.api-key` (read it with `cat data/.api-key`; the file has no trailing newline, so copy only the key).
 
-Use `npm install` instead when intentionally changing dependencies. OpenWA's committed lockfile uses
-registry artifacts only, so npm 12 works with its secure default that blocks Git dependencies; do not
-disable that policy globally.
+Use Bun for dependency changes too, and commit the matching `bun.lock` updates. The repository pins its
+Bun version in `.bun-version`; use `bun install --frozen-lockfile` for reproducible installs.
 
 ---
 
@@ -347,7 +346,7 @@ access) Compose falls back to building from source and tags that build with the 
 | --------------- | --------------- | ----------------------------------------------------------------------------------- |
 | API & Dashboard | `2785`          | REST API + bundled web dashboard (same port)                                        |
 | Swagger         | `2785/api/docs` | Interactive API docs — off under `NODE_ENV=production` unless `ENABLE_SWAGGER=true` |
-| Dashboard (dev) | `2886`          | Vite dev server with hot reload (`npm run dev`)                                     |
+| Dashboard (dev) | `2886`          | Vite dev server with hot reload (`bun run dev`)                                     |
 
 ---
 
@@ -415,7 +414,7 @@ OpenWA can expose a **curated set of tools over the [Model Context Protocol](htt
 Set `MCP_ENABLED=true` to mount a stateless Streamable-HTTP transport at **`POST /mcp`** on the existing server (same port, no extra process). It mounts **25 read-only tools** by default — session, message, contact, group, webhook, label and automation-rule _reads_ — because the surface is read-only unless you opt out. Add `MCP_READONLY=false` to mount all **51 tools**, adding the write tier (send, reply, group operations). Either way it is a focused surface rather than the full API, so agents aren't overwhelmed.
 
 ```bash
-MCP_ENABLED=true npm run start:prod   # or set MCP_ENABLED in your .env / compose
+MCP_ENABLED=true bun run start:prod   # or set MCP_ENABLED in your .env / compose
 ```
 
 Point an MCP client at it (e.g. for Claude Code, a `.mcp.json` at your project root):

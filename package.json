@@ -5,6 +5,7 @@
   "author": "Yudhi Armyndharis & OpenWA Contributors",
   "private": true,
   "license": "MIT",
+  "packageManager": "bun@1.4.4",
   "engines": {
     "node": ">=22.19"
   },
@@ -13,19 +14,19 @@
   },
   "scripts": {
     "build": "nest build",
-    "build:all": "nest build && npm run dashboard:build",
+    "build:all": "nest build && bun run dashboard:build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"**/*.md\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"**/*.md\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
-    "prod": "npm run build:all && node dist/main",
-    "dev": "concurrently -n api,dashboard -c blue,green \"npm run start:dev\" \"npm run dashboard:dev\"",
-    "dashboard:install": "cd dashboard && npm install",
-    "dashboard:ci": "cd dashboard && npm ci",
-    "dashboard:dev": "cd dashboard && npm run dev",
-    "dashboard:build": "cd dashboard && npm run build",
+    "prod": "bun run build:all && node dist/main",
+    "dev": "concurrently -n api,dashboard -c blue,green \"bun run start:dev\" \"bun run dashboard:dev\"",
+    "dashboard:install": "cd dashboard && bun install",
+    "dashboard:ci": "cd dashboard && bun install --frozen-lockfile",
+    "dashboard:dev": "cd dashboard && bun run dev",
+    "dashboard:build": "cd dashboard && bun run build",
     "postinstall": "node scripts/postinstall.js",
     "check:versions": "node scripts/check-doc-versions.mjs",
     "check:dockerignore": "node scripts/check-dockerignore.mjs",
@@ -51,21 +52,21 @@
     "test:engine-real": "node --test test/engine-real/baileys-inbound.spec.mjs test/engine-real/baileys-outbound.spec.mjs",
     "typeorm": "typeorm-ts-node-commonjs",
     "typeorm:prod": "typeorm",
-    "migration:create": "npm run typeorm -- migration:create src/database/migrations/$npm_config_name",
-    "migration:generate": "npm run typeorm -- migration:generate src/database/migrations/$npm_config_name -d src/database/data-source.ts",
-    "migration:run": "npm run typeorm -- migration:run -d src/database/data-source.ts",
-    "migration:run:prod": "npm run typeorm:prod -- migration:run -d dist/database/data-source.js",
-    "migration:revert": "npm run typeorm -- migration:revert -d src/database/data-source.ts",
-    "migration:revert:prod": "npm run typeorm:prod -- migration:revert -d dist/database/data-source.js",
-    "migration:show": "npm run typeorm -- migration:show -d src/database/data-source.ts",
-    "migration:show:prod": "npm run typeorm:prod -- migration:show -d dist/database/data-source.js",
-    "migration:generate:main": "npm run typeorm -- migration:generate src/database/migrations-main/$npm_config_name -d src/database/data-source-main.ts",
-    "migration:run:main": "npm run typeorm -- migration:run -d src/database/data-source-main.ts",
-    "migration:run:main:prod": "npm run typeorm:prod -- migration:run -d dist/database/data-source-main.js",
-    "migration:revert:main": "npm run typeorm -- migration:revert -d src/database/data-source-main.ts",
-    "migration:revert:main:prod": "npm run typeorm:prod -- migration:revert -d dist/database/data-source-main.js",
-    "migration:show:main": "npm run typeorm -- migration:show -d src/database/data-source-main.ts",
-    "migration:show:main:prod": "npm run typeorm:prod -- migration:show -d dist/database/data-source-main.js"
+    "migration:create": "bun run typeorm -- migration:create",
+    "migration:generate": "bun run typeorm -- migration:generate src/database/migrations -d src/database/data-source.ts",
+    "migration:run": "bun run typeorm -- migration:run -d src/database/data-source.ts",
+    "migration:run:prod": "bun run typeorm:prod -- migration:run -d dist/database/data-source.js",
+    "migration:revert": "bun run typeorm -- migration:revert -d src/database/data-source.ts",
+    "migration:revert:prod": "bun run typeorm:prod -- migration:revert -d dist/database/data-source.js",
+    "migration:show": "bun run typeorm -- migration:show -d src/database/data-source.ts",
+    "migration:show:prod": "bun run typeorm:prod -- migration:show -d dist/database/data-source.js",
+    "migration:generate:main": "bun run typeorm -- migration:generate src/database/migrations-main -d src/database/data-source-main.ts",
+    "migration:run:main": "bun run typeorm -- migration:run -d src/database/data-source-main.ts",
+    "migration:run:main:prod": "bun run typeorm:prod -- migration:run -d dist/database/data-source-main.js",
+    "migration:revert:main": "bun run typeorm -- migration:revert -d src/database/data-source-main.ts",
+    "migration:revert:main:prod": "bun run typeorm:prod -- migration:revert -d dist/database/data-source-main.js",
+    "migration:show:main": "bun run typeorm -- migration:show -d src/database/data-source-main.ts",
+    "migration:show:main:prod": "bun run typeorm:prod -- migration:show -d dist/database/data-source-main.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1149.0",
@@ -527,5 +528,11 @@
       "ioredis": "$ioredis"
     },
     "puppeteer": "$puppeteer"
-  }
+  },
+  "trustedDependencies": [
+    "@parcel/watcher",
+    "@whiskeysockets/baileys",
+    "protobufjs",
+    "unrs-resolver"
+  ]
 }

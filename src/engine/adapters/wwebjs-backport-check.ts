@@ -11,7 +11,7 @@ import * as path from 'path';
  * all (the gateway then refuses to report a delivery it cannot confirm) and chat and media reads
  * throw the minified `r: r` (#889). None of those errors name their cause.
  *
- * The install already warns when it skips the patch, but that is one line in a full `npm install`
+ * The install already warns when it skips the patch, but that is one line in a full `bun install`
  * transcript, and the symptom only appears later, when WhatsApp Web rolls a build that carries the
  * rename. So restate it on the machine that is actually broken, as the engine starts.
  *
@@ -25,12 +25,12 @@ export const BACKPORT_MISSING_MESSAGE =
   'WhatsApp Web builds every send will fail with "the engine returned no message" — even when the ' +
   'message is delivered — and chat and media reads will fail with "r: r". The install skipped the ' +
   'patch, usually because neither the `patch` binary nor git was available. Apply it with ' +
-  '`node scripts/patch-wwebjs-201832.js` (or reinstall with `npm install`) and restart. ' +
+  '`node scripts/patch-wwebjs-201832.js` (or reinstall with `bun install`) and restart. ' +
   'See docs/12-troubleshooting-faq.md.';
 
 /**
  * The message for a tree the patcher began and did not finish: it kills a run's later files (an
- * out-of-memory kill, Ctrl-C or a full disk while `npm install` ran), and the patcher refuses the tree
+ * out-of-memory kill, Ctrl-C or a full disk while `bun install` ran), and the patcher refuses the tree
  * from then on, so reapplying it does not help.
  */
 export function partialBackportMessage(sites: string[]): string {
@@ -39,7 +39,7 @@ export function partialBackportMessage(sites: string[]): string {
     `${sites.join(', ')} did not land, usually because an install was interrupted while the patch was ` +
     'being written. On current WhatsApp Web builds inbound messages and chat reads will fail with empty ids ' +
     'or "r: r". The patcher cannot repair that tree: reinstall the dependency ' +
-    '(`rm -rf node_modules/whatsapp-web.js && npm ci`) and restart. See docs/12-troubleshooting-faq.md.'
+    '(`rm -rf node_modules/whatsapp-web.js && bun install --frozen-lockfile`) and restart. See docs/12-troubleshooting-faq.md.'
   );
 }
 

@@ -13,7 +13,7 @@ import { BufferJSON as stub } from '@whiskeysockets/baileys';
  * The real library cannot be loaded here to compare against: it is ESM and jest cannot parse it,
  * which is why the stub exists at all. The wire form below is therefore pinned as a recorded value,
  * measured from the real `BufferJSON.replacer` outside jest. It cannot catch an upstream change on
- * its own — that is what `npm run check:versions` and a dependency bump review are for — but it does
+ * its own — that is what `bun run check:versions` and a dependency bump review are for — but it does
  * stop the STUB drifting away from the shape the app actually persists.
  */
 describe('the BufferJSON stub encodes bytes the way the library does', () => {

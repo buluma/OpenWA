@@ -29,7 +29,7 @@
  * Lives in ci.yml's lint job rather than sdk-ci.yml for the same reason as the route and event
  * guards: sdk-ci is path-filtered, so a docs-only PR runs none of it.
  *
- * Run locally: `npm run check:sdk-docs`.
+ * Run locally: `bun run check:sdk-docs`.
  */
 import { readFileSync, readdirSync, realpathSync } from 'node:fs';
 import { join, dirname } from 'node:path';

@@ -456,7 +456,7 @@ export class LoggerService implements NestLoggerService {
     // No explicit choice: structured JSON in production (containers, log aggregators),
     // human-readable pretty everywhere else. This mirrors NestJS's own logger, which
     // always prints its text format — and unlike a TTY check it stays correct when
-    // stdout is piped through a dev runner (e.g. `concurrently` in `npm run dev`).
+    // stdout is piped through a dev runner (e.g. `concurrently` in `bun run dev`).
     return process.env.NODE_ENV === 'production' ? LogFormat.JSON : LogFormat.PRETTY;
   }
 

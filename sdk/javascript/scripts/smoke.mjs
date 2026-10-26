@@ -3,7 +3,7 @@
  * and ESM loaders, then send real requests through each build's client. Unit
  * tests run under vitest's bundler-like resolver and cannot catch a dual-format
  * misconfig (CJS parsed as ESM, or extensionless ESM specifiers), so this guards
- * `npm publish` against shipping an unconsumable package. Run after `npm run build`.
+ * `bun publish` against shipping an unconsumable package. Run after `bun run build`.
  */
 import { createHmac } from 'node:crypto';
 import { readFileSync } from 'node:fs';

@@ -1,9 +1,9 @@
 /**
  * Unit tests for scripts/postinstall.js (node:test — no jest, no deps).
- * Run: `npm run test:scripts`.
+ * Run: `bun run test:scripts`.
  *
  * The spawn is injected, so every branch (success, non-zero exit, spawn error, signal, fail-fast
- * ordering) is exercised without a real `npm run dashboard:ci`.
+ * ordering) is exercised without a real `bun run dashboard:ci`.
  */
 'use strict';
 
@@ -13,7 +13,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const { sanitizeEnv, planSteps, failureReason, run } = require('./postinstall.js');
+const { planSteps, failureReason, run } = require('./postinstall.js');
 
 const OK = { status: 0, signal: null, error: null };
 
@@ -112,7 +112,7 @@ test('planSteps: dashboard only plans the dashboard install (shell, inherited st
   const root = makeRoot({ dashboard: true });
   const steps = planSteps(root);
   assert.equal(steps.length, 1);
-  assert.equal(steps[0].command, 'npm ci');
+  assert.equal(steps[0].command, 'bun install --frozen-lockfile');
   assert.equal(steps[0].options.shell, true);
   assert.equal(steps[0].options.stdio, 'inherit');
   assert.equal(steps[0].options.cwd, path.join(root, 'dashboard'));
@@ -137,7 +137,7 @@ test('planSteps: newsletter preview patcher plans its own best-effort backport',
 test('planSteps: both present plans dashboard first, patcher second', () => {
   const steps = planSteps(makeRoot({ dashboard: true, patcher: true }));
   assert.equal(steps.length, 2);
-  assert.equal(steps[0].command, 'npm ci');
+  assert.equal(steps[0].command, 'bun install --frozen-lockfile');
   assert.equal(steps[1].command, process.execPath);
 });
 
@@ -179,7 +179,7 @@ test('planSteps: dashboard and all patchers run in stable order', () => {
   const steps = planSteps(makeRoot({ dashboard: true, patchers: PATCHERS_ON_DISK }));
 
   assert.equal(steps.length, EXPECTED_PATCHER_ORDER.length + 1);
-  assert.equal(steps[0].command, 'npm ci');
+  assert.equal(steps[0].command, 'bun install --frozen-lockfile');
   assert.deepEqual(
     steps.slice(1).map(step => path.basename(step.args[0])),
     EXPECTED_PATCHER_ORDER,
@@ -209,11 +209,11 @@ test('run: non-zero dashboard install exits 1 and never reaches the patcher (fai
   const { calls, spawn } = fakeSpawn([{ status: 1, signal: null, error: null }]);
   assert.equal(run(makeRoot({ dashboard: true, patcher: true }), spawn), 1);
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].command, 'npm ci');
+  assert.equal(calls[0].command, 'bun install --frozen-lockfile');
 });
 
-test('run: spawn error (npm not found) exits 1', () => {
-  const { spawn } = fakeSpawn([{ status: null, signal: null, error: new Error('spawn npm ENOENT') }]);
+test('run: spawn error (bun not found) exits 1', () => {
+  const { spawn } = fakeSpawn([{ status: null, signal: null, error: new Error('spawn bun ENOENT') }]);
   assert.equal(run(makeRoot({ dashboard: true }), spawn), 1);
 });
 
@@ -235,53 +235,11 @@ test('failureReason: maps each spawnSync outcome to a cause (null = success)', (
   assert.match(failureReason({ status: null, signal: null, error: new Error('boom') }), /failed to start — boom/);
 });
 
-test('sanitizeEnv: strips allow-scripts environment variables across case and separator variations', () => {
-  const input = {
-    PATH: '/usr/bin',
-    npm_config_allow_scripts: 'true',
-    NPM_CONFIG_ALLOW_SCRIPTS: 'true',
-    'npm_config_allow-scripts': 'true',
-    'NPM_CONFIG_ALLOW-SCRIPTS': 'true',
-    npm_config_allow_scripts_extra: 'keep',
-  };
-  const result = sanitizeEnv(input);
-  assert.deepEqual(result, {
-    PATH: '/usr/bin',
-    npm_config_allow_scripts_extra: 'keep',
-  });
-  assert.equal(input.npm_config_allow_scripts, 'true');
-});
-
-test('planSteps: strips npm_config_allow_scripts from step options.env to avoid EALLOWSCRIPTS in npm 11', () => {
-  const env = {
-    PATH: '/usr/bin',
-    npm_config_allow_scripts: 'true',
-    NPM_CONFIG_ALLOW_SCRIPTS: 'true',
-  };
-  const steps = planSteps(
-    makeRoot({
-      dashboard: true,
-      patcher: true,
-      previewPatcher: true,
-      statusPatcher: true,
-      readySyncPatcher: true,
-      baileysPatcher: true,
-    }),
-    env,
-  );
-  assert.equal(steps.length, 6);
-  for (const step of steps) {
-    assert.equal('npm_config_allow_scripts' in step.options.env, false);
-    assert.equal('NPM_CONFIG_ALLOW_SCRIPTS' in step.options.env, false);
-    assert.equal(step.options.env.PATH, '/usr/bin');
-  }
-});
-
-test('run: passes sanitized environment to spawn calls', () => {
+test('run: passes the environment to spawn calls', () => {
   const { calls, spawn } = fakeSpawn([OK]);
-  const env = { PATH: '/usr/bin', npm_config_allow_scripts: 'true' };
+  const env = { PATH: '/usr/bin', BUN_INSTALL: '/opt/bun' };
   run(makeRoot({ dashboard: true }), spawn, env);
   assert.equal(calls.length, 1);
-  assert.equal('npm_config_allow_scripts' in calls[0].options.env, false);
+  assert.equal(calls[0].options.env.BUN_INSTALL, '/opt/bun');
   assert.equal(calls[0].options.env.PATH, '/usr/bin');
 });

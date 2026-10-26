@@ -6,7 +6,7 @@ import { join } from 'node:path';
  * deterministic, which holds only because the script pins every env var that changes the
  * document (conditional module mounts, storage backends) BEFORE requiring AppModule. If a pin
  * is dropped — or AppModule gets required above the pins — two exports under different
- * environments can diverge and `npm run openapi:check` turns flaky. Verified end-to-end by
+ * environments can diverge and `bun run openapi:check` turns flaky. Verified end-to-end by
  * running the export twice under different env; this spec keeps the mechanism intact.
  */
 const SCRIPT_PATH = join(__dirname, '..', '..', 'scripts', 'export-openapi.ts');

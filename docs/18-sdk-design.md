@@ -8,7 +8,7 @@ OpenWA ships five official, hand-written client libraries for the REST API. They
 
 | Language                | Package                                                                                | Install                              | Notes                                                                            |
 | ----------------------- | -------------------------------------------------------------------------------------- | ------------------------------------ | -------------------------------------------------------------------------------- |
-| JavaScript / TypeScript | [`@rmyndharis/openwa`](https://www.npmjs.com/package/@rmyndharis/openwa)               | `npm install @rmyndharis/openwa`     | Dual ESM + CJS, bundled `.d.ts` types, Node 18+                                  |
+| JavaScript / TypeScript | [`@rmyndharis/openwa`](https://www.npmjs.com/package/@rmyndharis/openwa)               | `bun add @rmyndharis/openwa`         | Dual ESM + CJS, bundled `.d.ts` types, Node 18+                                  |
 | Python                  | [`rmyndharis-openwa`](https://pypi.org/project/rmyndharis-openwa/)                     | `pip install rmyndharis-openwa`      | Synchronous (httpx), PEP 561 typed, Python 3.9+                                  |
 | PHP                     | [`rmyndharis/openwa`](https://packagist.org/packages/rmyndharis/openwa)                | `composer require rmyndharis/openwa` | Synchronous (Guzzle 7.9+ or 8), PSR-4, PHP 8.1+                                  |
 | Java                    | [`com.rmyndharis:openwa`](https://central.sonatype.com/artifact/com.rmyndharis/openwa) | Maven Central                        | Sync, `java.net.http`. See [`sdk/java/README.md`](../sdk/java/README.md).        |
@@ -60,11 +60,11 @@ The package ships **dual CJS + ESM** with bundled `.d.ts` types, so it is consum
 ### Installation
 
 ```bash
-npm install @rmyndharis/openwa
+bun add @rmyndharis/openwa
 # or
 yarn add @rmyndharis/openwa
 # or
-pnpm add @rmyndharis/openwa
+bun add @rmyndharis/openwa
 ```
 
 > **Node 18+ required.** The transport uses the global `fetch` (and `AbortController`), both built into Node 18 and later. To run on an older runtime, pass your own `fetch` implementation via the client constructor (see [Client Configuration](#client-configuration)).
@@ -1173,13 +1173,13 @@ The wire types live in a dedicated module (`types.ts` / `types.py`) so they can 
 
 **Requests.** Each SDK's test suite mocks the HTTP transport and **asserts on the exact request path, method, and body** — so a drift between an SDK method and the real API (the class of bug that once shipped `messages/text` instead of the real `messages/send-text`) breaks a test rather than reaching users.
 
-**Responses.** That is a different problem, and for a long time nothing covered it — #754 is the proof: the status, label, and channel record types drifted from the engine interface for releases without a single test noticing, because asserting the request says nothing about the reply. `openapi:check` does not cover it either, because it only keeps the snapshot in step with the code. The schemas of those records (`LabelDto`, `ChannelDto`, `ChannelMessageDto`, `StatusDto` and `StatusListResponseDto`) are in `openapi.json`, and `check:contract-shapes` compares the SDKs' label, channel and status records with them field by field. A second check is `sdk/javascript/test/wire-contract.test-d.ts` — a type-level test where `tsc --noEmit` (run by `npm test` ahead of vitest) fails if a record type stops matching the engine-neutral shape as it arrives over JSON. Its `Wire*` types are **maintained by hand**: `sdk-ci.yml` re-runs the job when `whatsapp-engine.interface.ts` changes, but keeping the two in step is a human step, not a generated one.
+**Responses.** That is a different problem, and for a long time nothing covered it — #754 is the proof: the status, label, and channel record types drifted from the engine interface for releases without a single test noticing, because asserting the request says nothing about the reply. `openapi:check` does not cover it either, because it only keeps the snapshot in step with the code. The schemas of those records (`LabelDto`, `ChannelDto`, `ChannelMessageDto`, `StatusDto` and `StatusListResponseDto`) are in `openapi.json`, and `check:contract-shapes` compares the SDKs' label, channel and status records with them field by field. A second check is `sdk/javascript/test/wire-contract.test-d.ts` — a type-level test where `tsc --noEmit` (run by `bun run test` ahead of vitest) fails if a record type stops matching the engine-neutral shape as it arrives over JSON. Its `Wire*` types are **maintained by hand**: `sdk-ci.yml` re-runs the job when `whatsapp-engine.interface.ts` changes, but keeping the two in step is a human step, not a generated one.
 
 ### Release process
 
 ```bash
 # JavaScript (the tests need Node 22.12+; the published package runs on Node 18+)
-cd sdk/javascript && npm test && npm run build && npm run smoke   # smoke = require()+import() packaging plus request check
+cd sdk/javascript && bun run test && bun run build && bun run smoke   # smoke = require()+import() packaging plus request check
 # Python
 cd sdk/python && python -m pytest -q
 # PHP

@@ -276,7 +276,7 @@ async function bootstrap() {
   } else {
     bootstrapLogger.warn(
       `Dashboard: no build at ${DASHBOARD_DIST} - UI disabled (API still serves /api). ` +
-        'Run `npm run build:all` to bundle it, or use the Vite dev server (`npm run dev`).',
+        'Run `bun run build:all` to bundle it, or use the Vite dev server (`bun run dev`).',
     );
   }
 

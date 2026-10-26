@@ -257,7 +257,7 @@ export default class MyAwesomePlugin implements IPlugin {
 
 ## 19.4 Plugin SDK
 
-> Plugins implement the `IPlugin` interface directly. An `@openwa/plugin-sdk` npm package is planned
+> Plugins implement the `IPlugin` interface directly. An `@openwa/plugin-sdk` bun pm package is planned
 > but not yet published; the interfaces below are the live runtime contract from
 > `src/core/plugins/plugin.interfaces.ts`.
 

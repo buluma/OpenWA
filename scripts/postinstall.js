@@ -1,15 +1,13 @@
 /**
- * Post-install hook (npm `postinstall`).
+ * Post-install hook (Bun `postinstall`).
  *
  * Fourteen conditional steps, each skipped when its target is absent so the hook is a no-op where the
  * piece is missing (the Docker builder stage copies package*.json long before any source):
  *
- *   1. `npm ci` inside dashboard/ when dashboard/ exists — the dashboard carries its own lockfile and
- *      the root install would otherwise leave it without dependencies. We run `npm ci` directly in
- *      dashboard/ with any `npm_config_allow_scripts` environment variable stripped so that npm 11
- *      does not reject `allow-scripts=true` from user `.npmrc` with EALLOWSCRIPTS. A failure here
+ *   1. `bun install --frozen-lockfile` inside dashboard/ when dashboard/ exists — the dashboard carries its
+ *      own lockfile and the root install would otherwise leave it without dependencies. A failure here
  *      MUST abort the install: the old inline hook swallowed spawnSync's exit status, so a red
- *      dashboard install still reported `npm install` success and the breakage surfaced only at
+ *      dashboard install still reported `bun install` success and the breakage surfaced only at
  *      build/run time.
  *   2. `node scripts/patch-wwebjs-201832.js --best-effort` when the patcher exists. The patcher
  *      itself decides fatality: under --best-effort it warns and exits 0 for a pristine-but-
@@ -44,7 +42,7 @@
  *      connected getter required by Puppeteer 25; an unknown source shape aborts the install.
  *
  * Structured like scripts/patch-wwebjs-201832.js: pure planning + injectable spawn, so the spec
- * (scripts/postinstall.spec.js, node:test) exercises every branch without a real npm run.
+ * (scripts/postinstall.spec.js, node:test) exercises every branch without a real nested install.
  */
 'use strict';
 
@@ -54,35 +52,14 @@ const { spawnSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
 
-/**
- * Sanitize an environment object for child invocations.
- *
- * npm 11 rejects `--allow-scripts` in project-scoped installs (`npm ci`, `npm install`) when it
- * originates from the environment (`npm_config_allow_scripts`) rather than `.npmrc` or
- * `package.json`. When a root install is invoked with `allow-scripts=true` in `.npmrc`, npm
- * exports that setting to the lifecycle environment as `npm_config_allow_scripts`. Stripping it
- * prevents nested npm executions (`npm run dashboard:ci` -> `cd dashboard && npm ci`) from
- * failing with EALLOWSCRIPTS while preserving the user's `.npmrc` configuration.
- */
-function sanitizeEnv(env = process.env) {
-  const clean = { ...env };
-  for (const key of Object.keys(clean)) {
-    if (/^npm_config_allow[_-]scripts$/i.test(key)) {
-      delete clean[key];
-    }
-  }
-  return clean;
-}
-
 /** The steps to run for a given repo root, in order. */
 function planSteps(root, env = process.env) {
-  const cleanEnv = sanitizeEnv(env);
   const steps = [];
   if (fs.existsSync(path.join(root, 'dashboard'))) {
     steps.push({
-      name: 'dashboard dependencies (npm ci)',
-      command: 'npm ci',
-      options: { stdio: 'inherit', shell: true, cwd: path.join(root, 'dashboard'), env: cleanEnv },
+      name: 'dashboard dependencies (bun install --frozen-lockfile)',
+      command: 'bun install --frozen-lockfile',
+      options: { stdio: 'inherit', shell: true, cwd: path.join(root, 'dashboard'), env },
     });
   }
   const patcher = path.join(root, 'scripts', 'patch-wwebjs-201832.js');
@@ -91,7 +68,7 @@ function planSteps(root, env = process.env) {
       name: 'whatsapp-web.js backport (scripts/patch-wwebjs-201832.js --best-effort)',
       command: process.execPath,
       args: [patcher, '--best-effort'],
-      options: { stdio: 'inherit', cwd: root, env: cleanEnv },
+      options: { stdio: 'inherit', cwd: root, env },
     });
   }
   const previewPatcher = path.join(root, 'scripts', 'patch-wwebjs-newsletter-preview.js');
@@ -100,7 +77,7 @@ function planSteps(root, env = process.env) {
       name: 'whatsapp-web.js newsletter preview backport (scripts/patch-wwebjs-newsletter-preview.js --best-effort)',
       command: process.execPath,
       args: [previewPatcher, '--best-effort'],
-      options: { stdio: 'inherit', cwd: root, env: cleanEnv },
+      options: { stdio: 'inherit', cwd: root, env },
     });
   }
   const statusPatcher = path.join(root, 'scripts', 'patch-wwebjs-status.js');
@@ -109,7 +86,7 @@ function planSteps(root, env = process.env) {
       name: 'whatsapp-web.js status send repair (scripts/patch-wwebjs-status.js --best-effort)',
       command: process.execPath,
       args: [statusPatcher, '--best-effort'],
-      options: { stdio: 'inherit', cwd: root, env: cleanEnv },
+      options: { stdio: 'inherit', cwd: root, env },
     });
   }
   const readySyncPatcher = path.join(root, 'scripts', 'patch-wwebjs-ready-sync.js');
@@ -118,7 +95,7 @@ function planSteps(root, env = process.env) {
       name: 'whatsapp-web.js ready-sync repair (scripts/patch-wwebjs-ready-sync.js --best-effort)',
       command: process.execPath,
       args: [readySyncPatcher, '--best-effort'],
-      options: { stdio: 'inherit', cwd: root, env: cleanEnv },
+      options: { stdio: 'inherit', cwd: root, env },
     });
   }
   const participantArityPatcher = path.join(root, 'scripts', 'patch-wwebjs-participant-arity.js');
@@ -127,7 +104,7 @@ function planSteps(root, env = process.env) {
       name: 'whatsapp-web.js participant batch truth (scripts/patch-wwebjs-participant-arity.js --best-effort)',
       command: process.execPath,
       args: [participantArityPatcher, '--best-effort'],
-      options: { stdio: 'inherit', cwd: root, env: cleanEnv },
+      options: { stdio: 'inherit', cwd: root, env },
     });
   }
   const blockPatcher = path.join(root, 'scripts', 'patch-wwebjs-block.js');
@@ -136,7 +113,7 @@ function planSteps(root, env = process.env) {
       name: 'whatsapp-web.js block/unblock LID repair (scripts/patch-wwebjs-block.js --best-effort)',
       command: process.execPath,
       args: [blockPatcher, '--best-effort'],
-      options: { stdio: 'inherit', cwd: root, env: cleanEnv },
+      options: { stdio: 'inherit', cwd: root, env },
     });
   }
   const groupDescriptionPatcher = path.join(root, 'scripts', 'patch-wwebjs-group-description.js');
@@ -147,7 +124,7 @@ function planSteps(root, env = process.env) {
         '(scripts/patch-wwebjs-group-description.js --best-effort)',
       command: process.execPath,
       args: [groupDescriptionPatcher, '--best-effort'],
-      options: { stdio: 'inherit', cwd: root, env: cleanEnv },
+      options: { stdio: 'inherit', cwd: root, env },
     });
   }
   const mediaIdPatcher = path.join(root, 'scripts', 'patch-wwebjs-media-id.js');
@@ -156,7 +133,7 @@ function planSteps(root, env = process.env) {
       name: 'whatsapp-web.js media send repair (scripts/patch-wwebjs-media-id.js --best-effort)',
       command: process.execPath,
       args: [mediaIdPatcher, '--best-effort'],
-      options: { stdio: 'inherit', cwd: root, env: cleanEnv },
+      options: { stdio: 'inherit', cwd: root, env },
     });
   }
   const sendErrorPatcher = path.join(root, 'scripts', 'patch-wwebjs-send-error.js');
@@ -165,7 +142,7 @@ function planSteps(root, env = process.env) {
       name: 'whatsapp-web.js send error capture (scripts/patch-wwebjs-send-error.js --best-effort)',
       command: process.execPath,
       args: [sendErrorPatcher, '--best-effort'],
-      options: { stdio: 'inherit', cwd: root, env: cleanEnv },
+      options: { stdio: 'inherit', cwd: root, env },
     });
   }
   const baileysAppStatePatcher = path.join(root, 'scripts', 'patch-baileys-appstate.js');
@@ -174,7 +151,7 @@ function planSteps(root, env = process.env) {
       name: 'Baileys app-state resync bound (scripts/patch-baileys-appstate.js --best-effort)',
       command: process.execPath,
       args: [baileysAppStatePatcher, '--best-effort'],
-      options: { stdio: 'inherit', cwd: root, env: cleanEnv },
+      options: { stdio: 'inherit', cwd: root, env },
     });
   }
   const baileysNewsletterPatcher = path.join(root, 'scripts', 'patch-baileys-newsletter-create.js');
@@ -183,7 +160,7 @@ function planSteps(root, env = process.env) {
       name: 'Baileys newsletter-create parse fix (scripts/patch-baileys-newsletter-create.js --best-effort)',
       command: process.execPath,
       args: [baileysNewsletterPatcher, '--best-effort'],
-      options: { stdio: 'inherit', cwd: root, env: cleanEnv },
+      options: { stdio: 'inherit', cwd: root, env },
     });
   }
   const baileysPairingPatcher = path.join(root, 'scripts', 'patch-baileys-pairing.js');
@@ -192,7 +169,7 @@ function planSteps(root, env = process.env) {
       name: 'Baileys pairing refresh (scripts/patch-baileys-pairing.js --best-effort)',
       command: process.execPath,
       args: [baileysPairingPatcher, '--best-effort'],
-      options: { stdio: 'inherit', cwd: root, env: cleanEnv },
+      options: { stdio: 'inherit', cwd: root, env },
     });
   }
   const puppeteerPatcher = path.join(root, 'scripts', 'patch-wwebjs-puppeteer.js');
@@ -201,7 +178,7 @@ function planSteps(root, env = process.env) {
       name: 'whatsapp-web.js Puppeteer compatibility (scripts/patch-wwebjs-puppeteer.js)',
       command: process.execPath,
       args: [puppeteerPatcher],
-      options: { stdio: 'inherit', cwd: root, env: cleanEnv },
+      options: { stdio: 'inherit', cwd: root, env },
     });
   }
   return steps;
@@ -231,7 +208,7 @@ function run(root = ROOT, spawn = spawnSync, env = process.env) {
     if (reason) {
       console.error(
         `postinstall: ${step.name} failed (${reason}). The install is INCOMPLETE — ` +
-          'fix the error above and re-run `npm install`.',
+          'fix the error above and re-run `bun install`.',
       );
       return 1;
     }
@@ -243,4 +220,4 @@ if (require.main === module) {
   process.exit(run());
 }
 
-module.exports = { sanitizeEnv, planSteps, failureReason, run, ROOT };
+module.exports = { planSteps, failureReason, run, ROOT };

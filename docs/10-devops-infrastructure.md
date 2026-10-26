@@ -5,7 +5,7 @@
 > (Docker socket-proxy threat model, gosu non-root drop, loopback-bound datastores, container
 > hardening), and `.env.example` (canonical env var names). Where this doc and those disagree,
 > the files win. In particular: the API master key env is `API_MASTER_KEY`, datastores have no
-> default credentials, and production migrations use `npm run migration:run:prod`.
+> default credentials, and production migrations use `bun run migration:run:prod`.
 
 ## 10.1 Infrastructure Overview
 
@@ -45,15 +45,15 @@ rather than a second full copy. It is a two-stage build on a digest-pinned `node
 ```dockerfile
 # Builder stage. --include=dev is required: a platform that leaks NODE_ENV=production into the
 # build (Coolify does) would otherwise skip @nestjs/cli and fail with `nest: not found`.
-RUN PUPPETEER_SKIP_DOWNLOAD=true npm ci --include=dev
-RUN npm run build && npm run dashboard:ci -- --include=dev && npm run dashboard:build && rm -f dist/*.tsbuildinfo
+RUN PUPPETEER_SKIP_DOWNLOAD=true bun install --frozen-lockfile
+RUN bun run build && bun run dashboard:ci && bun run dashboard:build && rm -f dist/*.tsbuildinfo
 
 # Production stage: runtime dependencies only, without install scripts; the dependency patchers
 # run in the same RUN, and any one failing fails the build.
-RUN npm ci --omit=dev --ignore-scripts \
+RUN bun install --frozen-lockfile --production --ignore-scripts \
     && node scripts/patch-wwebjs-201832.js \
     # ... one `&& node scripts/patch-*.js \` line per patcher ...
-    && npm cache clean --force
+    && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD curl -f "http://localhost:${PORT:-2785}/api/health/ready" || exit 1
@@ -92,7 +92,7 @@ services:
     build:
       context: .
       target: builder
-    command: npm run start:dev
+    command: bun run start:dev
     ports:
       - '2785:2785'
     environment:

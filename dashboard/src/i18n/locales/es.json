@@ -344,6 +344,28 @@
         "always": "Siempre"
       },
       "saveContactUnavailable": "Necesita un número de teléfono conocido: este chat solo tiene un ID de privacidad (@lid)."
+    },
+    "mediaTab": {
+      "count": "{{count}} item",
+      "count_other": "{{count}} items",
+      "missing": "{{count}} item without stored media",
+      "missing_other": "{{count}} items without stored media",
+      "fetch": "Fetch from WhatsApp",
+      "fetchError": "Could not fetch media from WhatsApp.",
+      "loadError": "Could not load chat media.",
+      "empty": "No media in this chat.",
+      "loadMore": "Load more",
+      "notStored": "Media was not stored",
+      "type": {
+        "image": "Image",
+        "video": "Video",
+        "audio": "Audio",
+        "document": "Document"
+      },
+      "count_one": "{{count}} item",
+      "count_many": "{{count}} items",
+      "missing_one": "{{count}} item without stored media",
+      "missing_many": "{{count}} items without stored media"
     }
   },
   "errorBoundary": {
@@ -1437,5 +1459,102 @@
       "current": "Esta sesión"
     },
     "loading": "Buscando…"
+  },
+  "contacts": {
+    "title": "Contacts",
+    "subtitle": "Manage saved contacts for this session.",
+    "addContact": "Add contact",
+    "searchPlaceholder": "Search contacts...",
+    "empty": {
+      "title": "No contacts yet",
+      "description": "Add a contact to get started."
+    },
+    "actions": {
+      "edit": "Edit contact",
+      "remove": "Remove contact"
+    },
+    "editTitle": "Edit contact",
+    "addTitle": "Add contact",
+    "contactId": "Contact ID",
+    "fullName": "Full name",
+    "firstName": "First name",
+    "notSupported": "Contacts are not supported by this engine.",
+    "notSupportedHint": "Contact editing is available only with whatsapp-web.js.",
+    "removeTitle": "Remove contact",
+    "removeConfirm": "Remove {{name}} from your contacts?",
+    "toasts": {
+      "saved": "Contact saved.",
+      "saveFailed": "Could not save contact.",
+      "removed": "Contact removed.",
+      "removeFailed": "Could not remove contact."
+    }
+  },
+  "privacy": {
+    "title": "Privacy",
+    "subtitle": "Manage privacy settings for this session.",
+    "settingsTitle": "Privacy settings",
+    "fields": {
+      "lastSeen": "Last seen",
+      "profilePicture": "Profile photo",
+      "status": "Status",
+      "online": "Online",
+      "readReceipts": "Read receipts",
+      "groupsAdd": "Who can add me to groups",
+      "call": "Calls",
+      "messages": "Messages",
+      "defaultDisappearingMode": "Default message timer",
+      "disableLinkPreviews": "Disable link previews"
+    },
+    "noChange": "No change",
+    "options": {
+      "all": "Everyone",
+      "contacts": "My contacts",
+      "contact_blacklist": "My contacts except...",
+      "none": "Nobody",
+      "match_last_seen": "Same as last seen",
+      "known": "My contacts"
+    },
+    "disappearing": {
+      "0": "Off",
+      "86400": "24 hours",
+      "604800": "7 days",
+      "7776000": "90 days"
+    },
+    "notSupported": "Privacy settings are not supported by this engine.",
+    "blocklistTitle": "Blocked contacts",
+    "blocklistEmpty": "No blocked contacts.",
+    "toasts": {
+      "saved": "Privacy settings saved.",
+      "saveFailed": "Could not save privacy settings."
+    }
+  },
+  "quickReplies": {
+    "title": "Quick replies",
+    "subtitle": "Save reusable replies for this session.",
+    "addQuickReply": "Add quick reply",
+    "localTrackingNotice": "Quick replies are stored locally in this browser.",
+    "empty": {
+      "title": "No quick replies yet",
+      "description": "Add a quick reply to get started."
+    },
+    "actions": {
+      "edit": "Edit quick reply",
+      "remove": "Remove quick reply"
+    },
+    "editTitle": "Edit quick reply",
+    "createTitle": "Create quick reply",
+    "shortcut": "Shortcut",
+    "message": "Message",
+    "keywords": "Keywords",
+    "keywordsPlaceholder": "Separate keywords with commas",
+    "removeTitle": "Remove quick reply",
+    "removeConfirm": "Remove the {{shortcut}} quick reply?",
+    "notSupported": "Quick replies are not supported by this engine.",
+    "toasts": {
+      "saved": "Quick reply saved.",
+      "saveFailed": "Could not save quick reply.",
+      "removed": "Quick reply removed.",
+      "removeFailed": "Could not remove quick reply."
+    }
   }
 }

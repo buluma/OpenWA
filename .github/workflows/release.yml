@@ -38,15 +38,14 @@ jobs:
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
           # Both trees are installed in this job (the dashboard audit below), so both lockfiles
           # belong in the cache key.
-          cache-dependency-path: |
-            package-lock.json
-            dashboard/package-lock.json
-
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: .bun-version
       - name: Install dependencies
-        run: npm ci
+        run: bun install --frozen-lockfile
 
       # Fail fast (before tests, image build, or the GitHub Release) if the release is inconsistent:
       # the tag must match package.json, and the docs/CHANGELOG version guard must pass. This stops a
@@ -72,7 +71,7 @@ jobs:
         # refuses to publish with no advisory checked. A re-run clears a transient npm outage.
         env:
           CHECK_AUDIT_REQUIRED: '1'
-        run: npm run check:audit
+        run: bun run check:audit
 
       # The dashboard tree, same rule. Its runtime deps are bundled into dashboard/dist and the
       # published image serves them to every operator's browser, so the tag path must scan them for
@@ -80,54 +79,54 @@ jobs:
       # the dependencies that reach a user. The third tree, sdk/javascript, is not audited here: the
       # image does not ship it, and js-sdk-release.yml audits it before publishing the SDK.
       - name: Install dashboard dependencies
-        run: cd dashboard && npm ci
+        run: cd dashboard && bun install --frozen-lockfile
 
       - name: Security audit (dashboard)
-        run: cd dashboard && npm audit --audit-level=high
+        run: cd dashboard && bun audit --audit-level=high
 
       - name: Run ESLint
-        run: npm run lint
+        run: bun run lint
 
       # Same gap as CI: `nest build` excludes specs, so a spec-only type regression slips past every
       # existing release gate. tsconfig.json includes both src and test, so this is the full-program
       # check that also covers spec files.
       - name: Type-check full program (including specs)
-        run: npx tsc --noEmit -p tsconfig.json
+        run: bunx tsc --noEmit -p tsconfig.json
 
       - name: Check formatting
-        run: npm run format:check
+        run: bun run format:check
 
       - name: Check version consistency (docs track package.json)
-        run: npm run check:versions
+        run: bun run check:versions
 
       # Same guard as CI: the published image is built from this ref, so the context must be sane.
       - name: Check Docker build context (.dockerignore)
-        run: npm run check:dockerignore
+        run: bun run check:dockerignore
 
       - name: Check OpenAPI snapshot is up to date
-        run: npm run openapi:check
+        run: bun run openapi:check
 
       # The same gates ci.yml runs. Its comment there notes this workflow never ran them, which is
       # the gap: a tag pushed with `--follow-tags` starts both workflows, and only the branch one
       # could see an SDK left behind by a contract change. The release path has to stand on its own,
       # and it is the path that actually publishes the image and the GitHub Release.
       - name: Check SDK routes against the contract
-        run: npm run check:sdk-routes
+        run: bun run check:sdk-routes
 
       - name: Check the contract is covered by every SDK
-        run: npm run check:sdk-coverage
+        run: bun run check:sdk-coverage
 
       - name: Check SDK webhook events against the contract
-        run: npm run check:sdk-events
+        run: bun run check:sdk-events
 
       - name: Check SDK docs cover the shipped client surface
-        run: npm run check:sdk-docs
+        run: bun run check:sdk-docs
 
       # The typed-SDK wire-shape gate: the last lane gate ci.yml runs that this workflow lacked, so
       # a tag could publish SDK builds whose mapped response types had drifted from the contract
       # while the branch path would have caught it.
       - name: Check contract shapes across the typed SDKs
-        run: npm run check:contract-shapes
+        run: bun run check:contract-shapes
 
   test:
     name: Test
@@ -153,26 +152,29 @@ jobs:
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
 
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: .bun-version
       - name: Install dependencies
-        run: npm ci
+        run: bun install --frozen-lockfile
 
       - name: Run unit tests
-        run: npm test -- --coverage
+        run: bun run test -- --coverage
 
       # jest's rootDir is src/, so the repo-level script specs run on the plain node runner and were
       # absent from the tag path entirely.
       - name: Run script unit tests
-        run: npm run test:scripts
+        run: bun run test:scripts
 
       # The repo-file drift specs (docs, trees, gates) run on the branch path; a tag is the one
       # place that must not be verified less than the branch it came from.
       - name: Run docs unit tests
-        run: npm run test:docs
+        run: bun run test:docs
 
       - name: Run e2e smoke tests
-        run: npm run test:e2e
+        run: bun run test:e2e
         env:
           REDIS_HOST: localhost
           REDIS_PORT: '6379'
@@ -205,18 +207,21 @@ jobs:
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
 
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: .bun-version
       - name: Install dependencies
-        run: npm ci
+        run: bun install --frozen-lockfile
 
       - name: Build (compiles the data migrations to dist/)
-        run: npm run build
+        run: bun run build
 
       # Applies the full data-migration chain to a real Postgres and asserts every generated-uuid PK
       # has a DB DEFAULT — the dialect gap SQLite-only tests can't see.
       - name: Migrate + uuid-default smoke against PostgreSQL
-        run: npm run test:pg-smoke
+        run: bun run test:pg-smoke
         env:
           DATABASE_TYPE: postgres
           DATABASE_HOST: localhost
@@ -243,7 +248,7 @@ jobs:
         # tree CI had passed minutes earlier). The lock spec's own two-migrator race is in-file
         # (Promise.all) and unaffected by runInBand. The synchronize spec additionally CREATEs and
         # DROPs a scratch database of its own, which is only safe serialized.
-        run: npx jest --runInBand src/database/migrations/__tests__/1782400000000-AddMessagesFts.pg.spec.ts src/database/migrations/__tests__/pg-boot-migrations.pg.spec.ts src/modules/message/message-list-ordering.pg.spec.ts src/database/migrations/__tests__/pg-entity-synchronize.pg.spec.ts src/database/postgres-utc.pg.spec.ts src/modules/webhook/webhook-recovery.pg.spec.ts src/modules/message/idempotency/send-idempotency.service.pg.spec.ts src/modules/infra/infra-data.import.pg.spec.ts src/modules/session/session-content-lifetime.spec.ts src/modules/session/session-delete-claim.spec.ts src/engine/identity/lid-mapping-store.spec.ts
+        run: bunx jest --runInBand src/database/migrations/__tests__/1782400000000-AddMessagesFts.pg.spec.ts src/database/migrations/__tests__/pg-boot-migrations.pg.spec.ts src/modules/message/message-list-ordering.pg.spec.ts src/database/migrations/__tests__/pg-entity-synchronize.pg.spec.ts src/database/postgres-utc.pg.spec.ts src/modules/webhook/webhook-recovery.pg.spec.ts src/modules/message/idempotency/send-idempotency.service.pg.spec.ts src/modules/infra/infra-data.import.pg.spec.ts src/modules/session/session-content-lifetime.spec.ts src/modules/session/session-delete-claim.spec.ts src/engine/identity/lid-mapping-store.spec.ts
         env:
           TZ: Asia/Jakarta
           DATABASE_TYPE: postgres
@@ -264,33 +269,34 @@ jobs:
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: dashboard/package-lock.json
-
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: .bun-version
       - name: Install dependencies
-        run: cd dashboard && npm ci
+        run: cd dashboard && bun install --frozen-lockfile
 
       - name: Run ESLint
-        run: cd dashboard && npm run lint
+        run: cd dashboard && bun run lint
 
       # The root format:check globs are anchored at the repo root and never reach dashboard/, so
       # this is the only gate on dashboard formatting — and it was present on the branch path only.
       - name: Check formatting
-        run: cd dashboard && npm run format:check
+        run: cd dashboard && bun run format:check
 
       - name: Type-check dashboard tests
-        run: cd dashboard && npm run typecheck
+        run: cd dashboard && bun run typecheck
 
       - name: Check i18n parity
-        run: cd dashboard && npm run i18n:check
+        run: cd dashboard && bun run i18n:check
 
       - name: Build dashboard
-        run: cd dashboard && npm run build
+        run: cd dashboard && bun run build
 
       # --test-timeout in test:unit fails a hung test by name; this bounds a hang it cannot see.
       - name: Run dashboard unit tests
         timeout-minutes: 10
-        run: cd dashboard && npm run test:unit
+        run: cd dashboard && bun run test:unit
 
   # Mirrors ci.yml's scripts-smoke job, which had no counterpart here at all: the shell scripts that
   # ship inside the image were linted and exercised on the branch path and on nothing else.
@@ -330,13 +336,17 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      # For the behaviour check below. No `npm ci`: it imports only node: builtins, so pinning the
+      # For the behaviour check below. No `bun install --frozen-lockfile`: it imports only node: builtins, so pinning the
       # runtime is the whole dependency — without this the step would silently take whatever Node the
       # runner image happens to ship.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: ${{ env.NODE_VERSION }}
 
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: .bun-version
       - name: helm lint
         run: docker run --rm -v "$PWD/charts:/charts:ro" alpine/helm:4.2.3 lint /charts/openwa
 
@@ -366,7 +376,7 @@ jobs:
       # from this ref — so the tag is the last gate it passes, and a chart that renders validly but
       # misbehaves must not get past it.
       - name: Check chart behaviour
-        run: npm run check:chart
+        run: bun run check:chart
 
       - name: actionlint
         run: docker run --rm -v "$PWD:/repo:ro" -w /repo rhysd/actionlint:1.7.12 -color
@@ -383,17 +393,20 @@ jobs:
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
 
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: .bun-version
       - name: Install dependencies
-        run: npm ci
+        run: bun install --frozen-lockfile
 
       - name: Build project
-        run: npm run build
+        run: bun run build
 
       # Same lane as ci.yml's build job: inbound messages through the real Baileys library.
       - name: Run inbound messages through the real Baileys library
-        run: npm run test:engine-real
+        run: bun run test:engine-real
 
   # ──── Create GitHub Release ───────────────────────────────────────
   release:
@@ -534,7 +547,7 @@ jobs:
           # cached layer while bookworm-security already carried 151.0.7922.71 on BOTH architectures,
           # and image-scan failed with 228 then 240 findings. The filter names a whole stage, so every
           # layer of `production` is rebuilt, not only the OS-package one: the PGDG client, the
-          # production `npm ci`, the browser download and the COPY --from=builder steps too. Only the
+          # production `bun install --frozen-lockfile`, the browser download and the COPY --from=builder steps too. Only the
           # builder stage keeps its cache.
           no-cache-filters: production
 
@@ -641,7 +654,7 @@ jobs:
 
   # ──── Image Vulnerability Scan (amd64 + arm64) ────────────────────
   # Scans the just-pushed staging image for OS-package and library CVEs and blocks promotion of a
-  # vulnerable image to the public release tags. This is the coverage the `npm audit` gate in ci.yml
+  # vulnerable image to the public release tags. This is the coverage the `bun audit` gate in ci.yml
   # cannot give: audit sees the npm tree, but the Debian packages baked into node:22-slim — and, on
   # arm64 only, the `chromium`/`chromium-sandbox` packages the amd64 image never installs (amd64 uses
   # a downloaded Chrome-for-Testing binary, not a .deb) — are visible only by scanning the built

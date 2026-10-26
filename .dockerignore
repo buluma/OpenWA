@@ -1,4 +1,4 @@
-# Dependencies — reinstalled inside the image via npm ci
+# Dependencies — reinstalled inside the image via bun install
 node_modules/
 dashboard/node_modules/
 

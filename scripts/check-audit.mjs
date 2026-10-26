@@ -2,13 +2,13 @@
 /**
  * Dependency-audit gate for the ROOT tree, with a per-advisory allowlist.
  *
- * `npm audit --audit-level=high` is all-or-nothing: it fails on any high, and the only lever it
+ * `bun audit --audit-level=high` is all-or-nothing: it fails on any high, and the only lever it
  * offers is lowering the threshold for EVERYTHING. That lever is the wrong one — the audit job
  * exists to fence high-severity regressions, and dropping it to `critical` would silently un-gate
  * every future high to accommodate one advisory that has no fix.
  *
  * So the threshold stays, and an advisory is excused ONE AT A TIME, by id, with its reason recorded
- * next to it. An excused advisory is still visible in `npm audit` output; what changes is only
+ * next to it. An excused advisory is still visible in `bun audit` output; what changes is only
  * whether CI treats it as a stop.
  *
  * Two rules, and the second is the one that keeps this honest:
@@ -17,10 +17,10 @@
  *      its cause is how a gate quietly narrows, so removing it is not left to anyone remembering.
  *
  * Scope: the root tree only. `dashboard/` and `sdk/javascript/` keep a plain
- * `npm audit --audit-level=high`, because they have nothing to excuse and should stay stricter
+ * `bun audit --audit-level=high`, because they have nothing to excuse and should stay stricter
  * than the root.
  *
- * Run locally: `npm run check:audit`.
+ * Run locally: `bun run check:audit`.
  */
 import { execFileSync } from 'node:child_process';
 import { realpathSync } from 'node:fs';
@@ -37,9 +37,9 @@ const ALLOWLIST = [];
 const BLOCKING = new Set(['high', 'critical']);
 
 /**
- * True when an `npm audit --json` payload is a registry failure rather than a real audit result.
- * npm returns `{ error: { summary } }` (no `vulnerabilities`, no `metadata`) when the audit endpoint
- * is unreachable or, as npm retires the legacy audit endpoint, returns an error. That is NOT a clean
+ * True when an `bun audit --json` payload is a registry failure rather than a real audit result.
+ * Bun returns `{ error: { summary } }` (no `vulnerabilities`, no `metadata`) when the audit endpoint
+ * is unreachable or, returns an error. That is NOT a clean
  * tree: reading it as one would find zero advisories and flag every allowlist entry as stale. A
  * genuinely clean report carries no `error` key (it has `vulnerabilities: {}` and `metadata`), so
  * keying on `error` leaves a normal clean run clean. Anything unparseable is wrapped as an error too.
@@ -49,22 +49,22 @@ export function auditUnavailable(report) {
 }
 
 /**
- * `npm audit --json` exits non-zero exactly when it found something, so a throw is the normal path
+ * `bun audit --json` exits non-zero exactly when it found something, so a throw is the normal path
  * and the payload is on stdout either way. Unparseable output, or an `{ error }` payload, means the
  * audit could not be performed and is wrapped as an error rather than read as "no vulnerabilities".
  */
 function runAuditOnce() {
   let raw;
   try {
-    raw = execFileSync('npm', ['audit', '--json'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+    raw = execFileSync('bun', ['audit', '--json'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
   } catch (err) {
     raw = err?.stdout ?? '';
-    if (!raw) return { error: { summary: err?.stderr?.trim() || err?.message || 'npm audit produced no output' } };
+    if (!raw) return { error: { summary: err?.stderr?.trim() || err?.message || 'bun audit produced no output' } };
   }
   try {
     return JSON.parse(raw);
   } catch {
-    return { error: { summary: 'npm audit output was not JSON (network or registry error)' } };
+    return { error: { summary: 'bun audit output was not JSON (network or registry error)' } };
   }
 }
 
@@ -81,7 +81,7 @@ function runAudit() {
     report = runAuditOnce();
     if (!auditUnavailable(report)) return report;
     if (attempt < ATTEMPTS) {
-      console.error(`check:audit: npm audit endpoint did not answer, retrying (${attempt}/${ATTEMPTS})`);
+      console.error(`check:audit: bun audit endpoint did not answer, retrying (${attempt}/${ATTEMPTS})`);
     }
   }
   return report;
@@ -90,19 +90,42 @@ function runAudit() {
 /**
  * Every distinct advisory in the report, keyed by its GHSA id.
  *
- * npm reports one entry per affected package, but only the directly-vulnerable one carries the
+ * Bun reports one entry per affected package, but only the directly-vulnerable one carries the
  * advisory OBJECT in `via`; the packages that merely depend on it carry a plain string naming their
  * parent. Collecting the objects is therefore what enumerates advisories rather than symptoms — the
  * extract-zip advisory shows up as five package entries and exactly one advisory.
  */
 export function collectAdvisories(report) {
   const found = new Map();
-  for (const entry of Object.values(report?.vulnerabilities ?? {})) {
-    for (const via of entry.via ?? []) {
-      if (typeof via !== 'object' || !via.url) continue;
-      const id = via.url.split('/').pop();
+  if (report?.vulnerabilities && typeof report.vulnerabilities === 'object') {
+    // Retain compatibility with npm-style reports in the fixture and with older Bun releases.
+    for (const entry of Object.values(report.vulnerabilities)) {
+      for (const via of entry.via ?? []) {
+        if (typeof via !== 'object' || !via.url) continue;
+        const id = via.url.split('/').pop();
+        if (!found.has(id)) {
+          found.set(id, { id, package: via.name, severity: via.severity, title: via.title, url: via.url });
+        }
+      }
+    }
+    return found;
+  }
+
+  // Bun emits one array of advisory objects per vulnerable package, with the package name as the
+  // top-level key; unlike npm's report, there is no transitive `via` list to collapse.
+  for (const [packageName, advisories] of Object.entries(report ?? {})) {
+    if (!Array.isArray(advisories)) continue;
+    for (const advisory of advisories) {
+      if (typeof advisory !== 'object' || !advisory?.url) continue;
+      const id = advisory.url.split('/').pop();
       if (!found.has(id)) {
-        found.set(id, { id, package: via.name, severity: via.severity, title: via.title, url: via.url });
+        found.set(id, {
+          id,
+          package: packageName,
+          severity: advisory.severity,
+          title: advisory.title,
+          url: advisory.url,
+        });
       }
     }
   }
@@ -110,19 +133,19 @@ export function collectAdvisories(report) {
 }
 
 /**
- * What to do when npm audit could not answer at all. On PR and push CI only this root-tree check
+ * What to do when bun audit could not answer at all. On PR and push CI only this root-tree check
  * skips, and the skip is raised as a warning annotation on GitHub Actions rather than a log line
- * inside a green step. It does not keep the audit job green: the dashboard's plain `npm audit` step
+ * inside a green step. It does not keep the audit job green: the dashboard's plain `bun audit` step
  * in ci.yml fails closed on the same outage. A path that sets CHECK_AUDIT_REQUIRED=1 (the release
  * gate and the weekly scan) fails instead: publishing, or reporting a week clean, with no advisory
  * checked is not a skip those paths may take. A re-run clears a transient outage.
  */
 export function unavailableOutcome(summary, env = process.env) {
   const required = env.CHECK_AUDIT_REQUIRED === '1';
-  const text = `npm audit endpoint is unavailable after a retry (${summary}); advisories were not checked this run.`;
+  const text = `bun audit endpoint is unavailable after a retry (${summary}); advisories were not checked this run.`;
   const lines = [];
   if (env.GITHUB_ACTIONS === 'true') {
-    // A workflow command ends at the first newline, and npm's summary can span several lines.
+    // A workflow command ends at the first newline, and the summary can span several lines.
     const message = text.replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
     lines.push(
       required
@@ -138,7 +161,7 @@ export function unavailableOutcome(summary, env = process.env) {
   return { exitCode: required ? 1 : 0, lines };
 }
 
-/** The gate's verdict, split out so a spec can drive it without shelling out to npm. */
+/** The gate's verdict, split out so a spec can drive it without shelling out to Bun. */
 export function evaluate(report, allowlist = ALLOWLIST) {
   const advisories = collectAdvisories(report);
   const allowed = new Set(allowlist.map(a => a.id));
@@ -158,7 +181,7 @@ export function evaluate(report, allowlist = ALLOWLIST) {
   for (const entry of allowlist) {
     if (advisories.has(entry.id)) continue;
     errors.push(
-      `Stale allowlist entry ${entry.id} (${entry.package}): the advisory no longer appears in npm audit.\n` +
+      `Stale allowlist entry ${entry.id} (${entry.package}): the advisory no longer appears in bun audit.\n` +
         '  Remove it from ALLOWLIST in scripts/check-audit.mjs — an exception that outlives its cause\n' +
         '  narrows this gate for everything that comes after it.',
     );
@@ -179,7 +202,7 @@ if (process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.me
   const report = runAudit();
 
   // A registry that cannot answer the audit request must not be read as a clean tree. On a merge
-  // path this step skips loudly rather than failing while npm's audit endpoint is down (or being
+  // path this step skips loudly rather than failing while Bun's audit endpoint is down (or being
   // retired). That keeps the root step from failing, not the audit job green: the dashboard audit
   // step fails closed on the same outage. A required path fails. See unavailableOutcome.
   if (auditUnavailable(report)) {

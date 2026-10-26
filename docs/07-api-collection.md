@@ -1795,7 +1795,7 @@ curl -X POST "$BASE/api/sessions/$SESSION_ID/media/convert/video" \
 Events are delivered over **Socket.IO** on the `/events` namespace (not a raw WebSocket). Use the `socket.io-client` package. Set `BASE_WS` (e.g. `ws://localhost:2785`) and `API_KEY`.
 
 ```bash
-npm install socket.io-client
+bun install socket.io-client
 ```
 
 ```js

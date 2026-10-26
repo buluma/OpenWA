@@ -1,6 +1,6 @@
 /**
  * Build-time backport of upstream whatsapp-web.js#201832 into the installed
- * whatsapp-web.js. Run after `npm ci` in the Docker production stage.
+ * whatsapp-web.js. Run after `bun install --frozen-lockfile` in the Docker production stage.
  *
  * Background: WhatsApp Web build 2.3000.x (rolled out ~2026-07-14) renamed the
  * serialized message-id property `id._serialized` to `id.$1` (a minifier-mangled
@@ -132,7 +132,7 @@ function findArtifacts(root, dir = root) {
 /**
  * Fallback applier for hosts without the GNU `patch` binary — the default on Windows outside Git
  * Bash, and the reason a native install could silently ship an unpatched whatsapp-web.js while
- * `npm install` still reported success (#889). Anyone installing from source necessarily has git,
+ * `bun install` still reported success (#889). Anyone installing from source necessarily has git,
  * so this closes that gap without adding a dependency.
  *
  * GIT_CEILING_DIRECTORIES is what makes it work at all: without it git discovers the parent OpenWA
@@ -152,7 +152,7 @@ function findArtifacts(root, dir = root) {
  * \r is none of those, so both stop at line 12 of this patch — its first empty context line (`git
  * apply`: "corrupt patch at line 12"; `patch`: "malformed patch at line 12"). Windows checks the file out
  * that way whenever `core.autocrlf` is on, which is its default, so the git fallback added for Windows
- * could never actually run there and took `npm install` down with it (#889).
+ * could never actually run there and took `bun install` down with it (#889).
  *
  * The `.gitattributes` rule keeps fresh clones on LF; this repairs the ones already on disk, which that
  * rule cannot reach. Everywhere else the file is already LF and this is a single read with no temp file.
@@ -252,7 +252,7 @@ function applyBackport(wwjsDir = DEFAULT_WWJS, patchFile = DEFAULT_PATCH) {
         new Error(
           'whatsapp-web.js is PARTIALLY patched — Message.js normalizes ids but ' +
             `${missing.map(([rel]) => rel).join(', ')} did not land. A previous run left the tree half-patched; ` +
-            'it cannot repair itself. Reinstall the dependency (`rm -rf node_modules/whatsapp-web.js && npm ci`) ' +
+            'it cannot repair itself. Reinstall the dependency (`rm -rf node_modules/whatsapp-web.js && bun install --frozen-lockfile`) ' +
             'and re-run. If the installed version genuinely ships its own fix, drop this backport instead.',
         ),
       );
@@ -269,7 +269,7 @@ function applyBackport(wwjsDir = DEFAULT_WWJS, patchFile = DEFAULT_PATCH) {
       new Error(
         'whatsapp-web.js is PARTIALLY patched: an earlier run was interrupted and ' +
           `${landedBefore.join(', ')} did not land. The tree cannot repair itself. Reinstall the dependency ` +
-          '(`rm -rf node_modules/whatsapp-web.js && npm ci`) and re-run.',
+          '(`rm -rf node_modules/whatsapp-web.js && bun install --frozen-lockfile`) and re-run.',
       ),
     );
   }
@@ -343,7 +343,7 @@ if (require.main === module) {
   // `--best-effort` (used by the postinstall hook) warns instead of failing. The image build runs
   // without it: there, an unpatched whatsapp-web.js must abort the build rather than ship broken.
   // Locally the same failure is only a degraded dev install — `patch` may not exist at all (Windows
-  // without WSL), and a Baileys-only user has no reason to care — so breaking `npm install` over it
+  // without WSL), and a Baileys-only user has no reason to care — so breaking `bun install` over it
   // would be worse than the bug.
   const bestEffort = process.argv.includes('--best-effort');
   const target = process.argv.find(a => !a.startsWith('--') && a !== process.argv[0] && a !== process.argv[1]);

@@ -39,26 +39,26 @@ Modern web dashboard for managing OpenWA WhatsApp API Gateway sessions, webhooks
 
 ```bash
 # Install dependencies
-npm install
+bun install
 
 # Start development server
-npm run dev
+bun run dev
 ```
 
 Dashboard will be available at `http://localhost:2886` (Vite dev server with hot reload; it
 proxies `/api` + `/socket.io` to the NestJS API on `:2785`).
 
-In production the build (`npm run build` → `dist/`) is served by the NestJS API itself on the
+In production the build (`bun run build` → `dist/`) is served by the NestJS API itself on the
 same port via `@nestjs/serve-static`, so there is no separate dashboard container.
 
 ### Production Build
 
 ```bash
 # Build for production
-npm run build
+bun run build
 
 # Preview production build
-npm run preview
+bun run preview
 ```
 
 ## 📁 Project Structure
