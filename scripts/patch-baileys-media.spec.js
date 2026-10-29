@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { apply } = require('./patch-baileys-media');
+const { apply, isApplied } = require('./patch-baileys-media');
 
 test('patch is exact, idempotent, and rejects unknown shapes', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'baileys-media-'));
@@ -13,7 +13,9 @@ test('patch is exact, idempotent, and rejects unknown shapes', () => {
     const file = path.join(dir, 'lib/Utils/messages-media.js');
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, "import { Readable, Transform } from 'stream';\n    return fetched.pipe(output, { end: true });\n");
+    assert.equal(isApplied(dir), false);
     assert.equal(apply(dir).skipped, false);
+    assert.equal(isApplied(dir), true);
     assert.equal(apply(dir).skipped, true);
     fs.writeFileSync(file, 'unknown');
     assert.throws(() => apply(dir), /shape changed/);

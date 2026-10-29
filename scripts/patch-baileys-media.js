@@ -20,4 +20,11 @@ if (require.main === module) {
   try { console.log('patch-baileys-media:', apply().skipped ? 'already patched' : 'patched'); }
   catch (error) { console.error('patch-baileys-media:', error.message); if (!process.argv.includes('--best-effort')) process.exitCode = 1; }
 }
-module.exports = { apply };
+function isApplied(dir = path.join(__dirname, '..', 'node_modules', '@whiskeysockets', 'baileys')) {
+  try {
+    return fs.readFileSync(path.join(dir, target), 'utf8').includes(replacement);
+  } catch {
+    return true;
+  }
+}
+module.exports = { apply, isApplied };
