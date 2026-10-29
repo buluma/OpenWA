@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Raise the minimum Node.js version for OpenWA to 22.23.4.
+
 - Upgrade Puppeteer to 25.16.0 with Zod 4, preserving whatsapp-web.js browser teardown.
 - Update fast-uri to 3.1.9 and ip-address to 10.7.4.
 - Update dashboard validation tooling to Zod 4.6.7.
