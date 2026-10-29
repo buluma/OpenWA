@@ -163,6 +163,10 @@ function planSteps(root, env = process.env) {
       options: { stdio: 'inherit', cwd: root, env },
     });
   }
+  const baileysMediaPatcher = path.join(root, 'scripts', 'patch-baileys-media.js');
+  if (fs.existsSync(baileysMediaPatcher)) {
+    steps.push({ name: 'Baileys media stream errors', command: process.execPath, args: [baileysMediaPatcher, '--best-effort'], options: { stdio: 'inherit', cwd: root, env } });
+  }
   const baileysPairingPatcher = path.join(root, 'scripts', 'patch-baileys-pairing.js');
   if (fs.existsSync(baileysPairingPatcher)) {
     steps.push({
