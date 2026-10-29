@@ -574,7 +574,7 @@ Add a new one only when the condition is engine-agnostic and recurs; a one-off s
 
 ```bash
 # Required
-- Node.js 22.19 or newer (22 LTS)
+- Node.js 22.23.4 or newer (22 LTS)
 - Bun 1.4.4 (pinned in `.bun-version`)
 - Docker & Docker Compose
 - Git
