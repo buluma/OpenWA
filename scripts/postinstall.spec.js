@@ -38,6 +38,7 @@ const EXPECTED_PATCHER_ORDER = [
   'patch-baileys-newsletter-create.js',
   'patch-baileys-media.js',
   'patch-baileys-pairing.js',
+  'patch-baileys-status-ack.js',
   'patch-wwebjs-puppeteer.js',
 ];
 

@@ -1,7 +1,7 @@
 /**
  * Post-install hook (Bun `postinstall`).
  *
- * Fourteen conditional steps, each skipped when its target is absent so the hook is a no-op where the
+ * Conditional steps, each skipped when its target is absent so the hook is a no-op where the
  * piece is missing (the Docker builder stage copies package*.json long before any source):
  *
  *   1. `bun install --frozen-lockfile` inside dashboard/ when dashboard/ exists — the dashboard carries its
@@ -38,6 +38,7 @@
  *
  *  13. `node scripts/patch-baileys-pairing.js --best-effort` when present, preserving pre-login
  *      notification ACKs and refreshing pairing credentials. A partial patch remains fatal.
+ *      The Baileys status stanza patch also runs when present.
  *  14. `node scripts/patch-wwebjs-puppeteer.js` when present. Browser teardown must use the
  *      connected getter required by Puppeteer 25; an unknown source shape aborts the install.
  *
@@ -175,6 +176,10 @@ function planSteps(root, env = process.env) {
       args: [baileysPairingPatcher, '--best-effort'],
       options: { stdio: 'inherit', cwd: root, env },
     });
+  }
+  const baileysStatusPatcher = path.join(root, 'scripts', 'patch-baileys-status-ack.js');
+  if (fs.existsSync(baileysStatusPatcher)) {
+    steps.push({ name: 'Baileys status stanza handling', command: process.execPath, args: [baileysStatusPatcher, '--best-effort'], options: { stdio: 'inherit', cwd: root, env } });
   }
   const puppeteerPatcher = path.join(root, 'scripts', 'patch-wwebjs-puppeteer.js');
   if (fs.existsSync(puppeteerPatcher)) {
