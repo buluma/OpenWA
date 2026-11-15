@@ -504,7 +504,8 @@ export class BaileysEvents {
     const ownPhone = userPart(this.host.normalizedSelfJid());
     const isOwn = (jid: string | null | undefined): boolean =>
       !!jid &&
-      (isSelf(jid) || (ownPhone !== '' && parseWaId(jid).kind === 'lid' && userPart(this.host.toNeutralJid(jid)) === ownPhone));
+      (isSelf(jid) ||
+        (ownPhone !== '' && parseWaId(jid).kind === 'lid' && userPart(this.host.toNeutralJid(jid)) === ownPhone));
     if (![msg.key.participant, msg.key.participantAlt, msg.key.remoteJidAlt].some(isOwn)) return msg;
     return { ...msg, key: { ...msg.key, fromMe: true } };
   }
