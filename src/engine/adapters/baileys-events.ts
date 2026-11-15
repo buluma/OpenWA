@@ -115,12 +115,19 @@ const PROTOCOL_NOISE_KEYS: ReadonlySet<string> = new Set([
   'messageHistoryBundle',
 ]);
 
+/** Wire value of `proto.WebMessageInfo.StubType.CIPHERTEXT`, set when part of a stanza failed to decrypt. */
+const CIPHERTEXT_STUB_TYPE = 2 as BaileysLib.proto.WebMessageInfo.StubType;
+
 /**
  * Whether two ids provably name different chats or people. Each side is a jid plus the other-dialect
  * twin WhatsApp may send beside it (`remoteJidAlt`, `participantAlt`), compared neutralised, so a lid
- * the session can resolve matches its phone number. A lid it cannot resolve may still be the phone
- * number on the other side, so that pair is never called different, and neither is a side with no id:
- * a caller that drops on a mismatch fails open.
+ * the session can resolve matches its phone number. A side that carries a phone number of its own is
+ * compared by it: a lid sent with its sender's number differs from another number exactly as that number
+ * would, so a contact whose number changed, sending its lid and the new number against a message kept
+ * under the old number only, reads as somebody else, as the same change sent by number does. A lid with
+ * no number beside it that the session cannot resolve may still be the phone number on the other side,
+ * so that pair is never called different, and neither is a side with no id: a caller that drops on a
+ * mismatch fails open there, which still lets a sender known only by such a lid through.
  */
 export function differentWaIds(
   a: ReadonlyArray<string | null | undefined>,
@@ -131,8 +138,24 @@ export function differentWaIds(
   const y = b.filter((j): j is string => !!j).map(toNeutralJid);
   if (!x.length || !y.length || x.some(j => y.includes(j))) return false;
   const lidGap = (p: string[], q: string[]): boolean =>
-    p.some(j => j.endsWith('@lid')) && !q.some(j => j.endsWith('@lid')) && q.some(j => j.endsWith('@c.us'));
+    p.some(j => j.endsWith('@lid')) &&
+    !p.some(j => j.endsWith('@c.us')) &&
+    !q.some(j => j.endsWith('@lid')) &&
+    q.some(j => j.endsWith('@c.us'));
   return !lidGap(x, y) && !lidGap(y, x);
+}
+
+/**
+ * The ids a message key names its chat by, for {@link differentWaIds}. On a key of the account's own
+ * message Baileys fills `remoteJidAlt` from the sender's addressing, which is the account itself rather
+ * than the chat, so it is left out there (as mayChange and recordKeyLidMappings leave it out).
+ */
+export function keyChatIds(key: {
+  remoteJid?: string | null;
+  remoteJidAlt?: string | null;
+  fromMe?: boolean | null;
+}): Array<string | null | undefined> {
+  return [key.remoteJid, key.fromMe === true ? undefined : key.remoteJidAlt];
 }
 
 /**
@@ -468,11 +491,31 @@ export class BaileysEvents {
     return original;
   }
 
+  /**
+   * Marks a `status@broadcast` delivery posted by this account as `fromMe: true` on a shallow copy when
+   * Baileys left `fromMe` off (its broadcast decoder compares `participant` only against the phone jid,
+   * not the account's lid). Recognises `selfMatcher()` (`user.id` and `user.lid`) plus a lid whose phone
+   * number the session already resolved; on `status@broadcast` Baileys also writes the sender's alternate
+   * dialect to `remoteJidAlt`. Never mutates Baileys' message or key.
+   */
+  private withOwnStatusDirection(msg: WAMessage): WAMessage {
+    if (msg.key.fromMe === true || msg.key.remoteJid !== 'status@broadcast') return msg;
+    const isSelf = this.selfMatcher();
+    const ownPhone = userPart(this.host.normalizedSelfJid());
+    const isOwn = (jid: string | null | undefined): boolean =>
+      !!jid &&
+      (isSelf(jid) ||
+        (ownPhone !== '' && parseWaId(jid).kind === 'lid' && userPart(this.host.toNeutralJid(jid)) === ownPhone));
+    if (![msg.key.participant, msg.key.participantAlt, msg.key.remoteJidAlt].some(isOwn)) return msg;
+    return { ...msg, key: { ...msg.key, fromMe: true } };
+  }
+
   handleMessagesUpsert(event: { messages: WAMessage[]; type: string }): void {
-    for (const msg of event.messages) {
-      if (!msg.message || !msg.key?.remoteJid) {
+    for (const rawMsg of event.messages) {
+      if (!rawMsg.message || !rawMsg.key?.remoteJid) {
         continue; // protocol/empty messages carry no neutral content
       }
+      const msg = this.withOwnStatusDirection(rawMsg);
       // A receipt that arrives while this message's own upsert is still in Baileys' event buffer is merged
       // into the upsert and raised as no message-receipt.update, which the echo skip below would then drop
       // with the rest of the echo.
@@ -601,7 +644,7 @@ export class BaileysEvents {
     const neutral = (jid: string): string => this.host.toNeutralJid(jid);
     return (
       (first.fromMe === true) !== (key.fromMe === true) ||
-      differentWaIds([first.remoteJid, first.remoteJidAlt], [key.remoteJid, key.remoteJidAlt], neutral) ||
+      differentWaIds(keyChatIds(first), keyChatIds(key), neutral) ||
       (key.fromMe !== true &&
         differentWaIds([first.participant, first.participantAlt], [key.participant, key.participantAlt], neutral))
     );
@@ -768,13 +811,21 @@ export class BaileysEvents {
       // messageContextInfo }: nothing records which part the context info came from or that a field was
       // skipped, and a messageContextInfo field such as messageSecret is not proof of content either,
       // since the sending client decides what it carries. It stops once the proto knows the type.
+      // A stanza with a CIPHERTEXT stub lost part of its payload to a decryption failure; if what
+      // survived holds only protocol noise (even a lone messageContextInfo), drop it before storing
+      // so a redelivery carrying the real body is not skipped as a duplicate.
       const keys = Object.keys(normalizedRoot ?? {});
-      if (keys.every(k => PROTOCOL_NOISE_KEYS.has(k)) && keys.some(k => k !== 'messageContextInfo')) {
+      const ciphertextStub = msg.messageStubType === CIPHERTEXT_STUB_TYPE;
+      if (
+        keys.every(k => PROTOCOL_NOISE_KEYS.has(k)) &&
+        (ciphertextStub || keys.some(k => k !== 'messageContextInfo'))
+      ) {
         this.host.logger.debug('Dropping contentless protocol message', {
           action: 'baileys_drop_protocol_noise',
           msgId: msg.key.id,
           remoteJid,
           keys,
+          ...(ciphertextStub ? { ciphertextStub: true } : {}),
         });
         return;
       }
@@ -1524,11 +1575,11 @@ export class BaileysEvents {
   private readsAsForeign(original: WAMessageKey, key: WAMessageKey, checkAuthor: boolean, kind?: 'reaction'): boolean {
     const broadcast = kind === 'reaction' && !!original.remoteJid?.endsWith('@broadcast');
     if (broadcast && original.fromMe === true) return false;
-    const originalChats = [original.remoteJid, original.remoteJidAlt];
+    const originalChats = keyChatIds(original);
     if (broadcast && original.remoteJid !== 'status@broadcast') originalChats.push(original.participant);
     const neutral = (jid: string): string => this.host.toNeutralJid(jid);
     return (
-      differentWaIds(originalChats, [key.remoteJid, key.remoteJidAlt], neutral) ||
+      differentWaIds(originalChats, keyChatIds(key), neutral) ||
       (checkAuthor &&
         ((original.fromMe === true) !== (key.fromMe === true) ||
           (key.fromMe !== true &&
@@ -1747,14 +1798,7 @@ export class BaileysEvents {
     // revoke or reaction aimed at a message of another chat is. Fails open like those: a store that
     // cannot be read, or ids that cannot be compared, report the RSVP as before.
     const stored = await this.readStoredMessage(eventKey.id, 'reading the event an RSVP answers');
-    if (
-      stored &&
-      differentWaIds(
-        [stored.key.remoteJid, stored.key.remoteJidAlt],
-        [envelope.remoteJid, envelope.remoteJidAlt],
-        jid => this.host.toNeutralJid(jid),
-      )
-    ) {
+    if (stored && differentWaIds(keyChatIds(stored.key), keyChatIds(envelope), jid => this.host.toNeutralJid(jid))) {
       this.host.logger.warn('Dropping an event response sent in a chat other than its event', {
         msgId: eventKey.id,
         responseMessageId: envelope.id,
