@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Handle top-level Baileys status stanzas, acknowledging them to prevent stream disconnects and delivering decodable statuses to the status store.
+
 ### Added
 
 - Add Number Checker page in dashboard for single and bulk WhatsApp recipient pre-validation, in every dashboard language (#1865). Thanks @Purushotham-Prajapati-24.

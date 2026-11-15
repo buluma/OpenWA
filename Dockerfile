@@ -198,7 +198,7 @@ COPY package.json bun.lock ./
 # scripts/postinstall.js rides along so a bare local `bun install --frozen-lockfile` keeps working, but the
 # --ignore-scripts install below skips the hook here: the explicit fatal run right
 # after is the sole (and stricter) applier for the image.
-COPY scripts/postinstall.js scripts/patch-wwebjs-201832.js scripts/wwebjs-201832.patch scripts/patch-wwebjs-newsletter-preview.js scripts/patch-wwebjs-status.js scripts/patch-wwebjs-ready-sync.js scripts/patch-wwebjs-participant-arity.js scripts/patch-wwebjs-block.js scripts/patch-wwebjs-group-description.js scripts/patch-wwebjs-media-id.js scripts/patch-wwebjs-send-error.js scripts/patch-wwebjs-puppeteer.js scripts/patch-baileys-appstate.js scripts/patch-baileys-newsletter-create.js scripts/patch-baileys-pairing.js scripts/patch-baileys-media.js ./scripts/
+COPY scripts/postinstall.js scripts/patch-wwebjs-201832.js scripts/wwebjs-201832.patch scripts/patch-wwebjs-newsletter-preview.js scripts/patch-wwebjs-status.js scripts/patch-wwebjs-ready-sync.js scripts/patch-wwebjs-participant-arity.js scripts/patch-wwebjs-block.js scripts/patch-wwebjs-group-description.js scripts/patch-wwebjs-media-id.js scripts/patch-wwebjs-send-error.js scripts/patch-wwebjs-puppeteer.js scripts/patch-baileys-appstate.js scripts/patch-baileys-newsletter-create.js scripts/patch-baileys-pairing.js scripts/patch-baileys-media.js scripts/patch-baileys-status-ack.js scripts/atomic-write.js ./scripts/
 
 # Install production dependencies only, then apply the backports. The status patcher runs after
 # the two patchers it depends on: its transforms were written against the tree they leave behind.
@@ -230,6 +230,7 @@ RUN bun install --frozen-lockfile --production --ignore-scripts \
     && node scripts/patch-baileys-appstate.js \
     && node scripts/patch-baileys-newsletter-create.js \
     && node scripts/patch-baileys-pairing.js \
+    && node scripts/patch-baileys-status-ack.js \
     && node scripts/patch-wwebjs-puppeteer.js \
     && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 
