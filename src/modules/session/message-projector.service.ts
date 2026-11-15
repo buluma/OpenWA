@@ -15,6 +15,8 @@ import { MessageMutationProjector } from './message-mutation-projector';
 import {
   mutationTargetsForeignRow,
   mutationTargetsForeignRowPersisted,
+  receiptTargetsForeignRow,
+  receiptTargetsForeignRowPersisted,
   type MutationSource,
   type StoredMessageRef,
 } from './message-mutation-guard';
@@ -149,7 +151,9 @@ interface InFlightEntry {
   // An edit held for the message or applied by the engine changed its text, or was asked for: the row it lands on is
   // marked edited.
   edited?: boolean;
-  ackStatus?: MessageStatus;
+  // The furthest ack kept for the row per chat its receipt named ('' when it named none), so one naming another chat
+  // cannot displace one naming this message's: the insert advances the row by those its chat proves to be the row's.
+  acks?: Map<string, MessageStatus>;
   // Latest reaction per sender; '' means the sender withdrew theirs.
   reactions?: Record<string, string>;
   // Deliveries sharing the entry: a repeat keeps what was recorded for the first one.
@@ -1008,16 +1012,16 @@ export class MessageProjector {
     insertedCleared = false,
     lostInsert?: MutationSource,
   ): void {
-    const { ackStatus } = pending;
+    const { acks } = pending;
     const rowChanges = Boolean(
       pending.revoked || pending.editedBody !== undefined || pending.edited || pending.reactions,
     );
-    if (!ackStatus && !rowChanges) return;
+    if (!acks?.size && !rowChanges) return;
     const advance = (): void => {
-      if (!ackStatus) return;
-      void this.advanceAck(id, waMessageId, ackStatus).catch(err =>
-        this.logger.error(`Failed to advance ack for ${waMessageId}`, String(err)),
-      );
+      if (!acks?.size) return;
+      void this.furthestParkedAck(pending.ref, acks)
+        .then(status => (status ? this.advanceAck(id, waMessageId, status) : 0))
+        .catch(err => this.logger.error(`Failed to advance ack for ${waMessageId}`, String(err)));
     };
     if (!lostInsert) {
       advance();
@@ -1041,6 +1045,24 @@ export class MessageProjector {
       advance();
       await this.writeChangesMadeInFlight(id, waMessageId, pending, insertedCleared);
     });
+  }
+
+  /**
+   * The furthest of the acks kept for a message in flight whose receipt named its chat, or no chat: one naming another
+   * chat (through the lid directory, as {@link receiptVerdict} judges a written row) is left out. The queued receipt
+   * judgement already logged it.
+   */
+  private async furthestParkedAck(
+    ref: StoredMessageRef | undefined,
+    acks: Map<string, MessageStatus>,
+  ): Promise<MessageStatus | undefined> {
+    const resolveLid = this.lidMappingStore ? (jid: string) => this.lidMappingStore!.findPhoneForLid(jid) : undefined;
+    let furthest: MessageStatus | undefined;
+    for (const [chat, status] of acks) {
+      if (chat && ref && (await receiptTargetsForeignRowPersisted(ref, chat, resolveLid))) continue;
+      if (!furthest || ackStatusTransitionFrom(status).includes(furthest)) furthest = status;
+    }
+    return furthest;
   }
 
   /** The row part of {@link applyChangesMadeInFlight}. Must run on the mutation chain. */
@@ -1428,34 +1450,43 @@ export class MessageProjector {
     // out-of-order/late ack cannot downgrade a higher status, which also makes these
     // fire-and-forget writes race-safe at the DB level.
     const messageStatus = deliveryStatusToMessageStatus(status);
-    if (messageStatus) {
+    const inFlight = this.inboundInFlight.get(`${id}:${messageId}`);
+    // Baileys relays a peer's receipt under the peer's chat with every id it lists, unchecked, so a receipt that
+    // names a chat is held to the message it names before it changes or announces anything. An id that embeds its
+    // chat, as whatsapp-web.js serializes them, cannot name another chat's message.
+    const receiptChat = chatId && !messageId.includes('@') ? chatId : undefined;
+    if (receiptChat && inFlight?.ref && receiptTargetsForeignRow(inFlight.ref, receiptChat)) {
+      this.logForeignReceipt(id, messageId, receiptChat);
+      return;
+    }
+    if (messageStatus && inFlight) {
       // A message not written yet (its commit waits behind an earlier one of the chat) keeps the
-      // furthest ack for when its row lands; the UPDATEs below would match nothing.
-      const inFlight = this.inboundInFlight.get(`${id}:${messageId}`);
-      if (inFlight && (!inFlight.ackStatus || ackStatusTransitionFrom(messageStatus).includes(inFlight.ackStatus))) {
-        inFlight.ackStatus = messageStatus;
-      }
-      const advanceAck = (): Promise<number> => this.advanceAck(id, messageId, messageStatus);
+      // furthest ack per chat for when its row lands; the UPDATEs below would match nothing.
+      const acks = (inFlight.acks ??= new Map<string, MessageStatus>());
+      const chat = receiptChat ?? '';
+      const parked = acks.get(chat);
+      if (!parked || ackStatusTransitionFrom(messageStatus).includes(parked)) acks.set(chat, messageStatus);
+    }
 
-      const logNoop = (): void =>
-        this.logger.debug(`Message ack ${messageId}: no status row advanced to ${messageStatus} (${status})`, {
-          sessionId: id,
-          messageId,
-          status,
-          action: 'message_ack_noop',
-        });
+    const logNoop = (): void =>
+      this.logger.debug(`Message ack ${messageId}: no status row advanced to ${messageStatus} (${status})`, {
+        sessionId: id,
+        messageId,
+        status,
+        action: 'message_ack_noop',
+      });
 
-      const onAckError = (err: unknown): void =>
-        this.logger.error(`Failed to advance ack for ${messageId}`, String(err));
+    const onAckError = (err: unknown): void => this.logger.error(`Failed to advance ack for ${messageId}`, String(err));
 
-      void advanceAck()
+    const advance = (first: () => Promise<number>, retry: () => Promise<number> = first): Promise<void> =>
+      first()
         .then(affected => {
           if (affected > 0) return;
           // affected:0 — most likely the send's 2nd save (which writes waMessageId) hasn't committed
           // yet, so the row isn't matchable. Each ack is one-shot (WhatsApp won't necessarily resend),
           // so retry ONCE after a short delay to close that race rather than leave it stuck at SENT.
           const timer = setTimeout(() => {
-            void advanceAck()
+            void retry()
               .then(retried => {
                 if (retried === 0) logNoop();
               })
@@ -1464,7 +1495,6 @@ export class MessageProjector {
           timer.unref?.();
         })
         .catch(onAckError);
-    }
 
     // One ack payload, emitted identically over the socket and the webhook so a client coded
     // against either channel sees the same shape. `id` mirrors the field every other message.*
@@ -1480,30 +1510,96 @@ export class MessageProjector {
       ...(chatId ? { chatId } : {}),
     };
 
-    // Push the live delivery/read tick to the dashboard over the websocket.
-    this.eventsGateway.emitMessageAck(id, ackPayload);
+    const announce = (): void => {
+      // Push the live delivery/read tick to the dashboard over the websocket.
+      this.eventsGateway.emitMessageAck(id, ackPayload);
 
-    // Dispatch the delivery/read receipt to webhooks (#155). Outgoing `message.sent` is handled
-    // solely by `onMessageCreate`, so the ack path deliberately does NOT emit `message.sent`.
-    void this.webhookService.dispatch(id, 'message.ack', ackPayload);
+      // Dispatch the delivery/read receipt to webhooks (#155). Outgoing `message.sent` is handled
+      // solely by `onMessageCreate`, so the ack path deliberately does NOT emit `message.sent`.
+      void this.webhookService.dispatch(id, 'message.ack', ackPayload);
 
-    // Surface delivery failures actively so consumers don't have to poll for them (#220). Use a
-    // distinct object (not the shared ackPayload) so this separate event can't be perturbed by an
-    // in-place payload mutation in the concurrent message.ack dispatch's webhook:before hook.
-    if (status === 'failed') {
-      void this.webhookService.dispatch(id, 'message.failed', { ...ackPayload });
+      // Surface delivery failures actively so consumers don't have to poll for them (#220). Use a
+      // distinct object (not the shared ackPayload) so this separate event can't be perturbed by an
+      // in-place payload mutation in the concurrent message.ack dispatch's webhook:before hook.
+      if (status === 'failed') {
+        void this.webhookService.dispatch(id, 'message.failed', { ...ackPayload });
+      }
+
+      // Notify plugins of the delivery/read receipt. The `message:ack` hook event was declared in
+      // the HookEvent union but never emitted, so any plugin registered for it silently never fired.
+      // Fire-and-forget: an ack is a notification with nothing downstream to cancel, so the hook's
+      // `continue` flag is moot. Delivery failures surface here as status `failed` — `message:failed`
+      // stays reserved for send-time send failures, which carry a distinct `{ error, input }` payload.
+      void this.hookManager.execute(
+        'message:ack',
+        { messageId, status, ack: deliveryStatusToAck(status) },
+        { sessionId: id, source: 'Engine' },
+      );
+    };
+
+    if (!receiptChat) {
+      if (messageStatus) void advance(() => this.advanceAck(id, messageId, messageStatus));
+      announce();
+      return;
     }
+    this.enqueueMessageMutation(id, messageId, async () => {
+      const verdict = await this.receiptVerdict(id, messageId, receiptChat, inFlight);
+      if (verdict === 'foreign' || !this.engines.isLive(id, engine)) return;
+      announce();
+      if (!messageStatus) return;
+      const target = messageStatus;
+      // A row the verdict did not see is advanced by the retry, which judges it again once it is written, and for a
+      // message still in flight by its insert, with the status parked above, which the insert judges by its chat too.
+      const judged = async (): Promise<number> =>
+        (await this.receiptVerdict(id, messageId, receiptChat, inFlight)) === 'stored'
+          ? this.advanceAck(id, messageId, target)
+          : 0;
+      await advance(
+        verdict === 'stored' ? () => this.advanceAck(id, messageId, target) : () => Promise.resolve(0),
+        judged,
+      );
+    });
+  }
 
-    // Notify plugins of the delivery/read receipt. The `message:ack` hook event was declared in
-    // the HookEvent union but never emitted, so any plugin registered for it silently never fired.
-    // Fire-and-forget: an ack is a notification with nothing downstream to cancel, so the hook's
-    // `continue` flag is moot. Delivery failures surface here as status `failed` — `message:failed`
-    // stays reserved for send-time send failures, which carry a distinct `{ error, input }` payload.
-    void this.hookManager.execute(
-      'message:ack',
-      { messageId, status, ack: deliveryStatusToAck(status) },
-      { sessionId: id, source: 'Engine' },
-    );
+  /**
+   * What the stored row says of a receipt naming `chatId`: absent, the row it may advance, or a row of another chat.
+   * Without a row, a message still in flight (`inFlight`, or the entry held now) is judged by the chat it will be
+   * written under, and is absent unless that proves the receipt foreign.
+   * Never rejects: a row that cannot be read reads as absent, so the receipt goes out and its retry judges again.
+   */
+  private async receiptVerdict(
+    id: string,
+    messageId: string,
+    chatId: string,
+    inFlight?: InFlightEntry,
+  ): Promise<'absent' | 'stored' | 'foreign'> {
+    try {
+      const row = await this.messageRepository.findOne({
+        where: { sessionId: id, waMessageId: messageId },
+        select: { chatId: true, direction: true, author: true },
+      });
+      const ref = row ?? (this.inboundInFlight.get(`${id}:${messageId}`) ?? inFlight)?.ref;
+      if (!ref) return 'absent';
+      const foreign = await receiptTargetsForeignRowPersisted(
+        ref,
+        chatId,
+        this.lidMappingStore ? jid => this.lidMappingStore!.findPhoneForLid(jid) : undefined,
+      );
+      if (!foreign) return row ? 'stored' : 'absent';
+      this.logForeignReceipt(id, messageId, chatId);
+      return 'foreign';
+    } catch {
+      return 'absent';
+    }
+  }
+
+  private logForeignReceipt(id: string, messageId: string, chatId: string): void {
+    this.logger.warn('Dropping a receipt that names a message of another chat', {
+      sessionId: id,
+      messageId,
+      chatId,
+      action: 'message_ack_foreign_chat',
+    });
   }
 
   /**

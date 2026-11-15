@@ -58,6 +58,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Compare Baileys message senders across known LID and phone identities, recognize own statuses addressed by LID, drop empty partial decrypts, and check receipts against the message chat.
+
 - Handle top-level Baileys status stanzas, acknowledging them to prevent stream disconnects and delivering decodable statuses to the status store.
 
 - Update multer to 2.5.0 and undici to 8.12.3 to prevent request teardown and response decoding failures.
