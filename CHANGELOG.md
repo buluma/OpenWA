@@ -7,10 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-
-- Handle top-level Baileys status stanzas, acknowledging them to prevent stream disconnects and delivering decodable statuses to the status store.
-
 ### Added
 
 - Add Number Checker page in dashboard for single and bulk WhatsApp recipient pre-validation, in every dashboard language (#1865). Thanks @Purushotham-Prajapati-24.
@@ -61,6 +57,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Name the Go SDK status font constants after the WhatsApp protocol (`StatusFontSystemText`, `StatusFontFBScript`, `StatusFontMorningBreezeRegular`, `StatusFontCalistogaRegular`, `StatusFontExo2ExtraBold`, `StatusFontCourierPrimeBold`), from Go SDK 0.7.0; the old names, which did not match the font each id selects, stay as deprecated aliases.
 
 ### Fixed
+
+- Handle top-level Baileys status stanzas, acknowledging them to prevent stream disconnects and delivering decodable statuses to the status store.
 
 - Update multer to 2.5.0 and undici to 8.12.3 to prevent request teardown and response decoding failures.
 - Patch npm's bundled Undici to 6.29.1 in the production image and JavaScript SDK publishing toolchain.
