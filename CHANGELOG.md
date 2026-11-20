@@ -60,6 +60,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Creating, changing and deleting a webhook write `webhook_created`, `webhook_updated` and `webhook_deleted` audit rows with the key, the session, the URL host and the events, never the secret, headers or URL path and query; they wrote none (upstream).
 - Dashboard: a document in a chat shows as a card with its file name, its size where known and a PDF mark, and a click still downloads it; one left out of the message list showed only `Media` (upstream #2105).
 - Dashboard: a shared contact shows as a card with its name and phone, in the thread, the chat list and a quoted reply, where the raw `BEGIN:VCARD` text was printed (upstream #2110).
 - Dashboard: starting an audio or video message pauses the one already playing, where both kept playing at once (upstream #2106).
