@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - The SSRF guard also refuses the documentation and benchmarking address ranges (TEST-NET-1 to 3, `2001:db8::/32`, `3fff::/20`, `2001:2::/48`) and the 6a44 relay anycast address `192.88.99.2` in webhook, media, plugin download and plugin request urls; `SSRF_ALLOWED_HOSTS` still names such a host on purpose.
+- The local media store (`STORAGE_LOCAL_PATH`, `./data/media` by default) is owner-only: its root is set `0700` at every boot and new directories and files are written `0700` and `0600`, as the databases and the engine auth directories already are. A process that reads the directory as another user, such as a static file server or a backup job under another uid, loses access; files written earlier keep their mode but sit under the `0700` root. `STORAGE_TYPE=s3` is not affected.
 - Raise the minimum Node.js version for OpenWA to 22.23.4.
 
 - Upgrade Puppeteer to 25.16.0 with Zod 4, preserving whatsapp-web.js browser teardown.
