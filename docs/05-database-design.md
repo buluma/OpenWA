@@ -654,8 +654,10 @@ lifecycle (`session_created`, `session_started`, `session_stopped`, `session_for
 `session_restriction_lifted`), a refused relink of a session to a different WhatsApp number
 (`session_rebind_rejected`, written as a WARN row), messages
 (`message_sent`, `message_failed`), send-pacing enforcement (`send_pacing_blocked`, sampled to at
-most one row per session per minute; `send_breaker_tripped`, never sampled), webhooks (`webhook_created`, `webhook_deleted`,
-`webhook_triggered`, `webhook_failed`), the delivery-failure redrive (`webhook_deliveries_redriven`, one row per
+most one row per session per minute; `send_breaker_tripped`, never sampled), webhook changes (`webhook_created`,
+`webhook_updated`, `webhook_deleted`; metadata carries the webhook id, the URL host, the events and, for an update, the
+names of the changed fields, never the secret, the headers or the URL path and query), webhook deliveries
+(`webhook_triggered`, `webhook_failed`), the delivery-failure redrive (`webhook_deliveries_redriven`, one row per
 batch), rate-limit enforcement (`rate_limit_exceeded`, sampled to at
 most one row per subject+kind per minute), the queue dashboard (`queue_board_mutated`), integration
 plugin instances (`integration_instance_created`, `integration_instance_updated`,
@@ -666,9 +668,9 @@ id, version, the host of the requested download URL and config field names, neve
 `infra_restart_requested`, `infra_data_exported`, `infra_data_imported`, `infra_storage_exported`,
 `infra_storage_imported`).
 
-Eight of these are reserved and never emitted, so no row ever carries them: `api_key_used`,
-`session_connected`, `message_sent`, `message_failed`, `webhook_created`, `webhook_deleted`,
-`webhook_triggered` and `webhook_failed`. `src/modules/audit/intentionally-unemitted-actions.ts` is the
+Six of these are reserved and never emitted, so no row ever carries them: `api_key_used`,
+`session_connected`, `message_sent`, `message_failed`, `webhook_triggered` and `webhook_failed`.
+`src/modules/audit/intentionally-unemitted-actions.ts` is the
 authoritative list, with the reason for each. The `error` severity is reserved too: nothing writes it, so every row carries `info` or `warn`, and `GET /api/audit?severity=error` returns zero rows.
 
 > [!NOTE]

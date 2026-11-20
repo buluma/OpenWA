@@ -34,6 +34,9 @@ function makeHost(overrides: Partial<Record<keyof BaileysContactsHost, unknown>>
     findPersistedLidPhone: () => Promise.resolve(null),
     listChats: () => [],
     lastInboundMessage: () => ({ key: { id: 'M1', remoteJid: '628123@s.whatsapp.net' }, timestamp: 1 }),
+    isMarkedUnread: () => false,
+    clearUnread: jest.fn(),
+    lastMessage: () => null,
     getStoredMessages: () => Promise.resolve([]),
     toEngineJid,
     ...overrides,
@@ -332,5 +335,99 @@ describe('sendSeen', () => {
   it('still short-circuits when no received message is known', async () => {
     const host = makeHost({ getSocket: () => ({}) as unknown as WASocket, lastInboundMessage: () => null });
     await expect(new BaileysContacts(host, 15).sendSeen('628123@c.us')).resolves.toBe(false);
+  });
+});
+
+describe('sendSeen and the chat unread count', () => {
+  const CHAT = '628123@c.us';
+  const NEWEST = { key: { id: 'M3', remoteJid: '628123@s.whatsapp.net', fromMe: false }, timestamp: 30 };
+  const MARK_RANGE = { key: { id: 'M4', remoteJid: '628123@s.whatsapp.net', fromMe: true }, timestamp: 40 };
+
+  function setup(overrides: Partial<Record<keyof BaileysContactsHost, unknown>> = {}) {
+    const readMessages = jest.fn().mockResolvedValue(undefined);
+    const chatModify = jest.fn().mockResolvedValue(undefined);
+    const clearUnread = jest.fn();
+    const host = makeHost({
+      getSocket: () => ({ readMessages, chatModify }) as unknown as WASocket,
+      lastInboundMessage: () => NEWEST,
+      lastMessage: () => ({ ...MARK_RANGE, jid: '628123@s.whatsapp.net' }),
+      clearUnread,
+      ...overrides,
+    });
+    return { sut: new BaileysContacts(host, 500), readMessages, chatModify, clearUnread, host };
+  }
+
+  it('resets the count when the receipt names the newest received message', async () => {
+    const { sut, chatModify, clearUnread } = setup();
+    await expect(sut.sendSeen(CHAT, ['M3'])).resolves.toBe(true);
+    expect(clearUnread).toHaveBeenCalledWith(CHAT, false);
+    // A plain count lives in this session's bookkeeping: no app-state write for it.
+    expect(chatModify).not.toHaveBeenCalled();
+  });
+
+  it('resets the count for a read with no list, which acknowledges the newest message', async () => {
+    const { sut, clearUnread } = setup();
+    await sut.sendSeen(CHAT);
+    expect(clearUnread).toHaveBeenCalledWith(CHAT, false);
+  });
+
+  it('leaves the count alone when the receipt names only an older message of a burst', async () => {
+    const { sut, clearUnread } = setup();
+    await expect(sut.sendSeen(CHAT, ['M1'])).resolves.toBe(true);
+    expect(clearUnread).not.toHaveBeenCalled();
+  });
+
+  it("leaves the count alone when the receipt holds only the account's own messages", async () => {
+    const { sut, clearUnread } = setup({
+      getStoredMessages: () =>
+        Promise.resolve([stored({ id: 'O1', remoteJid: '628123@s.whatsapp.net', fromMe: true })]),
+      lastInboundMessage: () => null,
+    });
+    await expect(sut.sendSeen(CHAT, ['O1'])).resolves.toBe(true);
+    expect(clearUnread).not.toHaveBeenCalled();
+  });
+
+  it('treats any received key as the newest after a restart, when memory holds no received message', async () => {
+    const { sut, clearUnread } = setup({ lastInboundMessage: () => null });
+    await sut.sendSeen(CHAT, ['M9']);
+    expect(clearUnread).toHaveBeenCalledWith(CHAT, false);
+  });
+
+  it('undoes an unread mark set by hand and clears it on every record of the chat', async () => {
+    const { sut, chatModify, clearUnread } = setup({ isMarkedUnread: () => true });
+    await expect(sut.sendSeen(CHAT, ['M3'])).resolves.toBe(true);
+    expect(chatModify).toHaveBeenCalledWith(
+      { markRead: true, lastMessages: [{ key: MARK_RANGE.key, messageTimestamp: MARK_RANGE.timestamp }] },
+      '628123@s.whatsapp.net',
+    );
+    expect(clearUnread).toHaveBeenCalledWith(CHAT, true);
+  });
+
+  it('does not touch the mark when the receipt does not cover the newest message', async () => {
+    const { sut, chatModify, clearUnread } = setup({ isMarkedUnread: () => true });
+    await sut.sendSeen(CHAT, ['M1']);
+    expect(chatModify).not.toHaveBeenCalled();
+    expect(clearUnread).not.toHaveBeenCalled();
+  });
+
+  it('still answers true and logs when WhatsApp does not confirm the mark write', async () => {
+    const chatModify = jest.fn().mockRejectedValue(new Error('app state rejected'));
+    const warn = jest.fn();
+    const { sut, clearUnread } = setup({
+      isMarkedUnread: () => true,
+      logger: { warn, debug: jest.fn(), info: jest.fn(), error: jest.fn() },
+      getSocket: () => ({ readMessages: jest.fn().mockResolvedValue(undefined), chatModify }) as unknown as WASocket,
+    });
+    await expect(sut.sendSeen(CHAT, ['M3'])).resolves.toBe(true);
+    expect(warn).toHaveBeenCalled();
+    // The mark stays, so the count is reset without claiming the mark is gone.
+    expect(clearUnread).toHaveBeenCalledWith(CHAT, false);
+  });
+
+  it('writes no mark for a chat with no message to key it to', async () => {
+    const { sut, chatModify, clearUnread } = setup({ isMarkedUnread: () => true, lastMessage: () => null });
+    await expect(sut.sendSeen(CHAT, ['M3'])).resolves.toBe(true);
+    expect(chatModify).not.toHaveBeenCalled();
+    expect(clearUnread).toHaveBeenCalledWith(CHAT, false);
   });
 });

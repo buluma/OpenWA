@@ -226,6 +226,61 @@ describe('BaileysSessionStore', () => {
     expect(store.listContacts()).toEqual([expect.objectContaining({ id: '628111@c.us', name: 'Alice' })]);
   });
 
+  describe('unread count and unread mark', () => {
+    const PHONE = '628111@s.whatsapp.net';
+    const LID = '111@lid';
+    const unreadOf = (s: BaileysSessionStore, id = '628111@c.us') => s.listChats().find(c => c.id === id)?.unreadCount;
+
+    it('resets a positive count to zero', () => {
+      store.upsertChats([{ id: PHONE, unreadCount: 3 }]);
+      store.clearUnread('628111@c.us');
+      expect(unreadOf(store)).toBe(0);
+    });
+
+    it('leaves a mark set by hand (negative count) alone unless told its undoing was confirmed', () => {
+      store.upsertChats([{ id: PHONE, unreadCount: -1 }]);
+      expect(store.isMarkedUnread('628111@c.us')).toBe(true);
+      store.clearUnread('628111@c.us');
+      expect(store.isMarkedUnread('628111@c.us')).toBe(true);
+      store.clearUnread('628111@c.us', true);
+      expect(store.isMarkedUnread('628111@c.us')).toBe(false);
+      expect(unreadOf(store)).toBe(0);
+    });
+
+    it('clears the mark only, not a count a message added while the write was out', () => {
+      store.upsertChats([{ id: PHONE, unreadCount: 2 }]);
+      store.clearUnread('628111@c.us', true);
+      expect(unreadOf(store)).toBe(2);
+    });
+
+    it('reports no mark for a chat with a plain count or no record', () => {
+      store.upsertChats([{ id: PHONE, unreadCount: 2 }]);
+      expect(store.isMarkedUnread('628111@c.us')).toBe(false);
+      expect(store.isMarkedUnread('628999@c.us')).toBe(false);
+    });
+
+    it('resets the count under every record of a chat known by phone and lid', () => {
+      store.addLidMappings([{ lid: LID, pn: PHONE }]);
+      store.upsertChats([
+        { id: PHONE, unreadCount: 2, conversationTimestamp: 10 },
+        { id: LID, unreadCount: 4, conversationTimestamp: 50 },
+      ]);
+      store.clearUnread('628111@c.us');
+      expect(unreadOf(store)).toBe(0);
+    });
+
+    it('clears a mark on every record of a chat known by phone and lid, so a later read does not repeat the write', () => {
+      store.addLidMappings([{ lid: LID, pn: PHONE }]);
+      store.upsertChats([
+        { id: PHONE, unreadCount: -1, conversationTimestamp: 10 },
+        { id: LID, unreadCount: -1, conversationTimestamp: 50 },
+      ]);
+      store.clearUnread('628111@c.us', true);
+      expect(store.isMarkedUnread('628111@c.us')).toBe(false);
+      expect(store.isMarkedUnread(LID)).toBe(false);
+    });
+  });
+
   describe('archived, pinned and muted state', () => {
     // A fresh store per call: upsertChats MERGES, so reusing one store lets an absent-field case
     // re-read a value a prior call set, and the default-to-false path would never run.

@@ -628,7 +628,7 @@ with zero OpenWA surface. Baileys-only; whatsapp-web.js has no community API at 
 | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `appPatch`                        | 🔩 plumbing                                                                                                                                                                 |
 | `assertSessions`                  | 🔩 plumbing                                                                                                                                                                 |
-| `chatModify`                      | ✅ `markUnread`, `clearChatMessages`, `archiveChat`, `muteChat`, `pinChat`, `deleteChat`, `deleteMessage`, `starMessage`                                                    |
+| `chatModify`                      | ✅ `sendSeen` (`markRead: true`), `markUnread`, `clearChatMessages`, `archiveChat`, `muteChat`, `pinChat`, `deleteChat`, `deleteMessage`, `starMessage`                     |
 | `cleanDirtyBits`                  | 🔩 plumbing                                                                                                                                                                 |
 | `createParticipantNodes`          | 🔩 plumbing                                                                                                                                                                 |
 | `digestKeyBundle`                 | 🔩 plumbing                                                                                                                                                                 |
@@ -979,7 +979,14 @@ adapter boundary — none silently stubs.
   whatsapp-web.js marks it read from the page-side chat object without needing any local history.
   With message ids, a group id the message store never held (history backfill) takes its receipt's
   participant from the author the gateway stored for it; one with no stored author is left out of the
-  receipt, and the answer is `false` when no id could be named.
+  receipt, and the answer is `false` when no id could be named. Once a receipt that names the chat's
+  newest received message has gone out, `sendSeen` sets the chat's `unreadCount` back to `0` in the
+  session's own chat list and sends nothing for it: Baileys lowers the count for no receipt the session
+  sends, so a chat read through the gateway stayed listed as unread. Only a chat marked unread by hand
+  (listed with `unreadCount` `-1`, by `markUnread` or on the phone) takes a second write, `chatModify`
+  with `markRead: true` keyed to the chat's last known message, which undoes the mark in the account's
+  app state. It does not change the answer: when WhatsApp refuses it or does not confirm it, a warning
+  is logged, `POST chats/read` still answers `{"success": true}`, and the chat stays marked unread.
 - **`setProfileName` / `setProfilePicture` / `deleteProfilePicture` refusals (baileys).**
   whatsapp-web.js reads a page-side verdict for all three (`setDisplayName` and `setProfilePicture`
   resolve `false`, `deleteProfilePicture` resolves an explicit `false`) and raises a `403`. The

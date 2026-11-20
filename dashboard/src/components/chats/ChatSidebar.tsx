@@ -18,6 +18,7 @@ import type { Channel, Chat, ContactStatusGroup, Session } from '../../services/
 import { useRole } from '../../hooks/useRole';
 import { CHAT_LIST_FILTERS, type ChatListFilter } from '../../utils/chatFilters';
 import { chatDisplayName } from '../../utils/chatIdentity';
+import { contactSnippet, isVCardBody } from '../../utils/vcard';
 import ChatAvatar from './ChatAvatar';
 import ChatRowMenu from './ChatRowMenu';
 import type { ChatRowActions } from './chatActionItems';
@@ -92,7 +93,11 @@ function ChatSidebar({
   // Posting a status needs an operator key; a read-only key would only reach a 403.
   const { canWrite } = useRole();
 
-  const formatLastMessageSnippet = (chat: Chat) => chat.lastMessage || '';
+  // Contact shares store the raw vCard in lastMessage; show name/phone (or a label) instead.
+  const formatLastMessageSnippet = (chat: Chat) =>
+    chat.lastMessageType === 'contact' || isVCardBody(chat.lastMessage)
+      ? contactSnippet(chat.lastMessage, `👤 ${t('chats.media.contact')}`)
+      : chat.lastMessage || '';
 
   // Row markup for the Chats list: a plain function (not memoized) since it closes over
   // render-scoped props (chatsTab.activeChatId, chatsTab.pictures) that already change every

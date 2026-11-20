@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The SSRF guard also refuses the documentation and benchmarking address ranges (TEST-NET-1 to 3, `2001:db8::/32`, `3fff::/20`, `2001:2::/48`) and the 6a44 relay anycast address `192.88.99.2` in webhook, media, plugin download and plugin request urls; `SSRF_ALLOWED_HOSTS` still names such a host on purpose.
+- The local media store (`STORAGE_LOCAL_PATH`, `./data/media` by default) is owner-only: its root is set `0700` at every boot and new directories and files are written `0700` and `0600`, as the databases and the engine auth directories already are. A process that reads the directory as another user, such as a static file server or a backup job under another uid, loses access; files written earlier keep their mode but sit under the `0700` root. `STORAGE_TYPE=s3` is not affected.
 - Raise the minimum Node.js version for OpenWA to 22.23.4.
 
 - Upgrade Puppeteer to 25.16.0 with Zod 4, preserving whatsapp-web.js browser teardown.
@@ -58,6 +60,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Creating, changing and deleting a webhook write `webhook_created`, `webhook_updated` and `webhook_deleted` audit rows with the key, the session, the URL host and the events, never the secret, headers or URL path and query; they wrote none (upstream).
+- Dashboard: a document in a chat shows as a card with its file name, its size where known and a PDF mark, and a click still downloads it; one left out of the message list showed only `Media` (upstream #2105).
+- Dashboard: a shared contact shows as a card with its name and phone, in the thread, the chat list and a quoted reply, where the raw `BEGIN:VCARD` text was printed (upstream #2110).
+- Dashboard: starting an audio or video message pauses the one already playing, where both kept playing at once (upstream #2106).
+- Baileys: `POST /api/sessions/{sessionId}/chats/read` sets the chat's `unreadCount` back to `0` when the receipt names the chat's newest received message, and undoes an unread mark set by hand (`chats/unread` or on the phone) on every record of the chat; the count and the mark used to stay, so the dashboard's unread badge came back on every reload (upstream #2109).
 - Compare Baileys message senders across known LID and phone identities, recognize own statuses addressed by LID, drop empty partial decrypts, and check receipts against the message chat.
 
 - Handle top-level Baileys status stanzas, acknowledging them to prevent stream disconnects and delivering decodable statuses to the status store.

@@ -10,7 +10,18 @@ import {
   type RefObject,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertCircle, ChevronDown, CornerUpLeft, Loader2, MessageSquare, Smile, Trash2 } from 'lucide-react';
+import {
+  AlertCircle,
+  ChevronDown,
+  CornerUpLeft,
+  Download,
+  FileText,
+  Loader2,
+  MessageSquare,
+  Smile,
+  Trash2,
+  User,
+} from 'lucide-react';
 import { useRole } from '../../hooks/useRole';
 import { sessionApi, type Chat } from '../../services/api';
 import {
@@ -20,6 +31,8 @@ import {
   senderKey,
   type ChatMessageView,
 } from '../../utils/chatMessages';
+import { contactCards, contactSnippet, isVCardBody } from '../../utils/vcard';
+import { formatFileSize } from '../../utils/bulkMedia';
 import { shouldFetchOlderMessages } from '../../utils/scrollDecision';
 import { keepsSameKey } from '../../utils/authLifecycle';
 import ArchivedMediaPreview, { type ArchivedMediaKind } from './ArchivedMediaPreview';
@@ -534,7 +547,58 @@ function ChatThread({
                 </div>
               );
             }
+            if (msg.type === 'contact') {
+              // The body is the raw vCard, or `📇 <name>` for a contact the gateway sent; paint a card either way.
+              const cards = contactCards(msg.body);
+              const label = t('chats.media.contact');
+              return (
+                <div className="message-contact" role="group" aria-label={label}>
+                  {(cards.length > 0 ? cards : [{ name: '', phone: '', waid: '' }]).map((card, index) => (
+                    <div
+                      key={`${card.waid || card.phone || card.name || 'contact'}:${index}`}
+                      className="message-contact-card"
+                    >
+                      <span className="message-contact-avatar" aria-hidden="true">
+                        <User size={22} />
+                      </span>
+                      <span className="message-contact-fields">
+                        <span className="message-contact-name">{card.name || label}</span>
+                        {card.phone ? <span className="message-contact-phone">{card.phone}</span> : null}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              );
+            }
             if (!mediaInfo) return null;
+            const isPdf =
+              mediaInfo.mimetype === 'application/pdf' ||
+              Boolean(mediaInfo.filename && /\.pdf$/i.test(mediaInfo.filename));
+            // What a document is called and how large it is; a click on the card downloads it.
+            const documentMeta = [mediaInfo.sizeBytes ? formatFileSize(mediaInfo.sizeBytes) : '', isPdf ? 'PDF' : '']
+              .filter(Boolean)
+              .join(' \u2022 ');
+            const documentCard = (
+              <span className="chat-document-card-content">
+                <span className={`chat-document-icon-box ${isPdf ? 'pdf' : ''}`}>
+                  {isPdf ? (
+                    <span className="chat-document-pdf-badge">
+                      <FileText size={18} />
+                      <span className="chat-document-pdf-tag">PDF</span>
+                    </span>
+                  ) : (
+                    <FileText size={18} />
+                  )}
+                </span>
+                <span className="chat-document-info">
+                  <span className="chat-document-title">{mediaInfo.filename || t('chats.downloadDocument')}</span>
+                  {documentMeta && <span className="chat-document-meta">{documentMeta}</span>}
+                </span>
+                <span className="chat-document-action">
+                  <Download size={16} />
+                </span>
+              </span>
+            );
             if (mediaInfo.omitted) {
               // Not a plain label: the bytes exist behind the per-message media route, so this is the
               // only handle the viewer has on them.
@@ -542,14 +606,18 @@ function ChatThread({
               const downloadButton = (
                 <button
                   type="button"
-                  className="message-media-omitted"
+                  className={`message-media-omitted ${msg.type === 'document' ? 'chat-document-card' : ''}`}
                   onClick={() => void downloadMedia(msg)}
                   disabled={!sessionId || !msg.waMessageId || fetchState === 'loading'}
                 >
                   {fetchState === 'loading' ? (
                     <Loader2 size={14} className="animate-spin" />
+                  ) : fetchState === 'failed' ? (
+                    <>📎 {t('chats.status.mediaUnavailable')}</>
+                  ) : msg.type === 'document' ? (
+                    documentCard
                   ) : (
-                    <>📎 {t(fetchState === 'failed' ? 'chats.status.mediaUnavailable' : 'chats.media.omitted')}</>
+                    <>📎 {t('chats.media.omitted')}</>
                   )}
                 </button>
               );
@@ -630,10 +698,10 @@ function ChatThread({
                     <a
                       href={mediaSrc}
                       download={mediaInfo.filename || 'document'}
-                      className="chat-document-media"
+                      className="chat-document-media chat-document-card"
                       {...(/^https?:\/\//i.test(mediaSrc) ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
                     >
-                      📎 {mediaInfo.filename || t('chats.downloadDocument')}
+                      {documentCard}
                     </a>
                   </div>
                 );
@@ -686,7 +754,12 @@ function ChatThread({
                   {msg.metadata?.quotedMessage && (
                     <div className="message-quote-box">
                       <MessageBody
-                        text={resolveMentions(msg.metadata.quotedMessage.body, mentionNames)}
+                        text={resolveMentions(
+                          isVCardBody(msg.metadata.quotedMessage.body)
+                            ? contactSnippet(msg.metadata.quotedMessage.body, t('chats.media.contact'))
+                            : msg.metadata.quotedMessage.body,
+                          mentionNames,
+                        )}
                         className="quote-body"
                       />
                     </div>
@@ -702,7 +775,8 @@ function ChatThread({
                     displayBody &&
                     (!mediaInfo || displayBody !== mediaInfo.filename) &&
                     msg.type !== 'location' &&
-                    msg.type !== 'call' && (
+                    msg.type !== 'call' &&
+                    msg.type !== 'contact' && (
                       <MessageBody text={resolveMentions(displayBody, mentionNames)} className="message-text" />
                     )
                   )}
