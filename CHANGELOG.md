@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The SSRF guard also refuses the documentation and benchmarking address ranges (TEST-NET-1 to 3, `2001:db8::/32`, `3fff::/20`, `2001:2::/48`) and the 6a44 relay anycast address `192.88.99.2` in webhook, media, plugin download and plugin request urls; `SSRF_ALLOWED_HOSTS` still names such a host on purpose.
 - Raise the minimum Node.js version for OpenWA to 22.23.4.
 
 - Upgrade Puppeteer to 25.16.0 with Zod 4, preserving whatsapp-web.js browser teardown.
