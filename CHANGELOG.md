@@ -58,6 +58,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Baileys: `POST /api/sessions/{sessionId}/chats/read` sets the chat's `unreadCount` back to `0` when the receipt names the chat's newest received message, and undoes an unread mark set by hand (`chats/unread` or on the phone) on every record of the chat; the count and the mark used to stay, so the dashboard's unread badge came back on every reload (upstream #2109).
 - Compare Baileys message senders across known LID and phone identities, recognize own statuses addressed by LID, drop empty partial decrypts, and check receipts against the message chat.
 
 - Handle top-level Baileys status stanzas, acknowledging them to prevent stream disconnects and delivering decodable statuses to the status store.
