@@ -91,6 +91,7 @@ import { MuteChatDialog, SaveContactDialog, type MuteDuration } from '../compone
 import type { ChatRowActions } from '../components/chats/chatActionItems';
 import { ChatActions } from '../components/chats/ChatRowMenu';
 import { Modal } from '../components/Modal';
+import { pauseOtherMedia } from '../utils/mediaPlayback';
 import './Chats.css';
 
 // Quiet window for coalescing mark-as-read RPCs (see markReadCoalescer below).
@@ -176,6 +177,17 @@ export function Chats() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<string>('');
   const [loadingSessions, setLoadingSessions] = useState<boolean>(true);
+
+  // Stop previous media when playing any audio or video in the chats page
+  useEffect(() => {
+    const handlePlayCapture = (e: Event) => {
+      if (e.target instanceof HTMLMediaElement) {
+        pauseOtherMedia(e.target);
+      }
+    };
+    document.addEventListener('play', handlePlayCapture, true);
+    return () => document.removeEventListener('play', handlePlayCapture, true);
+  }, []);
 
   // Chats list
   const [chats, setChats] = useState<Chat[]>([]);
@@ -758,6 +770,8 @@ export function Chats() {
         activeChatId: canWrite ? activeChat?.id : undefined,
         // A location message's body is the (multi-KB) base64 map thumbnail; show a label instead.
         locationLabel: `📍 ${t('chats.media.location')}`,
+        // A contact message's body is the raw vCard; show a short label instead.
+        contactLabel: `👤 ${t('chats.media.contact')}`,
       };
       liveRowsRef.current.set(newMsg.chatId, chatsRequestRef.current);
       const { needsSidebarRefetch } = applyIncomingToChatList(chatsRef.current, newMsg, listOptions);

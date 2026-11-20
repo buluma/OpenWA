@@ -58,6 +58,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Dashboard: a document in a chat shows as a card with its file name, its size where known and a PDF mark, and a click still downloads it; one left out of the message list showed only `Media` (upstream #2105).
+- Dashboard: a shared contact shows as a card with its name and phone, in the thread, the chat list and a quoted reply, where the raw `BEGIN:VCARD` text was printed (upstream #2110).
+- Dashboard: starting an audio or video message pauses the one already playing, where both kept playing at once (upstream #2106).
 - Baileys: `POST /api/sessions/{sessionId}/chats/read` sets the chat's `unreadCount` back to `0` when the receipt names the chat's newest received message, and undoes an unread mark set by hand (`chats/unread` or on the phone) on every record of the chat; the count and the mark used to stay, so the dashboard's unread badge came back on every reload (upstream #2109).
 - Compare Baileys message senders across known LID and phone identities, recognize own statuses addressed by LID, drop empty partial decrypts, and check receipts against the message chat.
 

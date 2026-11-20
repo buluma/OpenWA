@@ -1215,7 +1215,8 @@
   margin-bottom: 0.5rem;
 }
 
-.chats-page .chat-document-media {
+.chats-page .chat-document-media,
+.chats-page .message-media-omitted.chat-document-card {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
@@ -1232,20 +1233,175 @@
   word-break: break-all;
 }
 
-.chats-page .chat-document-media:hover {
+.chats-page .chat-document-media:hover,
+.chats-page .message-media-omitted.chat-document-card:not(:disabled):hover {
   background: var(--border);
 }
 
-[data-theme='dark'] .chats-page .chat-document-media {
+[data-theme='dark'] .chats-page .chat-document-media,
+[data-theme='dark'] .chats-page .message-media-omitted.chat-document-card {
   background: #202c33;
   border-color: #2f3b43;
 }
 
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) .chats-page .chat-document-media {
+  :root:not([data-theme='light']) .chats-page .chat-document-media,
+  :root:not([data-theme='light']) .chats-page .message-media-omitted.chat-document-card {
     background: #202c33;
     border-color: #2f3b43;
   }
+}
+
+/* A document's card: its icon, its name and size, and a download mark. The same card is the link of a
+   document the page holds and the button that fetches one the list left out. */
+.chats-page .message-media-omitted.chat-document-card {
+  font-style: normal;
+  text-decoration: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: start;
+}
+
+.chats-page .message-media-omitted.chat-document-card:disabled {
+  cursor: default;
+}
+
+.chats-page .chat-document-media.chat-document-card {
+  padding: 0;
+  word-break: normal;
+}
+
+.chats-page .chat-document-card {
+  width: 100%;
+  min-width: 220px;
+  max-width: 320px;
+  box-sizing: border-box;
+}
+
+.chats-page .chat-document-card-content {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  width: 100%;
+  padding: 0.5rem 0.625rem;
+  box-sizing: border-box;
+  text-align: start;
+}
+
+.chats-page .chat-document-icon-box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border-radius: 6px;
+  background: var(--border);
+  color: var(--text-primary);
+}
+
+.chats-page .chat-document-icon-box.pdf {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+
+.chats-page .chat-document-pdf-badge {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.chats-page .chat-document-pdf-tag {
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  margin-top: 1px;
+}
+
+.chats-page .chat-document-info {
+  display: inline-flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.chats-page .chat-document-title {
+  font-size: 0.875rem;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chats-page .chat-document-meta {
+  font-size: 0.725rem;
+  opacity: 0.75;
+  margin-top: 2px;
+}
+
+.chats-page .chat-document-action {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.8;
+  margin-inline-start: 0.5rem;
+}
+
+/* A shared contact: one card per vCard, in the colour of the bubble it sits in so it reads on the incoming
+   and the outgoing bubble in either theme. */
+.chats-page .message-contact {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-bottom: 0.35rem;
+  min-width: 12rem;
+}
+
+.chats-page .message-contact-card {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 0.65rem;
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}
+
+.chats-page .message-contact-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 16%, transparent);
+  flex-shrink: 0;
+}
+
+.chats-page .message-contact-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.chats-page .message-contact-name {
+  font-weight: 600;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chats-page .message-contact-phone {
+  opacity: 0.75;
+  font-size: 0.85em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .chats-page .message-bubble.media-type {
