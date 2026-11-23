@@ -24,6 +24,7 @@ import {
   BAILEYS_NON_CONTENT_TYPES,
   baileysChatJid,
   buildIncomingMessageFromBaileys,
+  contentTypeOf,
   extractBaileysBody,
   extractBaileysButtonReply,
   extractBaileysButtons,
@@ -32,6 +33,7 @@ import {
   extractBaileysContext,
   extractBaileysLocation,
   isBaileysCatalogShare,
+  isNoiseOnly,
   keyParticipant,
   mapBaileysEventResponseType,
   mapBaileysStatus,
@@ -102,18 +104,6 @@ const PRESENCE_STATES: ReadonlySet<PresenceState> = new Set<PresenceState>([
  * only ones message.receipt is documented for. A 1:1 chat reports through messages.update instead.
  */
 const RECEIPT_CHAT_KINDS: ReadonlySet<ChatKind> = new Set<ChatKind>(['group', 'status']);
-
-/**
- * Top-level Message keys that carry no user content. A live message made only of these is dropped;
- * messageContextInfo rides along on real content too, so on its own it is not enough to drop.
- */
-const PROTOCOL_NOISE_KEYS: ReadonlySet<string> = new Set([
-  'senderKeyDistributionMessage',
-  'fastRatchetKeySenderKeyDistributionMessage',
-  'messageContextInfo',
-  'messageHistoryNotice',
-  'messageHistoryBundle',
-]);
 
 /** Wire value of `proto.WebMessageInfo.StubType.CIPHERTEXT`, set when part of a stanza failed to decrypt. */
 const CIPHERTEXT_STUB_TYPE = 2 as BaileysLib.proto.WebMessageInfo.StubType;
@@ -689,7 +679,7 @@ export class BaileysEvents {
     const ownStatusPost = msg.key.fromMe === true && msg.key.remoteJid === 'status@broadcast';
     const normalized = b.normalizeMessageContent(msg.message ?? undefined) ?? msg.message ?? undefined;
     return (
-      isBaileysMediaType(b.getContentType(normalized)) &&
+      isBaileysMediaType(contentTypeOf(normalized, b.getContentType)) &&
       !ownStatusPost &&
       isMediaDownloadEnabled() &&
       coerceDeclaredSize(mediaSubMessage(normalized ?? {})?.fileLength) <= inboundMediaMaxBytes()
@@ -766,7 +756,7 @@ export class BaileysEvents {
       // normalized content too: a client wraps an edit in `editedMessage`, and `ephemeralMessage` can hold
       // a revoke or a reaction just as well, so the raw root does not always carry them.
       let normalizedRoot = b.normalizeMessageContent(msg.message ?? undefined) ?? msg.message ?? undefined;
-      let contentType = b.getContentType(normalizedRoot);
+      let contentType = contentTypeOf(normalizedRoot, b.getContentType);
       // A contact's edit, and a reaction in some chats, arrive encrypted under the secret of the message
       // they change. Read with the stored original's secret, they are handled below as the plain
       // protocol or reaction message they stand for; one that cannot be read stays dropped as non-content.
@@ -815,17 +805,13 @@ export class BaileysEvents {
       // A stanza with a CIPHERTEXT stub lost part of its payload to a decryption failure; if what
       // survived holds only protocol noise (even a lone messageContextInfo), drop it before storing
       // so a redelivery carrying the real body is not skipped as a duplicate.
-      const keys = Object.keys(normalizedRoot ?? {});
       const ciphertextStub = msg.messageStubType === CIPHERTEXT_STUB_TYPE;
-      if (
-        keys.every(k => PROTOCOL_NOISE_KEYS.has(k)) &&
-        (ciphertextStub || keys.some(k => k !== 'messageContextInfo'))
-      ) {
+      if (isNoiseOnly(normalizedRoot, ciphertextStub)) {
         this.host.logger.debug('Dropping contentless protocol message', {
           action: 'baileys_drop_protocol_noise',
           msgId: msg.key.id,
           remoteJid,
-          keys,
+          keys: Object.keys(normalizedRoot ?? {}),
           ...(ciphertextStub ? { ciphertextStub: true } : {}),
         });
         return;
