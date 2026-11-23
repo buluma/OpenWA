@@ -6,10 +6,10 @@ import {
   GROUP_NAME_MAX_LENGTH,
   GROUP_PARTICIPANTS_MAX,
 } from '../../../modules/group/dto/group.dto';
-import { defineTool, type AnyToolDescriptor } from '../tool-descriptor';
+import { defineTool, sessionIdSchema, type AnyToolDescriptor } from '../tool-descriptor';
 import { paginate } from '../../../common/utils/paginate';
 
-const sessionId = z.string().min(1).describe('Session UUID (the session id, not the name)');
+const sessionId = sessionIdSchema;
 
 export function groupTools(group: GroupService): AnyToolDescriptor[] {
   return [

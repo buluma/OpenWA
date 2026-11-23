@@ -19,9 +19,9 @@ import {
   REACTION_EMOJI_MAX_LENGTH,
 } from '../../../modules/message/dto/message-actions.dto';
 import { chatIdSchema } from '../chat-id-schema';
-import { defineTool, type AnyToolDescriptor } from '../tool-descriptor';
+import { defineTool, sessionIdSchema, type AnyToolDescriptor } from '../tool-descriptor';
 
-const sessionId = z.string().min(1).describe('Session UUID (the session id, not the name)');
+const sessionId = sessionIdSchema;
 
 /**
  * Mirrors the REST `quotedMessageId` field so an agent can reply with media, a location, a contact
