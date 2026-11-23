@@ -368,6 +368,17 @@
       "count_many": "{{count}} items",
       "missing_one": "{{count}} item without stored media",
       "missing_many": "{{count}} items without stored media"
+    },
+    "slash": {
+      "title": "Risposte rapide",
+      "hint": "Invio inserisce il modello evidenziato. Invia quando è pronto.",
+      "placeholder": "Messaggio o /modello…",
+      "empty": "Nessun modello corrisponde",
+      "needsVars": "Compila le variabili del modello prima di inviare.",
+      "loading": "Caricamento dei modelli… Invio attende che siano caricati.",
+      "loadError": "Impossibile caricare i modelli",
+      "close": "Chiudi l'elenco dei modelli",
+      "more": "Altri modelli corrispondono. Continua a scrivere per restringere l'elenco."
     }
   },
   "errorBoundary": {
