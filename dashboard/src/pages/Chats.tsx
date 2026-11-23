@@ -167,6 +167,18 @@ const CONFIRM_TEXT = {
   },
 } as const;
 
+// The key of a thread's draft: a chat id names a different thread in each session.
+const draftKey = (sessionId: string, chatId: string) => `${sessionId}\u0000${chatId}`;
+
+/** `drafts` with `text` as the draft of the thread `key`, or with none for it when the text is empty. */
+function withDraft(drafts: Record<string, string>, key: string, text: string): Record<string, string> {
+  if ((drafts[key] ?? '') === text) return drafts;
+  const next = { ...drafts };
+  if (text === '') delete next[key];
+  else next[key] = text;
+  return next;
+}
+
 export function Chats() {
   const { t } = useTranslation();
   useDocumentTitle(t('nav.chats'));
@@ -290,7 +302,8 @@ export function Chats() {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   const [replyingTo, setReplyingTo] = useState<ChatMessageView | null>(null);
-  // Draft text lives here (not in ChatComposer) so it survives closing/switching the room.
+  // Draft text lives here (not in ChatComposer) so it survives closing the room; each thread keeps its own (see the
+  // draft store below).
   const [messageInput, setMessageInput] = useState<string>('');
   // The staged attachment lives here for the same reason the draft text does — ChatComposer
   // unmounts when the room closes, which would silently discard a picked file. Unlike the text
@@ -325,6 +338,47 @@ export function Chats() {
     setPreviewUrl(null);
     setReplyingTo(null);
   }, [activeChat]);
+
+  // Each thread, by session and chat, keeps the text typed into it. Opening another one, in this session or another,
+  // puts the composer's text away under the thread it was typed in and brings back the one of the thread opened;
+  // closing the room and reopening it changes nothing. A layout effect, so the next room is never drawn with the text
+  // of the last one.
+  //
+  // `chatDrafts` is what the chat list shows of it: the text each thread would open with, under the same session and
+  // chat key, so a draft is never drawn on the row another session has for the same chat id and is still on its own
+  // row when its session is selected again. An entry is written when the composer's thread stops being the one open
+  // (the room closes, or shows another thread). The entry of the open thread is left as it was: its row shows the last
+  // message, as WhatsApp does, and every way out of the room writes the entry again, so typing costs no state update.
+  const draftsRef = useRef(new Map<string, string>());
+  const draftKeyRef = useRef<string | null>(null);
+  const [chatDrafts, setChatDrafts] = useState<Record<string, string>>({});
+  const openChatId = activeChat?.id;
+  useLayoutEffect(() => {
+    const previous = draftKeyRef.current;
+    if (openChatId === undefined) {
+      // A closed room keeps the field's text for the thread last open, whichever session is selected by now.
+      if (previous !== null) setChatDrafts(drafts => withDraft(drafts, previous, messageInput));
+      return;
+    }
+    const key = draftKey(selectedSessionId, openChatId);
+    if (previous === key) return;
+    draftKeyRef.current = key;
+    if (previous !== null) {
+      if (messageInput !== '') draftsRef.current.set(previous, messageInput);
+      setChatDrafts(drafts => withDraft(drafts, previous, messageInput));
+    }
+    setMessageInput(draftsRef.current.get(key) ?? '');
+    draftsRef.current.delete(key);
+  }, [selectedSessionId, openChatId, messageInput]);
+  // The selected session's drafts, by chat id, as the list reads them.
+  const sessionDrafts = useMemo(() => {
+    const prefix = draftKey(selectedSessionId, '');
+    const drafts: Record<string, string> = {};
+    for (const [key, text] of Object.entries(chatDrafts)) {
+      if (key.startsWith(prefix)) drafts[key.slice(prefix.length)] = text;
+    }
+    return drafts;
+  }, [chatDrafts, selectedSessionId]);
 
   // Per-chat scroll-position memory + auto-scroll heuristic.
   // Pass `messages.length > 0` as the loaded signal: it stays stable once the
@@ -1327,6 +1381,27 @@ export function Chats() {
     return null;
   };
 
+  // A chat opened to write in it takes focus in its message field, so typing can start at once: a click on its row
+  // with a mouse or a pen, or a pick in the New chat panel, which closes and would leave focus on the page. Bumped
+  // when the chat is chosen, so that the focus is made once the room has rendered: a room opened from the placeholder
+  // has no field until then. Never after a tap, where a focused field raises a phone's keyboard over the thread that
+  // was just opened. A read-only key keeps its focus as well, its field being disabled.
+  const [composerFocusSeq, setComposerFocusSeq] = useState(0);
+  const chatPageRef = useRef<HTMLDivElement | null>(null);
+  // How the page was last pressed: the pointerdown's pointerType ('touch' for a tap), '' after a key.
+  const pagePressRef = useRef('');
+  useLayoutEffect(() => {
+    if (composerFocusSeq === 0 || pagePressRef.current === 'touch') return;
+    chatPageRef.current
+      ?.querySelector<HTMLTextAreaElement>('.message-text-input:not(:disabled)')
+      ?.focus({ preventScroll: true });
+  }, [composerFocusSeq]);
+  // A key on a row keeps focus on it, and so does a click on the row of the chat already open, where nothing opens.
+  const handleSelectChat = useCallback((chat: Chat, byPointer?: boolean) => {
+    if (byPointer && chat.id !== activeChatIdRef.current) setComposerFocusSeq(n => n + 1);
+    setActiveChat(chat);
+  }, []);
+
   // Open a chat picked in the new-chat panel. A chat with no history is not in the engine's list, so
   // it is added to the sidebar locally until the first message, or the next list load, settles it.
   // The filter and search are cleared so the opened chat is visible in the list. A chat the panel found
@@ -1340,6 +1415,8 @@ export function Chats() {
     setActiveChannel(null);
     setActiveStatusContactId(null);
     setActiveChat(existing ?? chat);
+    // Whatever opened it, a key included: the panel closes with the control that held focus.
+    setComposerFocusSeq(n => n + 1);
     setShowNewChat(false);
     setChatFilter('all');
     setSearchQuery('');
@@ -1668,7 +1745,16 @@ export function Chats() {
   const showTechnicalChatId = headerChat ? shouldShowTechnicalChatId(headerChat, Boolean(activePhoneText)) : false;
 
   return (
-    <div className="chats-page">
+    <div
+      className="chats-page"
+      ref={chatPageRef}
+      onPointerDownCapture={e => {
+        pagePressRef.current = e.pointerType;
+      }}
+      onKeyDownCapture={() => {
+        pagePressRef.current = '';
+      }}
+    >
       <PageHeader
         title={t('nav.chats')}
         subtitle={t('chats.subtitle')}
@@ -1741,7 +1827,8 @@ export function Chats() {
               chats: filteredChats,
               activeChatId: activeChat?.id,
               pictures: listPics.data,
-              onSelectChat: setActiveChat,
+              drafts: sessionDrafts,
+              onSelectChat: handleSelectChat,
               filter: chatFilter,
               onFilterChange: setChatFilter,
               rowActions,

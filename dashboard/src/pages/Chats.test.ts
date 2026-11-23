@@ -3657,3 +3657,60 @@ test('playing an audio or video element pauses other active media on the page', 
   audio2.remove();
   cleanup();
 });
+
+test('each chat keeps its own draft, shown on its list row after a Draft label until it is opened again', async () => {
+  const { screen, fireEvent, within } = rtl;
+  resetFetchCalls();
+  const { container } = renderChats();
+
+  await screen.findByText('Main (15551234567)');
+  fireEvent.click(await screen.findByText('Alice'));
+  await within(container.querySelector('.room-messages') as HTMLElement).findByText('hello from alice');
+  fireEvent.change(screen.getByPlaceholderText('Type a message...'), { target: { value: 'for alice only' } });
+
+  // Another chat opens on an empty field: Alice's text does not follow into it.
+  fireEvent.click(screen.getByText('Carol'));
+  await within(container.querySelector('.room-header') as HTMLElement).findByText('Carol');
+  assert.equal((screen.getByPlaceholderText('Type a message...') as HTMLTextAreaElement).value, '');
+
+  // Alice's row shows the draft after its label, in place of her last message.
+  const aliceRow = container.querySelector(`[data-chat-id="${CHAT.id}"]`) as HTMLElement;
+  assert.equal(aliceRow.querySelector('.chat-item-draft-label')?.textContent, 'Draft:');
+  assert.equal(aliceRow.querySelector('.chat-item-snippet')?.textContent, 'for alice only');
+
+  // Opening Alice again brings the text back into the field and the row shows her last message.
+  fireEvent.click(within(aliceRow).getByText('Alice'));
+  await within(container.querySelector('.room-header') as HTMLElement).findByText('Alice');
+  assert.equal((screen.getByPlaceholderText('Type a message...') as HTMLTextAreaElement).value, 'for alice only');
+  assert.equal(aliceRow.querySelector('.chat-item-draft-label'), null);
+});
+
+test('a chat opened with a mouse click focuses the message field, and one opened with a tap or a key does not', async () => {
+  const { screen, fireEvent, within } = rtl;
+  resetFetchCalls();
+  const { container } = renderChats();
+
+  await screen.findByText('Main (15551234567)');
+  const page = container.querySelector('.chats-page') as HTMLElement;
+  const aliceRow = (await screen.findByText('Alice')).closest('[role="button"]') as HTMLElement;
+  fireEvent.pointerDown(aliceRow, { pointerType: 'mouse' });
+  fireEvent.click(aliceRow, { detail: 1 });
+  await within(container.querySelector('.room-header') as HTMLElement).findByText('Alice');
+  assert.equal(document.activeElement, screen.getByPlaceholderText('Type a message...'));
+
+  // A tap opens the chat without raising a phone's keyboard over it.
+  const carolRow = screen.getByText('Carol').closest('[role="button"]') as HTMLElement;
+  carolRow.focus();
+  fireEvent.pointerDown(carolRow, { pointerType: 'touch' });
+  fireEvent.click(carolRow, { detail: 1 });
+  await within(container.querySelector('.room-header') as HTMLElement).findByText('Carol');
+  assert.notEqual(document.activeElement, screen.getByPlaceholderText('Type a message...'));
+
+  // A key on a row keeps focus on the row.
+  const row = container.querySelector(`[data-chat-id="${CHAT.id}"]`) as HTMLElement;
+  row.focus();
+  fireEvent.keyDown(page, { key: 'Enter' });
+  fireEvent.keyDown(row, { key: 'Enter' });
+  await within(container.querySelector('.room-header') as HTMLElement).findByText('Alice');
+  assert.equal(document.activeElement, row);
+});
