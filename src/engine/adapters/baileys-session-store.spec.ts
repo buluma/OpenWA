@@ -1,5 +1,7 @@
+import { DataSource } from 'typeorm';
 import { BaileysSessionStore } from './baileys-session-store';
-import type { LidMappingStore } from '../identity/lid-mapping-store.service';
+import { LidMapping } from '../identity/lid-mapping.entity';
+import { LidMappingStoreService, type LidMappingStore } from '../identity/lid-mapping-store.service';
 import {
   mergeTwinStates,
   type ChatStateField,
@@ -787,7 +789,19 @@ describe('BaileysSessionStore', () => {
       store.upsertChats([{ id: '111@lid' }]); // titleless, lid-keyed
       store.addLidMappings([{ lid: '111@lid', pn: '628999@s.whatsapp.net' }]);
       store.upsertContacts([{ id: '628999@s.whatsapp.net', name: 'Carol' }]);
-      expect(store.listChats()[0].name).toBe('Carol');
+      expect(store.listChats()[0]).toMatchObject({ name: 'Carol', phone: '628999' });
+    });
+
+    it('does not list a privacy id as the name when the phone is known', () => {
+      store.addLidMappings([{ lid: '111@lid', pn: '628999@s.whatsapp.net' }]);
+      store.upsertChats([{ id: '111@lid', name: '111' }]);
+      expect(store.listChats()[0]).toMatchObject({ name: '', phone: '628999' });
+    });
+
+    it('leaves a privacy id with no mapping unnamed and without a phone', () => {
+      store.upsertChats([{ id: '111@lid' }]);
+      expect(store.listChats()[0].name).toBe('');
+      expect(store.listChats()[0].phone).toBeUndefined();
     });
 
     it('uses pushName (notify) when no saved/verified name exists', () => {
@@ -799,6 +813,214 @@ describe('BaileysSessionStore', () => {
     it('falls back to the raw user-part when nothing is known (last resort)', () => {
       store.upsertChats([{ id: '628333@s.whatsapp.net' }]);
       expect(store.listChats()[0].name).toBe('628333');
+    });
+
+    describe('a privacy-id chat the store can name', () => {
+      // The in-memory mirror of the shared table: pairs this session has not learned itself.
+      const lidTable = (pairs: Record<string, string>) => {
+        const getCached = jest.fn((lid: string) => pairs[lid]);
+        return {
+          getCached,
+          resolveLid: jest.fn((jid: string) => getCached(userPart(jid)) ?? null),
+          lidsForPhone: jest.fn(() => [] as string[]),
+          remember: jest.fn(() => Promise.resolve(true)),
+        };
+      };
+
+      it('lists the push name when the contact record holds the privacy id as its saved name', () => {
+        store.upsertChats([{ id: '111@lid', name: '111' }]);
+        store.upsertContacts([{ id: '111@lid', name: '111' }]);
+        store.upsertContacts([{ id: '111@lid', notify: 'Alice' }]);
+        expect(store.listChats()[0].name).toBe('Alice');
+      });
+
+      // A history chunk files a contact for every conversation, titled by the privacy id's digits when it has no name.
+      it.each([
+        ['saved name', { name: 'Carol' }, { name: '111' }],
+        ['verified name', { verifiedName: 'Acme Ltd' }, { verifiedName: '111@lid' }],
+        ['push name', { notify: 'Alice' }, { notify: '111' }],
+      ] as const)('keeps a held %s when a later title of the chat is only the privacy id', (_field, held, later) => {
+        const [expected] = Object.values(held);
+        store.upsertChats([{ id: '111@lid' }]);
+        store.upsertContacts([{ id: '111@lid', ...held }]);
+        store.upsertContacts([{ id: '111@lid', ...later }]);
+        expect(store.listChats()[0].name).toBe(expected);
+      });
+
+      it('takes a later real name over a held one, and a name over a held privacy id', () => {
+        store.upsertChats([{ id: '111@lid' }]);
+        store.upsertContacts([{ id: '111@lid', name: 'Carol' }]);
+        store.upsertContacts([{ id: '111@lid', name: 'Caroline' }]);
+        expect(store.listChats()[0].name).toBe('Caroline');
+        store.upsertContacts([{ id: '222@lid', name: '222' }]);
+        store.upsertContacts([{ id: '222@lid', name: 'Dan' }]);
+        store.upsertChats([{ id: '222@lid' }]);
+        expect(store.listChats().find(c => c.id === '222@lid')?.name).toBe('Dan');
+      });
+
+      it('lists the verified name before the push name when the saved name is only the privacy id', () => {
+        store.upsertChats([{ id: '111@lid' }]);
+        store.upsertContacts([{ id: '111@lid', name: '111@lid', verifiedName: 'Acme Ltd', notify: 'Alice' }]);
+        expect(store.listChats()[0].name).toBe('Acme Ltd');
+      });
+
+      it('lists the saved name, else the verified name, else the push name', () => {
+        store.upsertChats([{ id: '111@lid' }, { id: '222@lid' }, { id: '333@lid' }]);
+        store.upsertContacts([
+          { id: '111@lid', name: 'Saved', verifiedName: 'Verified', notify: 'Push' },
+          { id: '222@lid', verifiedName: 'Verified', notify: 'Push' },
+          { id: '333@lid', notify: 'Push' },
+        ]);
+        expect(Object.fromEntries(store.listChats().map(c => [c.id, c.name]))).toEqual({
+          '111@lid': 'Saved',
+          '222@lid': 'Verified',
+          '333@lid': 'Push',
+        });
+      });
+
+      it.each(['628999@s.whatsapp.net', '628999@c.us'])(
+        'lists the contact saved as %s, behind a phone only the shared table holds',
+        key => {
+          const s = new BaileysSessionStore(lidTable({ '111': '628999' }));
+          s.upsertChats([{ id: '111@lid' }]);
+          s.upsertContacts([{ id: key, name: 'Carol' }]);
+          expect(s.listChats()[0]).toMatchObject({ name: 'Carol', phone: '628999' });
+        },
+      );
+
+      it('lists the contact saved behind the phone once the session map evicted the pair the table holds', () => {
+        const before = process.env.BAILEYS_SESSION_STORE_MAX_ENTRIES;
+        process.env.BAILEYS_SESSION_STORE_MAX_ENTRIES = '1';
+        try {
+          const s = new BaileysSessionStore(lidTable({ '111': '628999', '222': '628222' }));
+          s.addLidMappings([{ lid: '111@lid', pn: '628999@s.whatsapp.net' }]);
+          s.addLidMappings([{ lid: '222@lid', pn: '628222@s.whatsapp.net' }]); // evicts the first pair
+          s.upsertContacts([{ id: '628999@s.whatsapp.net', name: 'Carol' }]); // pinned: the cap never evicts a saved name
+          s.upsertChats([{ id: '111@lid' }]);
+          expect(s.listChats()[0]).toMatchObject({ name: 'Carol', phone: '628999' });
+        } finally {
+          if (before === undefined) delete process.env.BAILEYS_SESSION_STORE_MAX_ENTRIES;
+          else process.env.BAILEYS_SESSION_STORE_MAX_ENTRIES = before;
+        }
+      });
+
+      it('lists the phone and no name for a pair only the shared table holds when no contact is saved', () => {
+        const s = new BaileysSessionStore(lidTable({ '111': '628999' }));
+        s.upsertChats([{ id: '111@lid' }]);
+        expect(s.listChats()[0]).toMatchObject({ name: '', phone: '628999' });
+      });
+
+      it('asks the shared table at most twice for a privacy-id row, naming it included', () => {
+        // Once for the keys of the chat's state and once for the phone the row lists; naming adds no read.
+        const table = lidTable({ '111': '628999' });
+        const s = new BaileysSessionStore(table);
+        s.upsertChats([{ id: '111@lid' }, { id: '222@lid' }]);
+        s.upsertContacts([{ id: '628999@s.whatsapp.net', name: 'Carol' }]);
+        expect(Object.fromEntries(s.listChats().map(c => [c.id, c.name]))).toEqual({
+          '111@lid': 'Carol',
+          '222@lid': '',
+        });
+        const asked = (lid: string) => table.getCached.mock.calls.filter(([called]) => called === lid).length;
+        expect(asked('111')).toBeLessThanOrEqual(2);
+        expect(asked('222')).toBeLessThanOrEqual(2);
+      });
+
+      describe('with the stored table', () => {
+        let db: DataSource;
+        beforeEach(async () => {
+          db = await new DataSource({
+            type: 'better-sqlite3',
+            database: ':memory:',
+            entities: [LidMapping],
+            synchronize: true,
+          }).initialize();
+        });
+        afterEach(async () => {
+          await db.destroy();
+        });
+
+        it('lists the phone and the saved contact behind it for a pair the table held at start', async () => {
+          const repo = db.getRepository(LidMapping);
+          await repo.save({ lid: '111', phone: '628999', sessionId: null, isReported: true });
+          const table = new LidMappingStoreService(repo);
+          await table.onModuleInit(); // what the boot does
+          const s = new BaileysSessionStore(table, 'sess'); // a new engine has learned no pair yet
+          s.upsertChats([{ id: '111@lid' }]);
+          s.upsertContacts([{ id: '628999@s.whatsapp.net', name: 'Carol' }]);
+          expect(s.listChats()[0]).toMatchObject({ name: 'Carol', phone: '628999' });
+        });
+      });
+
+      it.each(['111', '111@lid', ' 111 '])('lists no name for a chat titled %j, the privacy id itself', title => {
+        store.upsertChats([{ id: '111@lid', name: title }]);
+        expect(store.listChats()[0].name).toBe('');
+      });
+
+      it.each([
+        { name: '111' },
+        { name: '111@lid' },
+        { verifiedName: '111' },
+        { notify: '111' },
+        { notify: ' 111@lid ' },
+      ])('lists no name for a contact record that holds only the privacy id, as %j', record => {
+        store.upsertChats([{ id: '111@lid' }]);
+        store.upsertContacts([{ id: '111@lid', ...record }]);
+        expect(store.listChats()[0].name).toBe('');
+      });
+
+      it.each([{ name: '111' }, { verifiedName: '111@lid' }, { notify: '111' }])(
+        'lists no name for the contact behind the phone when it holds only the privacy id, as %j',
+        record => {
+          store.addLidMappings([{ lid: '111@lid', pn: '628999@s.whatsapp.net' }]);
+          store.upsertChats([{ id: '111@lid' }]);
+          store.upsertContacts([{ id: '628999@s.whatsapp.net', ...record }]);
+          expect(store.listChats()[0]).toMatchObject({ name: '', phone: '628999' });
+        },
+      );
+
+      it('lists a contact name trimmed, and takes the next name for a blank one', () => {
+        store.upsertChats([{ id: '628222@s.whatsapp.net' }]);
+        store.upsertContacts([{ id: '628222@s.whatsapp.net', name: '  ', notify: ' Dave ' }]);
+        expect(store.listChats()[0].name).toBe('Dave');
+      });
+
+      it.each([
+        ['120363111@g.us', '  Team  ', 'Team'],
+        ['120363111@g.us', '', '120363111'],
+        ['120363111@g.us', '   ', '120363111'],
+        ['628111@s.whatsapp.net', '', '628111'],
+        ['120363999@newsletter', '', '120363999'],
+      ])('lists the chat %s titled %j as %j', (id, title, listed) => {
+        store.upsertChats([{ id, name: title }]);
+        expect(store.listChats()[0].name).toBe(listed);
+      });
+
+      // A history chunk folds the chat's title into the push name, and a chat with no name is titled by the digits: a
+      // contact read and a status poster report those as no name, as the chat list does.
+      it.each([
+        ['push name', { notify: '111' }],
+        ['push name', { notify: ' 111@lid ' }],
+        ['saved name', { name: '111@lid' }],
+        ['verified name', { verifiedName: '111' }],
+      ])('stores no %s that is only the privacy id, as %j', (_what, record) => {
+        store.upsertContacts([{ id: '111@lid', ...record }]);
+        const contact = store.findContact('111@lid');
+        expect(contact).toMatchObject({ id: '111@lid', isMyContact: false });
+        expect(contact?.name).toBeUndefined();
+        expect(contact?.pushName).toBeUndefined();
+        expect(store.listContacts()).toEqual([]);
+      });
+
+      it('keeps the other names of a record that brings the privacy id in one of them', () => {
+        store.upsertContacts([{ id: '111@lid', name: '111', notify: 'Alice' }]);
+        store.upsertContacts([{ id: '111@lid', verifiedName: 'Acme Ltd', notify: '111' }]);
+        expect(store.findContact('111@lid')).toMatchObject({ name: 'Acme Ltd', pushName: 'Alice', isMyContact: false });
+      });
+
+      it('keeps the digits a phone-keyed contact brings as its push name', () => {
+        store.upsertContacts([{ id: '628111@s.whatsapp.net', lid: '111@lid', notify: '111' }]);
+        expect(store.findContact('628111@s.whatsapp.net')?.pushName).toBe('111');
+      });
     });
   });
 
