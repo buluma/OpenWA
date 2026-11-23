@@ -7922,6 +7922,79 @@ describe('BaileysAdapter sendSeen + markUnread + deleteChat', () => {
 
       expect(await unread(adapter)).toBe(0);
     });
+
+    // The update also carries the message's time and the message itself, which would bring back a chat WhatsApp
+    // deleted, or give a chat the session never knew a row of its own.
+    describe('for a chat deleted on the phone', () => {
+      const raised = (content: Record<string, unknown>, fromMe = false) => [
+        {
+          id: '628111@s.whatsapp.net',
+          ...(fromMe ? {} : { unreadCount: 1 }),
+          conversationTimestamp: 1700000060,
+          messages: [{ message: { key: { remoteJid: '628111@s.whatsapp.net', fromMe, id: 'X1' }, message: content } }],
+        },
+      ];
+      const deletedOnPhone = async (): Promise<BaileysAdapter> => {
+        const adapter = await readyWithMessage();
+        fakeSock.fire('chats.upsert', [{ id: '628111@s.whatsapp.net' }]);
+        fakeSock.fire('chats.delete', ['628111@s.whatsapp.net']);
+        expect(await adapter.getChats()).toEqual([]);
+        return adapter;
+      };
+
+      const KINDS: Array<[string, Record<string, unknown>]> = [
+        ['an encrypted edit', { secretEncryptedMessage: {} }],
+        ['an encrypted reaction', { encReactionMessage: {} }],
+        ['a pin', { pinInChatMessage: {} }],
+        ['a keep-in-chat toggle', { keepInChatMessage: {} }],
+        ['an album header', { albumMessage: {} }],
+        ['an event RSVP', { encEventResponseMessage: {} }],
+        ['an encrypted comment', { encCommentMessage: {} }],
+      ];
+
+      it.each(KINDS)('keeps the chat out of the list when %s arrives from a contact', async (_what, content) => {
+        const adapter = await deletedOnPhone();
+        fakeSock.fire('chats.update', raised(content));
+        expect(await adapter.getChats()).toEqual([]);
+      });
+
+      it.each(KINDS)(
+        'keeps the chat out of the list when %s arrives from another device of the account',
+        async (_what, content) => {
+          const adapter = await deletedOnPhone();
+          fakeSock.fire('chats.update', raised(content, true));
+          expect(await adapter.getChats()).toEqual([]);
+        },
+      );
+
+      it('still applies what else the update carries, a disappearing-messages timer', async () => {
+        const adapter = await deletedOnPhone();
+        fakeSock.fire('chats.update', [{ ...raised({ pinInChatMessage: {} })[0], ephemeralExpiration: 604800 }]);
+        const store = (adapter as unknown as { sessionStore: { getEphemeralExpiration: (id: string) => unknown } })
+          .sessionStore;
+        expect(store.getEphemeralExpiration('628111@c.us')).toBe(604800);
+      });
+
+      it.each([
+        ['a text', { conversation: 'back again' }],
+        [
+          'a text and a fast-ratchet distribution that merged with it',
+          { conversation: 'back', fastRatchetKeySenderKeyDistributionMessage: {} },
+        ],
+      ])('lists the chat again for %s', async (_what, content) => {
+        const adapter = await deletedOnPhone();
+        fakeSock.fire('chats.update', raised(content));
+        expect(await adapter.getChats()).toEqual([expect.objectContaining({ id: '628111@c.us', unreadCount: 1 })]);
+      });
+
+      it('lists no chat the session never knew for a message that is none of its own', async () => {
+        const adapter = newAdapter();
+        await adapter.initialize({});
+        fakeSock.fire('connection.update', { connection: 'open' });
+        fakeSock.fire('chats.update', raised({ pinInChatMessage: {} }));
+        expect(await adapter.getChats()).toEqual([]);
+      });
+    });
   });
 
   it('markUnread marks the chat unread via chatModify with the last message', async () => {
