@@ -6,7 +6,7 @@
  * As inline consts inside the page these were three unrelated rules reading one piece of state; as
  * functions they take the query as an argument and can be tested.
  */
-import { normalizePhoneText } from './phone.ts';
+import { normalizePhoneText, phoneQueryDigits } from './phone.ts';
 import { formatWhatsAppUsername } from './chatIdentity.ts';
 
 // The last query as matches() reads it. Every filter calls matches() once per row on every render of the Chats page,
@@ -31,6 +31,8 @@ interface ChatLike {
   id: string;
   name?: string;
   username?: string;
+  /** Phone digits of a privacy-id chat, which a row with no name is titled by. */
+  phone?: string;
   kind?: string;
 }
 
@@ -39,9 +41,15 @@ interface ChatLike {
  * their own tabs instead, so a channel never appears twice.
  */
 export function filterChats<T extends ChatLike>(chats: T[], query: string): T[] {
+  // A number typed as it is written, with its spaces, plus sign or parentheses, is compared by its digits. Read once per
+  // search, like the fold in matches().
+  const digits = phoneQueryDigits(query);
   return chats.filter(
     c =>
-      c.kind !== 'channel' && c.kind !== 'status' && matches(query, c.name, formatWhatsAppUsername(c.username), c.id),
+      c.kind !== 'channel' &&
+      c.kind !== 'status' &&
+      (matches(query, c.name, formatWhatsAppUsername(c.username), c.id, c.phone) ||
+        (digits !== '' && (c.id.includes(digits) || Boolean(c.phone?.includes(digits))))),
   );
 }
 

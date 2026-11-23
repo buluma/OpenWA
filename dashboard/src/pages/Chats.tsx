@@ -28,7 +28,7 @@ import {
 import { useProfilePicture } from '../hooks/useProfilePicture';
 import { useProfilePictures } from '../hooks/useProfilePictures';
 import { useResolvedPhone, resolvedPhoneQuery, isResolvedPhoneHeld } from '../hooks/useResolvedPhone';
-import { formatPhoneForDisplay } from '../utils/formatPhone';
+import { formatPhoneForDisplay, isolateNumber } from '../utils/formatPhone';
 import {
   sessionApi,
   messageApi,
@@ -427,14 +427,18 @@ export function Chats() {
   // Header phone line. Local formatting handles @c.us ids offline; for anything else personal
   // (notably @lid privacy ids, which are NOT phones and must never be formatted as one) resolve
   // the real number through the engine — cached a day, and only fired when local formatting failed.
+  // A privacy-id chat the gateway lists with its mapped phone needs no engine lookup.
   const activePhoneDisplay = activeChat ? formatPhoneForDisplay(activeChat.id) : null;
-  const needsPhoneResolution = Boolean(activeChat && activeChat.kind === 'individual' && !activePhoneDisplay);
+  const listedPhone = activeChat?.phone ? formatPhoneForDisplay(activeChat.phone) : null;
+  const needsPhoneResolution = Boolean(
+    activeChat && activeChat.kind === 'individual' && !activePhoneDisplay && !listedPhone,
+  );
   const resolvedPhoneQ = useResolvedPhone(
     needsPhoneResolution ? selectedSessionId || undefined : undefined,
     needsPhoneResolution ? activeChat?.id : undefined,
   );
   const activePhoneText =
-    activePhoneDisplay ?? (resolvedPhoneQ.data ? formatPhoneForDisplay(resolvedPhoneQ.data) : null);
+    activePhoneDisplay ?? listedPhone ?? (resolvedPhoneQ.data ? formatPhoneForDisplay(resolvedPhoneQ.data) : null);
 
   // The list loaders below reach the translator and the error toast through a ref, not as
   // dependencies: both change identity on a language switch, which re-ran the session load (it
@@ -1823,6 +1827,8 @@ export function Chats() {
   const activeChatDisplayName = headerChat ? chatHeaderDisplayName(headerChat) : '';
   const activeChatUsername = headerChat ? formatWhatsAppUsername(headerChat.username) : undefined;
   const showTechnicalChatId = headerChat ? shouldShowTechnicalChatId(headerChat, Boolean(activePhoneText)) : false;
+  // An unnamed chat titled by its phone does not show that phone a second time under the title.
+  const titledByPhone = Boolean(activePhoneText) && activeChatDisplayName === isolateNumber(activePhoneText!);
 
   return (
     <div
@@ -1961,10 +1967,12 @@ export function Chats() {
                         @c.us ids, engine-resolved for @lid privacy ids (which are NOT phones and
                         must never be formatted as one). Groups fall back to a semantic label;
                         the raw JID follows below for the technical case. */}
-                    <span className="room-contact-phone">
-                      {activePhoneText ??
-                        (activeChat.isGroup ? t('chats.groupSubtitle') : t('chats.privateContactSubtitle'))}
-                    </span>
+                    {!titledByPhone && (
+                      <span className="room-contact-phone">
+                        {activePhoneText ??
+                          (activeChat.isGroup ? t('chats.groupSubtitle') : t('chats.privateContactSubtitle'))}
+                      </span>
+                    )}
                     {/* Raw JID preserved for the technical case (the gateway speaks JIDs everywhere:
                         webhooks, message rows, lid resolution). Monospace + muted so it doesn't compete
                         with the human-facing name/number. */}

@@ -17,7 +17,7 @@ import type { UseQueryResult } from '@tanstack/react-query';
 import type { Channel, Chat, ContactStatusGroup, Session } from '../../services/api';
 import { useRole } from '../../hooks/useRole';
 import { CHAT_LIST_FILTERS, type ChatListFilter } from '../../utils/chatFilters';
-import { chatDisplayName } from '../../utils/chatIdentity';
+import { chatDisplayName, savedChatName } from '../../utils/chatIdentity';
 import { contactSnippet, isVCardBody } from '../../utils/vcard';
 import ChatAvatar from './ChatAvatar';
 import ChatRowMenu from './ChatRowMenu';
@@ -139,7 +139,8 @@ function ChatSidebar({
 
         <div className="chat-item-info">
           <div className="chat-item-top">
-            <span className="chat-item-name" title={displayName}>
+            {/* The tooltip adds what the text does not say: the id of a chat with no name of its own. */}
+            <span className="chat-item-name" title={savedChatName(chat) ? displayName : chat.id}>
               {displayName}
             </span>
             {chat.kind !== 'individual' && chat.kind !== 'unknown' && (
