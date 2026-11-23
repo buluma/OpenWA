@@ -807,10 +807,11 @@
   box-sizing: border-box;
 }
 
+/* The field grows upwards with its draft, and the buttons stay beside its last line. */
 .chats-page .input-form {
   display: flex;
   gap: 0.75rem;
-  align-items: center;
+  align-items: flex-end;
 }
 
 .chats-page .message-text-input {
@@ -823,12 +824,26 @@
   padding: 0.75rem 1rem;
   border: 1px solid var(--border);
   border-radius: 24px;
+  font: inherit;
   font-size: 0.9375rem;
+  line-height: 1.35;
   background: var(--bg-light);
   color: var(--text-primary);
   outline: none;
   transition: all 0.2s;
   box-sizing: border-box;
+  resize: none;
+  /* Five whole lines, then the field scrolls. */
+  max-height: calc(1.5rem + 2px + 5 * 1.35em);
+  overflow-y: auto;
+}
+
+/* A textarea wraps its placeholder, and a wrapped one is counted in the height the field is given: where the
+   placeholder does not fit, the empty field would be two lines high. */
+.chats-page .message-text-input::placeholder {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .chats-page .message-text-input:focus {
@@ -939,6 +954,8 @@
   justify-content: center;
   transition: all 0.2s ease;
   flex-shrink: 0;
+  /* Half of what a one-line field (about 46px) is higher than the 36px button, which centres the two. */
+  margin-block-end: 5px;
 }
 
 .chats-page .btn-input-accessory:hover {

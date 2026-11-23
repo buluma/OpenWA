@@ -148,3 +148,29 @@ test('sending while a replacement pick is still being read sends neither file an
     'the replacement pick was dropped',
   );
 });
+
+// The message field holds several lines: Shift+Enter breaks the line, Enter alone sends the draft.
+test('Shift+Enter adds a line and Enter sends the multi-line draft', async () => {
+  const { screen, fireEvent, waitFor } = rtl;
+  rtl.render(wrap(createElement(Harness)));
+  const field = screen.getByPlaceholderText('Type a message...') as HTMLTextAreaElement;
+  assert.equal(field.tagName, 'TEXTAREA', 'the message field cannot hold a line break');
+
+  fireEvent.change(field, { target: { value: 'first line' } });
+  fireEvent.keyDown(field, { key: 'Enter', shiftKey: true });
+  fireEvent.change(field, { target: { value: 'first line\nsecond line' } });
+  assert.equal(sentPaths.length, 0, 'Shift+Enter sent the draft');
+
+  fireEvent.keyDown(field, { key: 'Enter' });
+  await waitFor(() => assert.deepEqual(sentPaths, ['/api/sessions/sess-1/messages/send-text']));
+  assert.equal(field.value, '');
+});
+
+test('an Enter that ends an IME composition does not send', () => {
+  const { screen, fireEvent } = rtl;
+  rtl.render(wrap(createElement(Harness)));
+  const field = screen.getByPlaceholderText('Type a message...');
+  fireEvent.change(field, { target: { value: 'にほん' } });
+  fireEvent.keyDown(field, { key: 'Enter', isComposing: true });
+  assert.equal(sentPaths.length, 0);
+});

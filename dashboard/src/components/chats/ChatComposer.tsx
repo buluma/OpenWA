@@ -1,4 +1,12 @@
-import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type SetStateAction,
+} from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Loader2, Paperclip, Send, Smile, X } from 'lucide-react';
@@ -19,6 +27,18 @@ const messageTypeFromMime = (mimetype: string): MessageType => {
   if (mimetype.startsWith('audio/')) return 'audio';
   return 'document';
 };
+
+// The message field is as tall as its draft and stops at the CSS max-height, where it scrolls. To be measured it is
+// one line high for a moment; the form around it keeps its height meanwhile, so the thread above is not handed the
+// room and clamped back on every key typed in a draft of several lines.
+function fitToDraft(field: HTMLTextAreaElement): void {
+  const form = field.parentElement;
+  if (form) form.style.minHeight = `${form.offsetHeight}px`;
+  field.style.height = 'auto';
+  const next = field.scrollHeight;
+  if (next > 0) field.style.height = `${next}px`;
+  if (form) form.style.minHeight = '';
+}
 
 /** A picked-but-unsent file, staged until send, removal, or a move to another chat. */
 export interface StagedAttachment {
@@ -118,6 +138,25 @@ function ChatComposer({
 
   // References
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const textInputRef = useRef<HTMLTextAreaElement | null>(null);
+
+  useLayoutEffect(() => {
+    if (textInputRef.current) fitToDraft(textInputRef.current);
+  }, [messageInput]);
+
+  // The same draft wraps onto more or fewer lines when the field changes width (the window, the contact panel).
+  useEffect(() => {
+    const field = textInputRef.current;
+    if (!field || typeof ResizeObserver === 'undefined') return undefined;
+    let width = field.clientWidth;
+    const observer = new ResizeObserver(() => {
+      if (field.clientWidth === width) return;
+      width = field.clientWidth;
+      fitToDraft(field);
+    });
+    observer.observe(field);
+    return () => observer.disconnect();
+  }, []);
 
   // Popular emojis
   const popularEmojis = [
@@ -303,6 +342,16 @@ function ChatComposer({
     }
   };
 
+  // Enter sends, Shift+Enter breaks the line. The Enter that commits an input method's text is the input method's
+  // (isComposing, or keyCode 229 where a browser flags it only that way), and a held key's repeats send nothing more.
+  const handleComposerKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.nativeEvent.isComposing || event.keyCode === 229 || event.defaultPrevented) return;
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      if (!event.repeat) void handleSend();
+    }
+  };
+
   return (
     <>
       {/* Attachment preview banner */}
@@ -384,8 +433,8 @@ function ChatComposer({
             <Smile size={20} />
           </button>
 
-          <input
-            type="text"
+          <textarea
+            rows={1}
             placeholder={
               canWrite
                 ? attachment && !attachmentIsAudio
@@ -395,7 +444,9 @@ function ChatComposer({
             }
             value={messageInput}
             onChange={e => setMessageInput(e.target.value)}
+            onKeyDown={handleComposerKeyDown}
             disabled={!canWrite || sending}
+            ref={textInputRef}
             className="message-text-input"
           />
           <button
