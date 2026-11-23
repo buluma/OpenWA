@@ -88,7 +88,10 @@ export function messageTools(message: MessageService): AnyToolDescriptor[] {
       name: 'MessageList',
       chatScope: ['chatId'],
       description:
-        'List persisted messages for a session, optionally filtered by chatId or sender. Reads from the local DB.',
+        'List persisted messages for a session, optionally filtered by chatId or sender. Reads from the local DB. ' +
+        'A message with media is listed without its payload, an { omitted, sizeBytes } marker in its place; pass ' +
+        'inlineMedia true to get the payloads inline as base64, up to a per-response budget (8 MiB by default), ' +
+        'which makes a result very large.',
       tier: 'read',
       sessionScoped: true,
       inputSchema: z.object({
@@ -97,6 +100,13 @@ export function messageTools(message: MessageService): AnyToolDescriptor[] {
         from: z.string().optional().describe('Filter by sender phone or JID'),
         limit: z.number().int().min(1).max(100).optional(),
         offset: z.number().int().min(0).optional(),
+        inlineMedia: z
+          .boolean()
+          .optional()
+          .describe(
+            'Set true to carry media payloads inline as base64, the only way to the bytes over MCP. Unset or ' +
+              'false, each media row keeps an { omitted, sizeBytes } marker instead.',
+          ),
       }),
       handler: input =>
         message.getMessages(input.sessionId, {
@@ -104,6 +114,9 @@ export function messageTools(message: MessageService): AnyToolDescriptor[] {
           from: input.from,
           limit: input.limit,
           offset: input.offset,
+          // Off unless asked for, where REST inlines by default: base64 is of no use to a model that reads the
+          // result as text, and one photo makes the page larger than an MCP client takes.
+          inlineMedia: input.inlineMedia === true,
         }),
     }),
     defineTool({

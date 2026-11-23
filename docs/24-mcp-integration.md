@@ -177,6 +177,10 @@ opt in to write tools with `MCP_READONLY=false`. Any other value (or leaving it 
 read-only posture, so enabling MCP never silently exposes state-changing tools. Set `MCP_READONLY=false`
 only when an agent genuinely needs to send messages / mutate state.
 
+### Media in `MessageList`
+
+`MessageList` leaves media out: a media message is listed with an `{ omitted, sizeBytes }` marker in place of its payload. A call that sets `inlineMedia: true` gets the payloads inline as base64, up to a per-response budget (`MESSAGE_LIST_INLINE_MEDIA_BUDGET_BYTES`, 8 MiB by default), which makes a result very large. This differs from `GET /api/sessions/{sessionId}/messages`, which inlines unless asked not to: base64 is of no use to a model that reads the result as text, and one photo puts a page past what an MCP client takes.
+
 ### Result size (`MCP_MAX_RESULT_BYTES`)
 
 A result up to 4 KB comes back as text; a larger one is offloaded as an embedded base64 resource with no upper bound. Claude Code saves that resource to a file, but a client that puts the whole result in the model's context (claude.ai, ChatGPT) fails or degrades past about 150000 characters, and one that shows the model text alone shows it none of the data. Set `MCP_MAX_RESULT_BYTES` to a byte count (for example `100000`) and every result comes back as one text item and none is offloaded: a payload at or under the cap whole, a larger one cut to at most that many UTF-8 bytes, never inside a character, then `…[truncated: <n> bytes in all; narrow the request, with limit and offset where the tool takes them, to see the rest]`. Error answers are cut at the same cap with a `…[truncated: <n> bytes in all]` note, including the refusal the SDK writes itself for arguments a tool's schema rejects, which names each invalid value. Unset or `0`, the default, means no cap, and Claude Code keeps getting the blob it saves to a file. The value is read once when the server mounts; a malformed one (`100k`) fails the boot.

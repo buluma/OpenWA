@@ -37,8 +37,27 @@ describe('messageTools', () => {
       from: undefined,
       limit: 10,
       offset: 5,
+      inlineMedia: false,
     });
     expect(out).toEqual([{ id: 'm1' }]);
+  });
+
+  // The base64 of a media row is of no use to a model that reads the result as text, and one photo makes the page
+  // larger than an MCP client takes, so the tool leaves the payloads out unless the call asks for them. Over MCP the
+  // list is the only way to the bytes, so inlineMedia: true still reaches the service; REST inlines by default.
+  it.each([true, false])('MessageList forwards inlineMedia: %s to getMessages', async inlineMedia => {
+    const getMessages = jest.fn().mockResolvedValue({ messages: [], total: 0 });
+    const tools = makeTools({ getMessages } as unknown as MessageService);
+    await run(tools.get('MessageList')!, { sessionId: 's1', chatId: '628111@c.us', inlineMedia });
+    expect(getMessages).toHaveBeenCalledWith('s1', expect.objectContaining({ chatId: '628111@c.us', inlineMedia }));
+  });
+
+  it('MessageList asks for no inline media when inlineMedia is unset, where the service default is to inline', async () => {
+    const getMessages = jest.fn().mockResolvedValue({ messages: [], total: 0 });
+    const tools = makeTools({ getMessages } as unknown as MessageService);
+    await run(tools.get('MessageList')!, { sessionId: 's1', chatId: '628111@c.us' });
+    const options = (getMessages.mock.calls[0] as [string, Record<string, unknown>])[1];
+    expect(options.inlineMedia).toBe(false);
   });
 
   it('MessageHistory delegates to getChatHistory', async () => {
