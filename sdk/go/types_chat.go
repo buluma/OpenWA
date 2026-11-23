@@ -2,11 +2,13 @@ package openwa
 
 import "net/url"
 
-// ChatSummary is a chat-list entry.
+// ChatSummary is a chat-list entry. Phone is the digits of a 1:1 chat WhatsApp holds under a
+// privacy id, when the session can map it; empty for a phone-keyed chat or an unknown mapping.
 type ChatSummary struct {
 	ID              string      `json:"id"`
 	Name            string      `json:"name"`
 	Username        *string     `json:"username,omitempty"`
+	Phone           string      `json:"phone,omitempty"`
 	IsGroup         bool        `json:"isGroup"`
 	UnreadCount     int         `json:"unreadCount"`
 	LastMessage     string      `json:"lastMessage,omitempty"`
