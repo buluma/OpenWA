@@ -25,6 +25,7 @@ import {
   mapBaileysStatus,
   setBaileysText,
   storedKeyInChatPersisted,
+  withoutFastRatchetDistribution,
   withoutNonContentMessage,
 } from './baileys-message-mapper';
 import type { Chat, proto } from '@whiskeysockets/baileys';
@@ -1541,6 +1542,66 @@ describe('what is no message of its own', () => {
     it('leaves an update alone before the library is loaded', () => {
       const update = raised(PIN);
       expect(withoutNonContentMessage(update, undefined)).toBe(update);
+    });
+  });
+
+  describe('withoutFastRatchetDistribution', () => {
+    const SECRET = { messageSecret: 'c2VjcmV0' };
+    const stored = (message: Record<string, unknown> | null) =>
+      ({ key: { id: 'X1', remoteJid: '628111@s.whatsapp.net' }, messageTimestamp: 1700000040, message }) as {
+        key: { id: string; remoteJid: string };
+        messageTimestamp: number;
+        message: proto.IMessage | null;
+      };
+
+    it.each<[string, Record<string, unknown>]>([
+      ['before', { [FAST_RATCHET]: {}, imageMessage: { url: 'u' }, messageContextInfo: SECRET }],
+      ['after', { imageMessage: { url: 'u' }, [FAST_RATCHET]: {}, messageContextInfo: SECRET }],
+    ])('takes out a distribution that merged %s the content, and keeps the rest in its order', (_where, message) => {
+      const msg = stored(message);
+      const out = withoutFastRatchetDistribution(msg);
+      expect(Object.keys(out.message ?? {})).toEqual(['imageMessage', 'messageContextInfo']);
+      expect(out.message?.messageContextInfo).toBe(message.messageContextInfo);
+      expect(out.key).toBe(msg.key);
+      expect(out.messageTimestamp).toBe(1700000040);
+      // Baileys types the message it hands on by its content, as the adapter does.
+      expect(libraryContentType(out.message ?? undefined)).toBe('imageMessage');
+    });
+
+    it('is a copy: the message it is given keeps the distribution', () => {
+      const msg = stored({ [FAST_RATCHET]: { groupId: 'g' }, conversation: 'hi' });
+      const out = withoutFastRatchetDistribution(msg);
+      expect(out).not.toBe(msg);
+      expect(out.message).not.toBe(msg.message);
+      expect(Object.keys(msg.message ?? {})).toEqual([FAST_RATCHET, 'conversation']);
+    });
+
+    it('takes out nothing but the fast-ratchet distribution', () => {
+      const out = withoutFastRatchetDistribution(
+        stored({
+          senderKeyDistributionMessage: {},
+          [FAST_RATCHET]: {},
+          messageHistoryNotice: {},
+          conversation: 'hi',
+          messageContextInfo: SECRET,
+        }),
+      );
+      expect(Object.keys(out.message ?? {})).toEqual([
+        'senderKeyDistributionMessage',
+        'messageHistoryNotice',
+        'conversation',
+        'messageContextInfo',
+      ]);
+    });
+
+    it.each<[string, ReturnType<typeof stored> | null | undefined]>([
+      ['a message with no distribution', stored({ conversation: 'hi', messageContextInfo: SECRET })],
+      ['a message whose distribution is only inherited', stored(Object.create({ [FAST_RATCHET]: null }) as never)],
+      ['a message with no content', stored(null)],
+      ['no message', null],
+      ['nothing', undefined],
+    ])('returns what it is given for %s', (_what, msg) => {
+      expect(withoutFastRatchetDistribution(msg)).toBe(msg);
     });
   });
 });
