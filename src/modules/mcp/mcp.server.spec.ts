@@ -27,18 +27,27 @@ type ToolCallback = (input: Record<string, unknown>, extra: unknown) => Promise<
 const mockRegisteredTools: Array<{ name: string; config: Record<string, unknown>; callback: ToolCallback }> = [];
 const mockServerConnect = jest.fn<Promise<void>, unknown[]>();
 const mockServerClose = jest.fn<Promise<void>, unknown[]>();
+// The servers built so far. Each carries the SDK's private createToolError, the method it answers a call whose
+// arguments its schema refuses with, before any registered callback runs.
+type SdkAnswer = { isError?: boolean; content: Array<{ type: string; text: string }> };
+const mockServers: Array<{ createToolError: (message: string) => SdkAnswer }> = [];
 jest.mock('@modelcontextprotocol/sdk/server/mcp.js', () => ({
-  McpServer: jest.fn().mockImplementation(() => ({
-    registerTool: (
-      name: string,
-      config: Record<string, unknown>,
-      callback: (input: Record<string, unknown>, extra: unknown) => Promise<unknown>,
-    ) => {
-      mockRegisteredTools.push({ name, config, callback });
-    },
-    connect: (...args: unknown[]) => mockServerConnect(...args),
-    close: () => mockServerClose(),
-  })),
+  McpServer: jest.fn().mockImplementation(() => {
+    const server = {
+      registerTool: (
+        name: string,
+        config: Record<string, unknown>,
+        callback: (input: Record<string, unknown>, extra: unknown) => Promise<unknown>,
+      ) => {
+        mockRegisteredTools.push({ name, config, callback });
+      },
+      createToolError: (message: string): SdkAnswer => ({ isError: true, content: [{ type: 'text', text: message }] }),
+      connect: (...args: unknown[]) => mockServerConnect(...args),
+      close: () => mockServerClose(),
+    };
+    mockServers.push(server);
+    return server;
+  }),
 }));
 
 const mockHandleRequest = jest.fn<Promise<void>, unknown[]>();
@@ -355,6 +364,7 @@ describe('mountMcpServer (raw-Express request-handling path)', () => {
   beforeEach(() => {
     delete process.env.TRUSTED_PROXIES; // resolveClientIp then uses the socket IP, deterministically
     mockRegisteredTools.length = 0;
+    mockServers.length = 0;
     mockServerConnect.mockReset().mockResolvedValue(undefined);
     mockServerClose.mockReset().mockResolvedValue(undefined);
     mockHandleRequest.mockReset().mockResolvedValue(undefined);
@@ -661,6 +671,112 @@ describe('mountMcpServer (raw-Express request-handling path)', () => {
     expect(h.authService.validateApiKey).not.toHaveBeenCalled();
     expect(h.tool.handler).not.toHaveBeenCalled();
     expect(h.auditService.logWarn).not.toHaveBeenCalled(); // 400 parity with REST: not an auth failure
+  });
+
+  describe('result cap (MCP_MAX_RESULT_BYTES)', () => {
+    const prev = process.env.MCP_MAX_RESULT_BYTES;
+    afterEach(() => {
+      if (prev === undefined) delete process.env.MCP_MAX_RESULT_BYTES;
+      else process.env.MCP_MAX_RESULT_BYTES = prev;
+    });
+
+    const callWithBigResult = async (options: MountMcpServerOptions): Promise<{ content: Array<{ type: string }> }> => {
+      const h = mount(options);
+      h.authService.validateApiKey.mockResolvedValue({ id: 'k1' });
+      h.tool.handler = () => Promise.resolve({ rows: 'x'.repeat(50000) });
+      await post(h, { jsonrpc: '2.0', id: 1 });
+      return (await toolCallback()(
+        { sessionId: 's1', to: '123', text: 'hi' },
+        { requestInfo: { headers: { 'x-api-key': 'good-key' } } },
+      )) as { content: Array<{ type: string }> };
+    };
+
+    it('leaves a result alone when no cap is set: over 4096 characters it is the blob, as before', async () => {
+      delete process.env.MCP_MAX_RESULT_BYTES;
+      expect((await callWithBigResult({ readOnly: false })).content.map(c => c.type)).toEqual(['text', 'resource']);
+    });
+
+    it('truncates to the cap set by the maxResultBytes option', async () => {
+      const result = await callWithBigResult({ readOnly: false, maxResultBytes: 1000 });
+      expect(result.content).toHaveLength(1);
+      expect((result.content[0] as unknown as { text: string }).text).toContain('[truncated: 50011 bytes');
+    });
+
+    it('truncates to the cap set by MCP_MAX_RESULT_BYTES, read once when the server is mounted', async () => {
+      process.env.MCP_MAX_RESULT_BYTES = '2000';
+      const result = await callWithBigResult({ readOnly: false });
+      expect(result.content).toHaveLength(1);
+      expect((result.content[0] as unknown as { text: string }).text.length).toBeLessThan(2200);
+    });
+
+    it('lets the option switch the env cap off with 0', async () => {
+      process.env.MCP_MAX_RESULT_BYTES = '2000';
+      expect((await callWithBigResult({ readOnly: false, maxResultBytes: 0 })).content).toHaveLength(2);
+    });
+
+    // A refusal that lists every invalid value of a wide input, as a service's validation does.
+    const refuse = async (options: MountMcpServerOptions): Promise<{ isError?: boolean; text: string }> => {
+      const h = mount(options);
+      h.authService.validateApiKey.mockResolvedValue({ id: 'k1' });
+      const messages = Array.from({ length: 400 }, (_, i) => `vars.v${i} must be a string`);
+      h.tool.handler = () => Promise.reject(new BadRequestException(messages));
+      await post(h, { jsonrpc: '2.0', id: 1 });
+      const result = (await toolCallback()(
+        { sessionId: 's1', to: '123', text: 'hi' },
+        { requestInfo: { headers: { 'x-api-key': 'good-key' } } },
+      )) as { isError?: boolean; content: Array<{ text: string }> };
+      return { isError: result.isError, text: result.content[0].text };
+    };
+
+    it('leaves an error answer whole when no cap is set', async () => {
+      delete process.env.MCP_MAX_RESULT_BYTES;
+      const whole = await refuse({ readOnly: false });
+      expect(whole.isError).toBe(true);
+      expect(whole.text).not.toContain('[truncated:');
+      expect(Buffer.byteLength(whole.text)).toBeGreaterThan(5000);
+    });
+
+    it('cuts an error answer at the cap too, and keeps it an error', async () => {
+      const cut = await refuse({ readOnly: false, maxResultBytes: 1000 });
+      expect(cut.isError).toBe(true);
+      expect(cut.text).toMatch(/\[truncated: \d{4,} bytes in all\]$/);
+      expect(Buffer.byteLength(cut.text)).toBeLessThan(1100);
+    });
+
+    // The answer the SDK writes itself for arguments its schema refuses never reaches a tool callback, so the
+    // callback's own cap above cannot cut it: buildServer has to wrap the server it builds. sdk-error-cap.spec.ts
+    // pins capSdkErrors against the real class; this pins that every per-request server is wrapped with the cap.
+    const sdkRefusal = async (options: MountMcpServerOptions): Promise<{ isError?: boolean; text: string }> => {
+      const h = mount(options);
+      await post(h, { jsonrpc: '2.0', id: 1 });
+      expect(mockServers).toHaveLength(1);
+      const refusal = mockServers[0].createToolError(
+        `Invalid arguments for tool MessageSendTemplate: ${'vars.v0 must be a string; '.repeat(400)}`,
+      );
+      return { isError: refusal.isError, text: refusal.content[0].text };
+    };
+
+    it('leaves the SDK answer for refused arguments whole when no cap is set', async () => {
+      delete process.env.MCP_MAX_RESULT_BYTES;
+      const whole = await sdkRefusal({ readOnly: false });
+      expect(whole.isError).toBe(true);
+      expect(whole.text).not.toContain('[truncated:');
+      expect(Buffer.byteLength(whole.text)).toBeGreaterThan(5000);
+    });
+
+    it('cuts the SDK answer for refused arguments at the maxResultBytes option, and keeps it an error', async () => {
+      const cut = await sdkRefusal({ readOnly: false, maxResultBytes: 1000 });
+      expect(cut.isError).toBe(true);
+      expect(cut.text).toMatch(/\[truncated: \d{4,} bytes in all\]$/);
+      expect(Buffer.byteLength(cut.text)).toBeLessThan(1100);
+    });
+
+    it('cuts the SDK answer at the cap MCP_MAX_RESULT_BYTES sets, read when the server is mounted', async () => {
+      process.env.MCP_MAX_RESULT_BYTES = '2000';
+      const cut = await sdkRefusal({ readOnly: false });
+      expect(cut.text).toMatch(/\[truncated: \d{4,} bytes in all\]$/);
+      expect(Buffer.byteLength(cut.text)).toBeLessThan(2100);
+    });
   });
 
   it('answers a JSON-RPC 500 when the transport throws', async () => {
