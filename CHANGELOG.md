@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `SQLITE_JOURNAL_MODE` (`WAL` by default, `DELETE` for network filesystems) for `main.sqlite` and `openwa.sqlite`; the files are set `0600` before the mode is applied, and a clean shutdown runs `wal_checkpoint(TRUNCATE)` (upstream 0.32.0).
+- High-volume query indexes on `messages`, `webhook_delivery_failures`, `message_batches` and `integration_delivery_failures` (migration `1791900000000-AddHighVolumeQueryIndexes`).
 - Dashboard: the chat composer is multi-line and grows with its draft (Enter sends, Shift+Enter breaks the line), and an unsent draft is listed on its chat row after a `Draft:` label; each chat keeps its own draft (upstream #2123, #2125).
 - Dashboard: `/name` in the chat composer offers the session's templates by name and inserts the chosen one into the message field, to be sent like any other message.
 - MCP: every tool is advertised with a `title` (upstream #2098), and the opt-in `MCP_MAX_RESULT_BYTES` cuts every tool result to that many bytes of text; unset or `0` keeps results unlimited.
@@ -25,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Baileys: a 1:1 send reuses a positive `onWhatsApp` lookup of its recipient for 15 minutes (5,000 numbers per session), and forgets it when WhatsApp refuses the send with 400 or 404 or the socket is replaced.
+- `scripts/backup.sh` copies a WAL database with `sqlite3 .backup`, and refuses to run without `sqlite3` while a database has a non-empty `-wal` file.
 - Baileys: `GET /api/sessions/{sessionId}/chats` lists `name` as `""` for an unnamed privacy-id chat, where it was the id's own digits; chat names are trimmed, and a blank one falls back to the contact name or the id's digits.
 - MCP: `MessageList` lists a media message without its payload (an `omitted` marker with `sizeBytes`) unless the call sets `inlineMedia: true`.
 - MCP: a tool's `sessionId` takes letters, digits and hyphens, at most 128 characters.
@@ -69,6 +73,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Baileys: an inbound media download that times out or passes the byte cap cancels its HTTP request, through the install-time patch `scripts/patch-baileys-media-signal.js`, and a pending media re-upload stops with it.
+- Baileys: a message change waiting for preparation room gives up its inbound slot, so a slow preparation no longer holds up other chats; contact-cache eviction no longer scans pinned entries.
 - Baileys: a reaction, edit or delete no longer keeps memory until the account is unlinked, and a connect or reconnect no longer leaves a key cache timer running.
 - Baileys: a link preview built from a fetched page cuts its title to 256 and its description to 1024 characters.
 - Baileys: a contact name that is only the privacy id's digits is no longer stored or listed as the contact's name.
@@ -216,6 +222,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Upgrade notes (behavior changes)
 
+- SQLite databases switch to WAL mode at the first boot and gain `-wal` and `-shm` files beside them. Copy all three, or stop OpenWA first; set `SQLITE_JOURNAL_MODE=DELETE` when `./data` is on NFS or SMB.
 - Source installs using Puppeteer's downloaded browser move from Chrome 146 to 156; back up `SESSION_DATA_PATH` (default `data/sessions/`) before starting and restore it before downgrading Chrome. An explicit `PUPPETEER_EXECUTABLE_PATH` keeps selecting that browser.
 - ⚠️ **Breaking (config).** A production boot refuses a `METRICS_TOKEN` that is the `.env.example` placeholder or a known weak value such as `test` or `change-me`, since the scrape endpoint is public; set a long random token, or leave it unset to keep the endpoint disabled.
 - The HTTP port now opens after at most 60 s of plugin restore. Until a plugin still restoring is up, the hooks it owns (a send moderation veto, for one) do not run, an enable, disable, update, uninstall or reinstall of it answers `409`, an ingress route with a response contract answers `503` with `Retry-After`, and other ingress deliveries are held and dispatched once it is up (with the queue off, by the reconciler after `INGRESS_RECONCILE_GRACE_MS`); do not rely on a plugin veto for requests in the first minute after a boot with slow plugins.
@@ -241,6 +248,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- The SSRF guard refuses ORCHID (`2001:10::/28`) and Teredo addresses that embed a blocked IPv4, a redirect whose location carries credentials or does not parse, and no longer prints bracketed IPv6 endpoints in errors.
+- Local storage writes check realpath containment and open files with `O_NOFOLLOW`, and data-import rows have NUL characters stripped.
 - `scripts/restore.sh` refuses, before it copies anything and naming the key, a path from the archive's own `.env.generated` that leads out of the data directory, passes through a link that does not resolve, or lies inside or around another directory the restore refills; an archive someone else built or altered could make it replace directories and files outside the data directory. A key set in the environment or `./.env` is honored as before.
 - Template and bulk sends measure the rendered length before building the text: a template send past `TEMPLATE_RENDER_MAX_CHARS` answers `400`, a bulk item whose text or caption would pass it fails, and a bulk media item that would render past the media size limit is refused; a placeholder repeated through the text made the server build the whole text first, which could exhaust its memory.
 - Socket.IO connections to the root namespace `/` are refused, where an unauthenticated client stayed connected outside the handshake and per-key socket limits; only `/events` accepts clients.
