@@ -288,11 +288,93 @@ export function mapSendRefusal(error: unknown): unknown {
   return error;
 }
 
+/** Max cached positive onWhatsApp recipient resolutions per session (LRU evicted at cap). */
+const NUMBER_ID_CACHE_MAX_ENTRIES = 5000;
+/** Positive TTL for cached onWhatsApp recipient resolutions used on outbound sends. */
+const NUMBER_ID_CACHE_TTL_MS = 15 * 60_000;
+
+function isInvalidRecipientSendError(error: unknown): boolean {
+  const code = refusedStatusCode(error);
+  if (code === 400 || code === 404) return true;
+  const err = error as { status?: unknown; statusCode?: unknown; output?: { statusCode?: unknown } } | null | undefined;
+  const status = err?.output?.statusCode ?? err?.statusCode ?? err?.status;
+  return status === 400 || status === 404;
+}
+
 export class BaileysMessaging {
+  // Positive-only LRU + TTL cache of canonical phone digits -> neutral JID for outbound sends.
+  private readonly numberIdCache = new Map<string, { numberId: string; storedAt: number }>();
+  // Coalesces concurrent send-path onWhatsApp lookups for the same canonical phone digits.
+  private readonly numberIdInFlight = new Map<string, Promise<string | null>>();
+  // Generation fence bumped on clearNumberIdCache() so stale in-flight lookups cannot repopulate.
+  private numberIdCacheGeneration = 0;
+
   constructor(
     private readonly host: BaileysMessagingHost,
     private readonly queryBudgetMs: number = BAILEYS_QUERY_BUDGET_MS,
   ) {}
+
+  /** Drop cached send-path recipient number-id resolutions and fence any in-flight lookups. */
+  clearNumberIdCache(): void {
+    this.numberIdCacheGeneration++;
+    this.numberIdCache.clear();
+    this.numberIdInFlight.clear();
+  }
+
+  private resolveNumberIdCached(jid: string, sock: WASocket): Promise<string | null> {
+    const key = userPart(this.host.toEngineJid(jid));
+    if (!key) return this.getNumberId(jid);
+    const cached = this.numberIdCache.get(key);
+    if (cached) {
+      const elapsed = Date.now() - cached.storedAt;
+      if (elapsed >= 0 && elapsed < NUMBER_ID_CACHE_TTL_MS) {
+        // LRU touch: move to most-recently-used position.
+        this.numberIdCache.delete(key);
+        this.numberIdCache.set(key, cached);
+        return Promise.resolve(cached.numberId);
+      }
+      this.numberIdCache.delete(key);
+    }
+    const joined = this.numberIdInFlight.get(key);
+    if (joined) return joined;
+    const generation = this.numberIdCacheGeneration;
+    const pending = this.getNumberId(jid).then(
+      numberId => {
+        if (this.numberIdInFlight.get(key) === pending) {
+          this.numberIdInFlight.delete(key);
+        }
+        // Cache only positive resolutions when neither the cache generation nor the socket changed.
+        if (numberId !== null && generation === this.numberIdCacheGeneration && this.host.getSocketOrNull() === sock) {
+          this.storeNumberIdCache(key, numberId);
+        }
+        return numberId;
+      },
+      (error: unknown) => {
+        if (this.numberIdInFlight.get(key) === pending) {
+          this.numberIdInFlight.delete(key);
+        }
+        throw error;
+      },
+    );
+    this.numberIdInFlight.set(key, pending);
+    return pending;
+  }
+
+  private storeNumberIdCache(key: string, numberId: string): void {
+    this.numberIdCache.delete(key);
+    this.numberIdCache.set(key, { numberId, storedAt: Date.now() });
+    while (this.numberIdCache.size > NUMBER_ID_CACHE_MAX_ENTRIES) {
+      const oldest = this.numberIdCache.keys().next().value;
+      if (oldest === undefined) break;
+      this.numberIdCache.delete(oldest);
+    }
+  }
+
+  private forgetNumberId(key: string | undefined): void {
+    if (!key) return;
+    this.numberIdCache.delete(key);
+    this.numberIdInFlight.delete(key);
+  }
 
   /** Bound a write whose confirmation the library discards; see baileys-query-deadline.ts. */
   private confirmed<T>(work: Promise<T>, operation: string): Promise<T> {
@@ -949,10 +1031,13 @@ export class BaileysMessaging {
     expected?: WASocket,
   ): Promise<WAMessage | undefined> {
     const sock = this.sock(expected);
+    let numberIdCacheKey: string | undefined;
+    let resolvedCacheKey: string | undefined;
     if (parseWaId(jid).kind === 'user') {
+      numberIdCacheKey = userPart(this.host.toEngineJid(jid));
       let numberId: string | null;
       try {
-        numberId = await this.getNumberId(jid);
+        numberId = await this.resolveNumberIdCached(jid, sock);
       } catch (error) {
         if (this.host.getSocketOrNull() !== sock) throw new EngineNotReadyError();
         throw new EngineNotSentError(`WhatsApp could not check the recipient before send: ${String(error)}`);
@@ -960,6 +1045,7 @@ export class BaileysMessaging {
       if (this.host.getSocketOrNull() !== sock) throw new EngineNotReadyError();
       if (!numberId) throw new BadRequestException(`WhatsApp reports recipient ${jid} is not registered`);
       const canonical = this.host.toEngineJid(numberId);
+      resolvedCacheKey = userPart(canonical);
       if (canonical !== jid) jid = await this.toDeliverableJid(numberId);
     }
     if (this.host.getSocketOrNull() !== sock) throw new EngineNotReadyError();
@@ -967,6 +1053,11 @@ export class BaileysMessaging {
     try {
       sent = options ? await sock.sendMessage(jid, content, options) : await sock.sendMessage(jid, content);
     } catch (error) {
+      // A recipient WhatsApp now refuses must be looked up again, not answered from the cache.
+      if (isInvalidRecipientSendError(error)) {
+        this.forgetNumberId(numberIdCacheKey);
+        if (resolvedCacheKey !== numberIdCacheKey) this.forgetNumberId(resolvedCacheKey);
+      }
       if (this.host.getSocketOrNull() !== sock) throw new EngineNotReadyError();
       throw mapSendRefusal(error);
     }

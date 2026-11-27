@@ -197,6 +197,8 @@ export interface BaileysLifecycleHost {
   upsertChats: BaileysSessionStore['upsertChats'];
   /** Drop chats the socket reports deleted (chats.delete). */
   removeChats: BaileysSessionStore['removeChats'];
+  /** Drop cached send-path recipient number-id lookups when a socket is replaced or torn down. */
+  clearNumberIdCache?: () => void;
   /** Learn lid<->phone mappings pushed by the socket (messaging-history.set, lid-mapping.update). */
   addLidMappings: BaileysSessionStore['addLidMappings'];
   handleMessagesUpsert: BaileysEvents['handleMessagesUpsert'];
@@ -449,6 +451,7 @@ export class BaileysLifecycle {
     // Group changes made while the previous socket was down never reached it, so nothing it cached is
     // trusted by the next one.
     this.groupMetadata.clear();
+    this.host.clearNumberIdCache?.();
 
     const fetchDispatcher = this.fetchDispatcher();
     const sock: WASocket = b.default({
@@ -987,6 +990,7 @@ export class BaileysLifecycle {
   private dropConnectionState(): void {
     this.host.liveCalls.clear();
     this.groupMetadata.clear();
+    this.host.clearNumberIdCache?.();
   }
 
   disconnect(): Promise<void> {
