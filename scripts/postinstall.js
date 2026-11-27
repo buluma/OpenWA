@@ -38,7 +38,9 @@
  *
  *  13. `node scripts/patch-baileys-pairing.js --best-effort` when present, preserving pre-login
  *      notification ACKs and refreshing pairing credentials. A partial patch remains fatal.
- *      The Baileys status stanza patch also runs when present.
+ *      The Baileys status stanza patch also runs when present, and so does
+ *      `node scripts/patch-baileys-media-signal.js --best-effort`, forwarding `options.signal` into
+ *      `getHttpStream`'s `fetch()` call so aborted media downloads cancel promptly.
  *  14. `node scripts/patch-wwebjs-puppeteer.js` when present. Browser teardown must use the
  *      connected getter required by Puppeteer 25; an unknown source shape aborts the install.
  *
@@ -167,6 +169,15 @@ function planSteps(root, env = process.env) {
   const baileysMediaPatcher = path.join(root, 'scripts', 'patch-baileys-media.js');
   if (fs.existsSync(baileysMediaPatcher)) {
     steps.push({ name: 'Baileys media stream errors', command: process.execPath, args: [baileysMediaPatcher, '--best-effort'], options: { stdio: 'inherit', cwd: root, env } });
+  }
+  const baileysMediaSignalPatcher = path.join(root, 'scripts', 'patch-baileys-media-signal.js');
+  if (fs.existsSync(baileysMediaSignalPatcher)) {
+    steps.push({
+      name: 'Baileys media download AbortSignal forwarding (scripts/patch-baileys-media-signal.js --best-effort)',
+      command: process.execPath,
+      args: [baileysMediaSignalPatcher, '--best-effort'],
+      options: { stdio: 'inherit', cwd: root, env },
+    });
   }
   const baileysPairingPatcher = path.join(root, 'scripts', 'patch-baileys-pairing.js');
   if (fs.existsSync(baileysPairingPatcher)) {
