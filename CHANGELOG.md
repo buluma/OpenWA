@@ -7,8 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-11-27
+
 ### Added
 
+- `UPDATE_CHECK_REPO` (`owner/name`) picks the GitHub repository whose latest release the dashboard update notice offers.
 - `SQLITE_JOURNAL_MODE` (`WAL` by default, `DELETE` for network filesystems) for `main.sqlite` and `openwa.sqlite`; the files are set `0600` before the mode is applied, and a clean shutdown runs `wal_checkpoint(TRUNCATE)` (upstream 0.32.0).
 - High-volume query indexes on `messages`, `webhook_delivery_failures`, `message_batches` and `integration_delivery_failures` (migration `1791900000000-AddHighVolumeQueryIndexes`).
 - Dashboard: the chat composer is multi-line and grows with its draft (Enter sends, Shift+Enter breaks the line), and an unsent draft is listed on its chat row after a `Draft:` label; each chat keeps its own draft (upstream #2123, #2125).
@@ -27,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The dashboard update notice offers this fork's own releases (`buluma/OpenWA`) instead of upstream's, because the fork versions itself; set `UPDATE_CHECK_REPO=rmyndharis/OpenWA` for the old behavior.
 - Baileys: a 1:1 send reuses a positive `onWhatsApp` lookup of its recipient for 15 minutes (5,000 numbers per session), and forgets it when WhatsApp refuses the send with 400 or 404 or the socket is replaced.
 - `scripts/backup.sh` copies a WAL database with `sqlite3 .backup`, and refuses to run without `sqlite3` while a database has a non-empty `-wal` file.
 - Baileys: `GET /api/sessions/{sessionId}/chats` lists `name` as `""` for an unnamed privacy-id chat, where it was the id's own digits; chat names are trimmed, and a blank one falls back to the contact name or the id's digits.

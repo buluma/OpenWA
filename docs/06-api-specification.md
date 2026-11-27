@@ -5611,6 +5611,11 @@ failure never becomes an error response: an instance that has never reached `api
 `latest: null`, and one that has keeps the last release it saw. `UPDATE_CHECK_ENABLED=false` turns the
 outbound request off.
 
+The release comes from `buluma/OpenWA`, this fork's own repository, because the fork versions itself
+and cherry-picks from `rmyndharis/OpenWA` rather than tracking its version numbers.
+`UPDATE_CHECK_REPO` (a plain `owner/name`) names another repository, for example `rmyndharis/OpenWA`
+to be told about upstream releases; `releaseUrl` then links that repository's release page.
+
 A running pre-release counts as older than its own final release, so `X.Y.Z` is offered to an
 instance on `X.Y.Z-rc.1`.
 

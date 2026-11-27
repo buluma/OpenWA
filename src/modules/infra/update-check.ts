@@ -25,9 +25,14 @@ export interface UpdateCheck {
   releaseUrl: string | null;
 }
 
+// This fork versions itself and cherry-picks from rmyndharis/OpenWA, so its own releases are the ones
+// an operator can upgrade to. UPDATE_CHECK_REPO points the check elsewhere (env.validation.ts holds it
+// to a plain `owner/name`, so it cannot reshape the URL).
+export const DEFAULT_UPDATE_CHECK_REPO = 'buluma/OpenWA';
+const updateCheckRepo = (): string => process.env.UPDATE_CHECK_REPO?.trim() || DEFAULT_UPDATE_CHECK_REPO;
 // GitHub's `/releases/latest` skips drafts and prereleases, so only a published release is offered.
-const LATEST_RELEASE_URL = 'https://api.github.com/repos/rmyndharis/OpenWA/releases/latest';
-const RELEASE_PAGE_URL = 'https://github.com/rmyndharis/OpenWA/releases/tag/';
+const latestReleaseUrl = (repo: string): string => `https://api.github.com/repos/${repo}/releases/latest`;
+const releasePageUrl = (repo: string): string => `https://github.com/${repo}/releases/tag/`;
 // One unauthenticated request per process per window stays far inside GitHub's 60 per hour per IP,
 // while a long-running instance still notices a new release the same day.
 const SUCCESS_TTL_MS = 6 * 60 * 60_000;
@@ -50,14 +55,15 @@ export function __resetUpdateCheckCache(): void {
 }
 
 async function refresh(): Promise<void> {
+  const repo = updateCheckRepo();
   try {
     const body = JSON.parse(
-      (await fetchSafeBuffer(LATEST_RELEASE_URL, { maxBytes: MAX_BYTES, timeoutMs: TIMEOUT_MS })).toString('utf8'),
+      (await fetchSafeBuffer(latestReleaseUrl(repo), { maxBytes: MAX_BYTES, timeoutMs: TIMEOUT_MS })).toString('utf8'),
     ) as { tag_name?: unknown };
     const tag = typeof body.tag_name === 'string' ? body.tag_name : '';
     const match = RELEASE_TAG.exec(tag);
     // The link is built from the validated tag rather than taken from the response.
-    latest = match ? { version: match[1], url: `${RELEASE_PAGE_URL}${tag}` } : null;
+    latest = match ? { version: match[1], url: `${releasePageUrl(repo)}${tag}` } : null;
     nextCheckAt = Date.now() + SUCCESS_TTL_MS;
   } catch (error) {
     // Offline, blocked by egress policy, rate-limited or malformed: keep whatever was known and retry

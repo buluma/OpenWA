@@ -286,6 +286,8 @@ services:
       - PLUGIN_STORAGE_MAX_BYTES=${PLUGIN_STORAGE_MAX_BYTES:-}
       # The dashboard's update notice asks GitHub for the latest release; false turns that request off.
       - UPDATE_CHECK_ENABLED=${UPDATE_CHECK_ENABLED:-}
+      # Repository whose latest release the notice offers (owner/name, default buluma/OpenWA).
+      - UPDATE_CHECK_REPO=${UPDATE_CHECK_REPO:-}
       # Misc application tuning.
       - AUDIT_RETENTION_DAYS=${AUDIT_RETENTION_DAYS:-}
       - MESSAGE_RETENTION_DAYS=${MESSAGE_RETENTION_DAYS:-}
