@@ -58,9 +58,7 @@ async function refresh(): Promise<void> {
   const repo = updateCheckRepo();
   try {
     const body = JSON.parse(
-      (await fetchSafeBuffer(latestReleaseUrl(repo), { maxBytes: MAX_BYTES, timeoutMs: TIMEOUT_MS })).toString(
-        'utf8',
-      ),
+      (await fetchSafeBuffer(latestReleaseUrl(repo), { maxBytes: MAX_BYTES, timeoutMs: TIMEOUT_MS })).toString('utf8'),
     ) as { tag_name?: unknown };
     const tag = typeof body.tag_name === 'string' ? body.tag_name : '';
     const match = RELEASE_TAG.exec(tag);

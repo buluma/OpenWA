@@ -879,10 +879,16 @@ describe('validateEnv UPDATE_CHECK_REPO', () => {
     expect(() => validateEnv({ UPDATE_CHECK_REPO: value })).not.toThrow();
   });
 
-  it.each(['OpenWA', 'a/b/c', '../x/y', 'owner/repo?x=1', 'owner /repo', '-owner/repo', 'owner/..', 'https://github.com/a/b'])(
-    'rejects %j',
-    value => {
-      expect(() => validateEnv({ UPDATE_CHECK_REPO: value })).toThrow(/UPDATE_CHECK_REPO must be a GitHub "owner\/name"/);
-    },
-  );
+  it.each([
+    'OpenWA',
+    'a/b/c',
+    '../x/y',
+    'owner/repo?x=1',
+    'owner /repo',
+    '-owner/repo',
+    'owner/..',
+    'https://github.com/a/b',
+  ])('rejects %j', value => {
+    expect(() => validateEnv({ UPDATE_CHECK_REPO: value })).toThrow(/UPDATE_CHECK_REPO must be a GitHub "owner\/name"/);
+  });
 });
