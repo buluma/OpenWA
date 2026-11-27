@@ -97,6 +97,9 @@
 #       it, through .., a link or a link that does not resolve, or inside or around a directory refilled
 #       from the archive) before it copies anything, and restores there when the environment or ./.env
 #       sets that key; a default reached through the operator's link is still followed
+#   (au) WAL-mode online backup preserves uncheckpointed -wal transactions when sqlite3 is present; without sqlite3,
+#       backup refuses any database carrying a non-empty -wal sidecar (no silent data loss) while still allowing a
+#       plain copy when -wal is absent or empty
 #
 # Usage: ./scripts/smoke-test-backup-restore.sh
 # Requires: bash, tar, node (restore.sh path resolution). sqlite3 is optional (see (c) and (k)).
@@ -2864,6 +2867,90 @@ if [ ! -L "$AT/linked/data/sessions" ] || [ "$(cat "$AT/disk/sessions/session-1/
   fail "(at) the default sessions dir was not refilled through the operator's link"
 fi
 pass "(at) the environment, ./.env and the defaults still decide where the restore writes"
+
+echo ""
+echo "==> (au) WAL-mode online backup preserves -wal frames; without sqlite3, non-empty -wal is refused"
+BA="$WORK/au"
+mkdir -p "$BA/refuse/data" "$BA/empty-wal/data" "$BA/shim"
+populate_shim "$BA/shim"
+# Without sqlite3, plain-copying the base file alone while a non-empty -wal exists would silently
+# drop every committed WAL transaction. backup.sh must refuse and leave no archive behind.
+printf 'base-main\n' >"$BA/refuse/data/main.sqlite"
+printf 'base-data\n' >"$BA/refuse/data/openwa.sqlite"
+printf 'uncheckpointed-wal-data\n' >"$BA/refuse/data/openwa.sqlite-wal"
+set +e
+OUT_BA="$(cd "$BA/refuse" && PATH="$BA/shim" BACKUP_DIR="$BA/refuse-out" "$BACKUP" 2>&1)"
+RC_BA=$?
+set -e
+if [ "$RC_BA" -eq 0 ]; then
+  fail "(au) backup.sh exited 0 without sqlite3 despite a non-empty -wal sidecar"
+fi
+if ! printf '%s' "$OUT_BA" | grep -q -- '-wal'; then
+  fail "(au) refusal message does not name the -wal sidecar: $OUT_BA"
+fi
+if ! printf '%s' "$OUT_BA" | grep -q 'sqlite3'; then
+  fail "(au) refusal message does not advise installing sqlite3: $OUT_BA"
+fi
+if [ -n "$(ls "$BA/refuse-out" 2>/dev/null || true)" ]; then
+  fail "(au) backup.sh left an archive behind after refusing a non-empty -wal"
+fi
+# Symlinked database file whose resolved target carries a non-empty -wal sidecar must also be refused
+# without sqlite3 (SQLite writes -wal next to the symlink target, not next to the link name).
+mkdir -p "$BA/symlink/data" "$BA/symlink/real"
+printf 'base-main\n' >"$BA/symlink/data/main.sqlite"
+printf 'base-real-data\n' >"$BA/symlink/real/openwa.sqlite"
+printf 'uncheckpointed-real-wal-data\n' >"$BA/symlink/real/openwa.sqlite-wal"
+ln -s ../real/openwa.sqlite "$BA/symlink/data/openwa.sqlite"
+set +e
+OUT_BA_SYM="$(cd "$BA/symlink" && PATH="$BA/shim" BACKUP_DIR="$BA/symlink-out" "$BACKUP" 2>&1)"
+RC_BA_SYM=$?
+set -e
+if [ "$RC_BA_SYM" -eq 0 ]; then
+  fail "(au) backup.sh exited 0 without sqlite3 despite a symlinked DB with non-empty target -wal"
+fi
+if ! printf '%s' "$OUT_BA_SYM" | grep -q -- '-wal'; then
+  fail "(au) symlinked WAL refusal message does not name the -wal sidecar: $OUT_BA_SYM"
+fi
+if [ -n "$(ls "$BA/symlink-out" 2>/dev/null || true)" ]; then
+  fail "(au) backup.sh left an archive behind after refusing a symlinked non-empty -wal"
+fi
+# An empty (0-byte) -wal sidecar, such as after a clean shutdown TRUNCATE checkpoint, still falls back
+# to cp with CONSISTENCY-WARNING.
+printf 'empty-main\n' >"$BA/empty-wal/data/main.sqlite"
+printf 'empty-data\n' >"$BA/empty-wal/data/openwa.sqlite"
+: >"$BA/empty-wal/data/openwa.sqlite-wal"
+(
+  cd "$BA/empty-wal"
+  PATH="$BA/shim" BACKUP_DIR="$BA/empty-out" "$BACKUP" >/dev/null
+)
+ARCHIVE_BA_EMPTY="$(ls "$BA"/empty-out/openwa-backup-*.tar.gz)"
+if ! tar -tzf "$ARCHIVE_BA_EMPTY" | grep -q 'CONSISTENCY-WARNING'; then
+  fail "(au) empty -wal fallback archive missing CONSISTENCY-WARNING"
+fi
+if [ "$HAS_SQLITE3" -eq 1 ]; then
+  mkdir -p "$BA/wal-src/data" "$BA/wal-dst"
+  wal_fixture "$BA/wal-src/data/main.sqlite" "ba-wal-main"
+  wal_fixture "$BA/wal-src/data/openwa.sqlite" "ba-wal-data"
+  (
+    cd "$BA/wal-src"
+    BACKUP_DIR="$BA/wal-out" "$BACKUP" >/dev/null
+  )
+  ARCHIVE_BA="$(ls "$BA"/wal-out/openwa-backup-*.tar.gz)"
+  if tar -tzf "$ARCHIVE_BA" | grep -q 'CONSISTENCY-WARNING'; then
+    fail "(au) unexpected CONSISTENCY-WARNING on WAL online backup with sqlite3"
+  fi
+  (
+    cd "$BA/wal-dst"
+    "$RESTORE" "$ARCHIVE_BA" >/dev/null
+  )
+  if [ "$(sqlite3 "$BA/wal-dst/data/main.sqlite" 'SELECT payload FROM sentinel;')" != "ba-wal-main" ]; then
+    fail "(au) WAL online backup lost uncheckpointed main DB rows"
+  fi
+  if [ "$(sqlite3 "$BA/wal-dst/data/openwa.sqlite" 'SELECT payload FROM sentinel;')" != "ba-wal-data" ]; then
+    fail "(au) WAL online backup lost uncheckpointed data DB rows"
+  fi
+fi
+pass "(au) WAL online backup preserves -wal transactions and missing sqlite3 refuses non-empty -wal"
 
 echo ""
 echo "All smoke tests passed!"

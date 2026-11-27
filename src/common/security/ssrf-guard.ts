@@ -20,6 +20,26 @@ export class SsrfBlockedError extends Error {
  */
 export const SSRF_BLOCKED_CLIENT_MESSAGE = 'Destination address is not allowed';
 
+/** The text of the refusal of a URL that carries credentials: it repeats nothing of the URL. */
+export const URL_CREDENTIALS_MESSAGE = 'URL must not contain credentials (userinfo)';
+
+/**
+ * Whether a URL carries a user name or a password: the exact condition undici refuses to build a request for, with a
+ * TypeError whose text repeats the URL, credentials included. An empty userinfo (`http://@host/`) is accepted by
+ * undici. An unparsable URL is read by hand, because the guard and undici name it in their refusal too: one with a
+ * userinfo counts, and one with none is left to the guard.
+ */
+export function urlCarriesCredentials(url: string): boolean {
+  const trimmed = url.trim();
+  try {
+    const { username, password } = new URL(trimmed);
+    return username !== '' || password !== '';
+  } catch {
+    const userinfo = /^(?:[a-z][a-z0-9+.-]*:[/\\]{2,}|[/\\]{2,})([^/\\?#]*)@/i.exec(trimmed)?.[1] ?? '';
+    return userinfo !== '' && userinfo !== ':';
+  }
+}
+
 /**
  * Map an error to a client/surfaced message, redacting SSRF detail. An `SsrfBlockedError`'s message
  * names the resolved internal IP ("… resolves to a blocked internal address: 10.0.0.5") — a recon /
@@ -37,7 +57,7 @@ export function redactSsrfError(error: unknown, logger?: { warn: (message: strin
   // internal topology an API consumer has no business reading out of a delivery-failure row.
   // The error code stays (actionable), the address goes.
   return (error instanceof Error ? error.message : String(error)).replace(
-    /\b(ECONNREFUSED|ENOTFOUND|ETIMEDOUT|EHOSTUNREACH|ECONNRESET|EAI_AGAIN)\s+[\w.-]+(?::\d+)?(?=\s|$)/g,
+    /\b(ECONNREFUSED|ENOTFOUND|ETIMEDOUT|EHOSTUNREACH|ECONNRESET|EAI_AGAIN)\s+(?:\[[0-9a-fA-F:.]+(?:%[^\]\s]+)?\](?::\d+)?|[\w.:%@-]*[\w:%@-])(?=$|[\s,;.)\]}>'"!])/g,
     '$1 [redacted]',
   );
 }
@@ -110,6 +130,7 @@ const BLOCKED_V6_RANGES: ReadonlyArray<readonly [string, number]> = [
   // Not globally reachable per the IANA IPv6 special-purpose registry. 2001::/23 is not blocked whole: the registry
   // marks several allocations inside it (AMT, AS112, ORCHIDv2, the 2001:1::/32 anycast addresses) globally reachable.
   ['2001:2::', 48], // benchmarking (RFC 5180)
+  ['2001:10::', 28], // ORCHID (RFC 4843, deprecated; not globally reachable)
   ['2001:db8::', 32], // documentation (RFC 3849)
   ['3fff::', 20], // documentation (RFC 9637)
 ];
@@ -200,6 +221,14 @@ export function isBlockedAddress(ip: string): boolean {
     if (hextets) {
       if (hextets[0] === 0x2002) {
         return isBlockedAddress(hextetsToV4(hextets[1], hextets[2])); // 6to4
+      }
+      // Teredo (2001:0000::/32, RFC 4380): hextets 2..3 hold the Teredo server IPv4 and hextets
+      // 6..7 hold the XOR-inverted client IPv4. Both must be globally routable (RFC 4380 s4/s5.1.1).
+      if (hextets[0] === 0x2001 && hextets[1] === 0) {
+        return (
+          isBlockedAddress(hextetsToV4(hextets[2], hextets[3])) ||
+          isBlockedAddress(hextetsToV4(hextets[6] ^ 0xffff, hextets[7] ^ 0xffff))
+        );
       }
       // NAT64 /96: the well-known 64:ff9b::/96 and the local-use 64:ff9b:1::/96 (RFC 8215). Any other
       // 64:ff9b layout (a /48 local-use prefix embeds the IPv4 in the middle hextets) falls through to
@@ -589,7 +618,14 @@ export async function withSafeFetch<T>(
           // blocked-address rejection, so it must survive redactSsrfError verbatim.
           throw new Error(`Too many redirects while fetching ${rawUrl}`);
         }
-        const nextUrl = new URL(location, currentUrl).toString();
+        if (urlCarriesCredentials(location)) throw new Error(URL_CREDENTIALS_MESSAGE);
+        let nextUrl: string;
+        try {
+          nextUrl = new URL(location, currentUrl).toString();
+        } catch {
+          throw new SsrfBlockedError('Invalid redirect URL');
+        }
+        if (urlCarriesCredentials(nextUrl)) throw new Error(URL_CREDENTIALS_MESSAGE);
         hopInit = nextRedirectHopInit(hopInit, response.status, nextUrl, initialOrigin);
         currentUrl = nextUrl;
       } finally {
