@@ -1957,5 +1957,4 @@ describe('BaileysSessionStore', () => {
       expect(s.findContact('628444@s.whatsapp.net')?.pushName).toBe('Peer4');
     });
   });
-
 });
