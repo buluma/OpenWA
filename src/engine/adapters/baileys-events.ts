@@ -24,6 +24,7 @@ import {
   BAILEYS_NON_CONTENT_TYPES,
   baileysChatJid,
   buildIncomingMessageFromBaileys,
+  contentTypeOf,
   extractBaileysBody,
   extractBaileysButtonReply,
   extractBaileysButtons,
@@ -32,10 +33,12 @@ import {
   extractBaileysContext,
   extractBaileysLocation,
   isBaileysCatalogShare,
+  isNoiseOnly,
   keyParticipant,
   mapBaileysEventResponseType,
   mapBaileysStatus,
   setBaileysText,
+  withoutFastRatchetDistribution,
 } from './baileys-message-mapper';
 import { buildEditedMessage } from './message-mapper';
 import { toUnixSeconds } from './baileys-history';
@@ -102,18 +105,6 @@ const PRESENCE_STATES: ReadonlySet<PresenceState> = new Set<PresenceState>([
  * only ones message.receipt is documented for. A 1:1 chat reports through messages.update instead.
  */
 const RECEIPT_CHAT_KINDS: ReadonlySet<ChatKind> = new Set<ChatKind>(['group', 'status']);
-
-/**
- * Top-level Message keys that carry no user content. A live message made only of these is dropped;
- * messageContextInfo rides along on real content too, so on its own it is not enough to drop.
- */
-const PROTOCOL_NOISE_KEYS: ReadonlySet<string> = new Set([
-  'senderKeyDistributionMessage',
-  'fastRatchetKeySenderKeyDistributionMessage',
-  'messageContextInfo',
-  'messageHistoryNotice',
-  'messageHistoryBundle',
-]);
 
 /** Wire value of `proto.WebMessageInfo.StubType.CIPHERTEXT`, set when part of a stanza failed to decrypt. */
 const CIPHERTEXT_STUB_TYPE = 2 as BaileysLib.proto.WebMessageInfo.StubType;
@@ -408,10 +399,12 @@ export class BaileysEvents {
   private readonly messageChanges = new KeyedMutationQueue();
   private changesPreparing = 0;
   private preparationRoom?: { ready: Promise<void>; release: () => void };
-  private retirePreparations!: () => void;
-  private preparationsRetired = new Promise<void>(resolve => {
-    this.retirePreparations = resolve;
-  });
+  /**
+   * What fenceStoredWrites runs to end the preparations still under way, one entry per preparation until it has
+   * ended. Each settles the promises that preparation waits on itself: racing them against a promise the adapter
+   * keeps for good would leave a reaction on it for every change, for as long as the account stays linked.
+   */
+  private readonly preparationRetirements = new Set<() => void>();
 
   private static readonly CHANGES_PARKED_LIMIT = 64;
 
@@ -443,11 +436,10 @@ export class BaileysEvents {
   /** Drop the store writes of every message that arrived before now; call before wiping the store. */
   fenceStoredWrites(): void {
     this.storeGeneration++;
-    const retire = this.retirePreparations;
-    this.preparationsRetired = new Promise<void>(resolve => {
-      this.retirePreparations = resolve;
-    });
-    retire();
+    const retirements = [...this.preparationRetirements];
+    this.preparationRetirements.clear();
+    for (const retire of retirements) retire();
+    this.wakePreparationWaiters();
   }
 
   /** Whether a delete for everyone of this message was accepted (see deletedForEveryone). */
@@ -688,7 +680,7 @@ export class BaileysEvents {
     const ownStatusPost = msg.key.fromMe === true && msg.key.remoteJid === 'status@broadcast';
     const normalized = b.normalizeMessageContent(msg.message ?? undefined) ?? msg.message ?? undefined;
     return (
-      isBaileysMediaType(b.getContentType(normalized)) &&
+      isBaileysMediaType(contentTypeOf(normalized, b.getContentType)) &&
       !ownStatusPost &&
       isMediaDownloadEnabled() &&
       coerceDeclaredSize(mediaSubMessage(normalized ?? {})?.fileLength) <= inboundMediaMaxBytes()
@@ -765,7 +757,7 @@ export class BaileysEvents {
       // normalized content too: a client wraps an edit in `editedMessage`, and `ephemeralMessage` can hold
       // a revoke or a reaction just as well, so the raw root does not always carry them.
       let normalizedRoot = b.normalizeMessageContent(msg.message ?? undefined) ?? msg.message ?? undefined;
-      let contentType = b.getContentType(normalizedRoot);
+      let contentType = contentTypeOf(normalizedRoot, b.getContentType);
       // A contact's edit, and a reaction in some chats, arrive encrypted under the secret of the message
       // they change. Read with the stored original's secret, they are handled below as the plain
       // protocol or reaction message they stand for; one that cannot be read stays dropped as non-content.
@@ -814,23 +806,23 @@ export class BaileysEvents {
       // A stanza with a CIPHERTEXT stub lost part of its payload to a decryption failure; if what
       // survived holds only protocol noise (even a lone messageContextInfo), drop it before storing
       // so a redelivery carrying the real body is not skipped as a duplicate.
-      const keys = Object.keys(normalizedRoot ?? {});
       const ciphertextStub = msg.messageStubType === CIPHERTEXT_STUB_TYPE;
-      if (
-        keys.every(k => PROTOCOL_NOISE_KEYS.has(k)) &&
-        (ciphertextStub || keys.some(k => k !== 'messageContextInfo'))
-      ) {
+      if (isNoiseOnly(normalizedRoot, ciphertextStub)) {
         this.host.logger.debug('Dropping contentless protocol message', {
           action: 'baileys_drop_protocol_noise',
           msgId: msg.key.id,
           remoteJid,
-          keys,
+          keys: Object.keys(normalizedRoot ?? {}),
           ...(ciphertextStub ? { ciphertextStub: true } : {}),
         });
         return;
       }
 
       // --- Normal message: enrich + emit ---
+      // Baileys' own readers of the message (the media download, a quote of it) type it by the first key that
+      // contains `Message`, which a fast-ratchet distribution merged in before the content is. contentType above
+      // passed over it, so the download, the click and the quote get the message without it too.
+      msg = withoutFastRatchetDistribution(msg);
       // A message the store already holds was delivered or sent before: WhatsApp re-delivers a node
       // whose ack was lost on a drop, so the second copy has to stop here. Downstream would not catch
       // it: the own-send path dispatches message.sent whatever its insert did, and the inbound path
@@ -919,7 +911,6 @@ export class BaileysEvents {
     work: (releasePreparation: () => void) => Promise<void>,
   ): Promise<void> {
     if (opts.generation !== this.storeGeneration) return;
-    const retired = this.preparationsRetired;
     if (!messageId) {
       if (opts.generation === this.storeGeneration) await work(() => undefined);
       return;
@@ -933,7 +924,7 @@ export class BaileysEvents {
         });
         this.preparationRoom = { ready, release };
       }
-      await Promise.race([this.preparationRoom.ready, retired]);
+      await this.preparationRoom.ready;
       if (opts.generation !== this.storeGeneration) return;
     }
     this.changesPreparing++;
@@ -952,16 +943,29 @@ export class BaileysEvents {
         if (opts.generation === this.storeGeneration) await work(releasePreparation);
       })().then(finish, fail);
       try {
-        await Promise.race([preparing, released, retired]);
+        await Promise.race([preparing, released]);
       } finally {
         this.changesPreparing--;
-        const room = this.preparationRoom;
-        this.preparationRoom = undefined;
-        room?.release();
+        this.wakePreparationWaiters();
       }
     });
-    const settled = Promise.race([done, retired]);
-    await (opts.yieldSlot ? opts.yieldSlot(() => settled) : settled);
+    const retire = (): void => {
+      releasePreparation();
+      finish();
+    };
+    this.preparationRetirements.add(retire);
+    try {
+      await (opts.yieldSlot ? opts.yieldSlot(() => done) : done);
+    } finally {
+      this.preparationRetirements.delete(retire);
+    }
+  }
+
+  /** Wake the arrivals waiting for room; each looks again for room, and whether its store was fenced meanwhile. */
+  private wakePreparationWaiters(): void {
+    const room = this.preparationRoom;
+    this.preparationRoom = undefined;
+    room?.release();
   }
 
   private async processMessageChange(

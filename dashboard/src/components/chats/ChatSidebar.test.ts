@@ -143,3 +143,14 @@ test('a Retry that is running is dimmed and shows the progress cursor', () => {
   assert.match(rule, /opacity:\s*0?\.[0-9]+/);
   assert.match(rule, /cursor:\s*progress/);
 });
+
+test('an unnamed privacy-id row is titled by its mapped phone, with its id as the tooltip', () => {
+  const lid: Chat = { ...chat('262813461250072@lid', 0), name: '262813461250072', phone: '15550006666' };
+  const named: Chat = { ...chat('262813461250073@lid', 0), name: 'Lia', phone: '15550007777' };
+  const { container } = renderSidebar('chats', [lid, named], { all: [], shown: [] });
+  const names = Array.from(container.querySelectorAll('.chat-item-name'));
+  assert.equal(names[0].textContent, '⁦+1 555 000 6666⁩');
+  assert.equal(names[0].getAttribute('title'), lid.id);
+  assert.equal(names[1].textContent, 'Lia');
+  assert.equal(names[1].getAttribute('title'), 'Lia');
+});

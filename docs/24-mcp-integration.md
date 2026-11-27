@@ -26,6 +26,7 @@
 | **OAuth 2.1 (public exposure)**   | 🔜 Planned     | Static API key is used today (suitable for self-hosted/internal)      |
 | **Agent-action audit provenance** | 🔜 Planned     | Mark audited actions as agent-initiated                               |
 | **Env-tunable rate limits**       | ✅ Implemented | `MCP_RATE_LIMIT_MAX` / `MCP_RATE_LIMIT_WINDOW_MS`                     |
+| **Opt-in result size cap**        | ✅ Implemented | `MCP_MAX_RESULT_BYTES` (off by default): text cut at the cap          |
 | **Additional tool domains**       | 🔜 Planned     | templates / channels / catalog / status (labels/automation now ship)  |
 
 ---
@@ -148,6 +149,8 @@ code is a transferable join capability, so it sits at OPERATOR like the QR endpo
 | **Label**      | list, get, chats for a label, labels on a chat                     | upsert, delete, add to chat, remove from chat                                                 |
 | **Automation** | rules list, get (OPERATOR)                                         | —                                                                                             |
 
+Each tool is advertised with a `title` and the MCP annotations `readOnlyHint`, `destructiveHint` and `idempotentHint`. The `title` is the human name a client shows, the tool name split into words (`MessageSendText` is "Message send text") unless the descriptor sets `title`. `openWorldHint` is not set, so the protocol default applies and a client treats every tool as open-world: the writes reach other WhatsApp users, and the reads return text they wrote (see the [threat model in 24.5](#threat-model-untrusted-message-content)).
+
 > **Labels split across the engines**, and each tool's description says which way. Every label
 > _read_ needs whatsapp-web.js — Baileys exposes no label query at all. Editing a label (upsert,
 > delete) needs Baileys — whatsapp-web.js cannot change a label. Only tagging and untagging a chat
@@ -173,6 +176,14 @@ The server is **read-only by default** — it mounts **only** `tier: 'read'` too
 opt in to write tools with `MCP_READONLY=false`. Any other value (or leaving it unset) keeps the safe
 read-only posture, so enabling MCP never silently exposes state-changing tools. Set `MCP_READONLY=false`
 only when an agent genuinely needs to send messages / mutate state.
+
+### Media in `MessageList`
+
+`MessageList` leaves media out: a media message is listed with an `{ omitted, sizeBytes }` marker in place of its payload. A call that sets `inlineMedia: true` gets the payloads inline as base64, up to a per-response budget (`MESSAGE_LIST_INLINE_MEDIA_BUDGET_BYTES`, 8 MiB by default), which makes a result very large. This differs from `GET /api/sessions/{sessionId}/messages`, which inlines unless asked not to: base64 is of no use to a model that reads the result as text, and one photo puts a page past what an MCP client takes.
+
+### Result size (`MCP_MAX_RESULT_BYTES`)
+
+A result up to 4 KB comes back as text; a larger one is offloaded as an embedded base64 resource with no upper bound. Claude Code saves that resource to a file, but a client that puts the whole result in the model's context (claude.ai, ChatGPT) fails or degrades past about 150000 characters, and one that shows the model text alone shows it none of the data. Set `MCP_MAX_RESULT_BYTES` to a byte count (for example `100000`) and every result comes back as one text item and none is offloaded: a payload at or under the cap whole, a larger one cut to at most that many UTF-8 bytes, never inside a character, then `…[truncated: <n> bytes in all; narrow the request, with limit and offset where the tool takes them, to see the rest]`. Error answers are cut at the same cap with a `…[truncated: <n> bytes in all]` note, including the refusal the SDK writes itself for arguments a tool's schema rejects, which names each invalid value. Unset or `0`, the default, means no cap, and Claude Code keeps getting the blob it saves to a file. The value is read once when the server mounts; a malformed one (`100k`) fails the boot.
 
 ## 24.5 Authentication & Security
 
@@ -244,6 +255,7 @@ MCP_ENABLED=true bun run start:prod   # or set MCP_ENABLED in your .env / compos
 MCP_READONLY=false                    # expose write tools (default is read-only when unset)
 MCP_RATE_LIMIT_MAX=60                 # max tool calls per key per window (default 60)
 MCP_RATE_LIMIT_WINDOW_MS=60000        # sliding window in ms (default 60000 = 1 min)
+MCP_MAX_RESULT_BYTES=100000           # every tool result as text, cut at this many bytes (default 0 = no cap)
 MCP_IP_RATE_LIMIT_MAX=120             # pre-auth per-IP message cap per window (default 120)
 MCP_IP_RATE_LIMIT_WINDOW_MS=60000     # per-IP window in ms (default 60000 = 1 min)
 ```
@@ -281,7 +293,7 @@ defineTool({
   description: 'Get one session by its UUID, including connection status.',
   tier: 'read',
   sessionScoped: true,
-  inputSchema: z.object({ sessionId: z.string().min(1).describe('Session UUID') }),
+  inputSchema: z.object({ sessionId: sessionIdSchema }),
   handler: input =>
     session.findOne(input.sessionId).then(s => SessionResponseDto.fromEntity(s, session.engineLoaded(s))),
 }),
@@ -295,8 +307,8 @@ Guidelines:
 - Mark writes with `tier: 'write'` and the appropriate `requiredRole`. Give a read the same
   `requiredRole` as the REST route it mirrors: the webhook and automation-rule reads,
   `GroupGetInviteCode` and `ContactCheckNumber` sit at OPERATOR because their REST routes do.
-- Use `sessionScoped: true` and a non-empty `sessionId` field for any per-session tool so
-  the scope check applies.
+- Leave `title` unset unless the name split into words reads badly.
+- Use `sessionScoped: true` and `sessionIdSchema` (exported by `src/core/agent-tools/tool-descriptor.ts`) for the `sessionId` field of any per-session tool, so the scope check applies and the id is bounded to the shape of a session key: letters, digits and hyphens, at most 128 characters. An id of any other shape is refused as invalid arguments before the tool runs.
 - A snapshot test (`tool-registry.spec.ts`) locks the public tool-name set; update it
   intentionally when the surface changes.
 

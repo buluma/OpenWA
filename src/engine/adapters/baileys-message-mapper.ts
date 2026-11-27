@@ -1,4 +1,5 @@
-import type { proto } from '@whiskeysockets/baileys';
+import type * as BaileysLib from '@whiskeysockets/baileys';
+import type { Chat, proto } from '@whiskeysockets/baileys';
 import {
   DeliveryStatus,
   EventResponseKind,
@@ -26,6 +27,118 @@ export const BAILEYS_NON_CONTENT_TYPES: ReadonlySet<string> = new Set([
   'secretEncryptedMessage',
   'encCommentMessage',
 ]);
+
+const FAST_RATCHET_DISTRIBUTION = 'fastRatchetKeySenderKeyDistributionMessage';
+
+/**
+ * Top-level Message keys that carry no user content: sender-key distributions (Signal traffic every group participant
+ * emits on its first write or a key rotation) and history-sync notices. `messageContextInfo` rides along on real
+ * content too, so on its own it is not enough to call a message noise (see {@link isNoiseOnly}).
+ */
+export const PROTOCOL_NOISE_KEYS: ReadonlySet<string> = new Set([
+  'senderKeyDistributionMessage',
+  FAST_RATCHET_DISTRIBUTION,
+  'messageContextInfo',
+  'messageHistoryNotice',
+  'messageHistoryBundle',
+]);
+
+/** The helpers of the loaded library that name the content a message carries. */
+export type ContentTypeLib = Pick<typeof BaileysLib, 'normalizeMessageContent' | 'getContentType'>;
+
+/**
+ * Whether a normalized message is made of protocol noise alone, which nothing announces. `messageContextInfo` is also
+ * carried by real content and by a type newer than the bundled proto, so a message of that key alone is not noise,
+ * unless `ciphertextStub` says part of its stanza failed to decrypt: what survived of that is dropped whatever it holds,
+ * so that a redelivery carrying the real body is not skipped as a duplicate.
+ */
+export function isNoiseOnly(content: object | null | undefined, ciphertextStub = false): boolean {
+  const keys = Object.keys(content ?? {});
+  return (
+    keys.every(key => PROTOCOL_NOISE_KEYS.has(key)) &&
+    (ciphertextStub || keys.some(key => key !== 'messageContextInfo'))
+  );
+}
+
+/**
+ * The key of the content a normalized message carries, as Baileys' `getContentType` names it, except that the noise keys
+ * are passed over. Baileys passes over the plain sender-key distribution by name, but the fast-ratchet one contains
+ * `Message` too, and Baileys merges the decrypted parts of a stanza in the order the stanza lists them: a real message
+ * whose parts merged with it first would be typed by it, announced as `unknown` and judged by the wrong key.
+ */
+export function contentTypeOf(
+  content: proto.IMessage | null | undefined,
+  getContentType: ContentTypeLib['getContentType'],
+): string | undefined {
+  const type = getContentType(content ?? undefined);
+  if (type === undefined || !PROTOCOL_NOISE_KEYS.has(type)) return type;
+  const rest = Object.entries(content ?? {}).filter(([key]) => !PROTOCOL_NOISE_KEYS.has(key));
+  return getContentType(Object.fromEntries(rest));
+}
+
+/**
+ * The message without a fast-ratchet sender-key distribution merged into it, or the message itself when it holds none.
+ * Baileys applies a distribution while it decrypts the stanza and never reads this key again, but its own readers of a
+ * message (the media download, the quote of a reply) type it by the first key that contains `Message`, which a
+ * distribution merged in before the content is, as {@link contentTypeOf} passes over it for the adapter's own readers.
+ * Only this key goes: `messageContextInfo` carries the secret that later edits, reactions and votes are read with, and
+ * the plain distribution is passed over by Baileys already. A copy, so the message Baileys holds is left as it is.
+ */
+export function withoutFastRatchetDistribution<T extends { message?: proto.IMessage | null } | null | undefined>(
+  msg: T,
+): T {
+  const content = msg?.message;
+  if (!msg || !content || !Object.hasOwn(content, FAST_RATCHET_DISTRIBUTION)) return msg;
+  const rest = Object.entries(content).filter(([key]) => key !== FAST_RATCHET_DISTRIBUTION);
+  return { ...msg, message: Object.fromEntries(rest) };
+}
+
+/**
+ * Whether a normalized message is none of its own: protocol noise alone, or a type that only changes or annotates
+ * another message (BAILEYS_NON_CONTENT_TYPES). The live path and the history capture drop such a message, and every
+ * list that has to agree with them asks this.
+ */
+export function isNonContent(
+  content: proto.IMessage | null | undefined,
+  getContentType: ContentTypeLib['getContentType'],
+): boolean {
+  const type = contentTypeOf(content, getContentType);
+  return isNoiseOnly(content) || (type !== undefined && BAILEYS_NON_CONTENT_TYPES.has(type));
+}
+
+/**
+ * A live chat update without what a message that is none of its own put in it: its unread count, its time and the
+ * message itself. Baileys counts whatever is not a plain reaction, edit, delete or poll vote as a received message, so
+ * a contact's encrypted edit or reaction, a pin, a keep-in-chat toggle, an album header, an event RSVP, an encrypted
+ * comment or a lone fast-ratchet sender-key distribution listed the chat unread with nothing new to read, and, by its
+ * time, brought back a chat WhatsApp had deleted, which only a message of its own may do. Only an update that counts
+ * exactly that one message is recognised: Baileys' event buffer adds the counts of one flush and keeps the last message
+ * alone, so a larger count may hold a message of its own and is left as it is. For the same reason the message has to
+ * be one Baileys counts, received and with no stub type: after a contact's text, the account's own pin or edit in the
+ * same flush leaves the text's count of one beside a message that was never counted. The account's own message carries
+ * no count at all, so an own count in the update belongs to something else and leaves it whole.
+ *
+ * Whatever else the update carries (a timer, a name, a mute, a pin, `archived`) is still the chat's. `undefined` says
+ * nothing is left of it but its id, which a store that has never seen the chat would take for a chat of its own.
+ *
+ * One case cannot be told apart: an unread mark set on the phone that Baileys delivers in the same flush just before
+ * such a message, as after a reconnect. The buffer folds the mark into the message's count and emits exactly what the
+ * message alone produces, so the mark is not listed. It stays on the account, and the phone still shows it.
+ */
+export function withoutNonContentMessage(
+  update: Partial<Chat>,
+  lib: ContentTypeLib | undefined,
+): Partial<Chat> | undefined {
+  const last = update.messages?.[0]?.message;
+  if (!lib || !last?.message || last.messageStubType) return update;
+  if (last.key?.fromMe === true ? Object.hasOwn(update, 'unreadCount') : update.unreadCount !== 1) return update;
+  if (!isNonContent(lib.normalizeMessageContent(last.message) ?? last.message, lib.getContentType)) return update;
+  const rest = { ...update };
+  delete rest.unreadCount;
+  delete rest.conversationTimestamp;
+  delete rest.messages;
+  return Object.keys(rest).every(key => key === 'id' || key === 'conditional') ? undefined : rest;
+}
 
 /**
  * Map Baileys' `EventResponseMessage.EventResponseType` (UNKNOWN=0, GOING=1, NOT_GOING=2, MAYBE=3)

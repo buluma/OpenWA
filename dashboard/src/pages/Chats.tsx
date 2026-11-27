@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo, useLayoutEffect } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { Trans, useTranslation } from 'react-i18next';
 import { nextReconnectState } from '../utils/reconnectState';
 import { applyIncomingToChatList, promoteChatWithSnippet } from '../utils/chatList';
@@ -28,7 +28,7 @@ import {
 import { useProfilePicture } from '../hooks/useProfilePicture';
 import { useProfilePictures } from '../hooks/useProfilePictures';
 import { useResolvedPhone, resolvedPhoneQuery, isResolvedPhoneHeld } from '../hooks/useResolvedPhone';
-import { formatPhoneForDisplay } from '../utils/formatPhone';
+import { formatPhoneForDisplay, isolateNumber } from '../utils/formatPhone';
 import {
   sessionApi,
   messageApi,
@@ -167,6 +167,28 @@ const CONFIRM_TEXT = {
   },
 } as const;
 
+/**
+ * Whether a chat's thread has loaded nothing so far, whether its load is still running or has failed: nobody has seen
+ * what a read of the chat would acknowledge, so the read waits for the thread (see the effect on its state). A load
+ * that is still running may fail after the read would have gone out, which is why it counts as unseen too.
+ */
+function threadUnseen(queryClient: QueryClient, sessionId: string, chatId: string): boolean {
+  const state = queryClient.getQueryState(messagesQueryKey(sessionId, chatId));
+  return state !== undefined && state.data === undefined;
+}
+
+// The key of a thread's draft: a chat id names a different thread in each session.
+const draftKey = (sessionId: string, chatId: string) => `${sessionId}\u0000${chatId}`;
+
+/** `drafts` with `text` as the draft of the thread `key`, or with none for it when the text is empty. */
+function withDraft(drafts: Record<string, string>, key: string, text: string): Record<string, string> {
+  if ((drafts[key] ?? '') === text) return drafts;
+  const next = { ...drafts };
+  if (text === '') delete next[key];
+  else next[key] = text;
+  return next;
+}
+
 export function Chats() {
   const { t } = useTranslation();
   useDocumentTitle(t('nav.chats'));
@@ -290,7 +312,8 @@ export function Chats() {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   const [replyingTo, setReplyingTo] = useState<ChatMessageView | null>(null);
-  // Draft text lives here (not in ChatComposer) so it survives closing/switching the room.
+  // Draft text lives here (not in ChatComposer) so it survives closing the room; each thread keeps its own (see the
+  // draft store below).
   const [messageInput, setMessageInput] = useState<string>('');
   // The staged attachment lives here for the same reason the draft text does — ChatComposer
   // unmounts when the room closes, which would silently discard a picked file. Unlike the text
@@ -325,6 +348,47 @@ export function Chats() {
     setPreviewUrl(null);
     setReplyingTo(null);
   }, [activeChat]);
+
+  // Each thread, by session and chat, keeps the text typed into it. Opening another one, in this session or another,
+  // puts the composer's text away under the thread it was typed in and brings back the one of the thread opened;
+  // closing the room and reopening it changes nothing. A layout effect, so the next room is never drawn with the text
+  // of the last one.
+  //
+  // `chatDrafts` is what the chat list shows of it: the text each thread would open with, under the same session and
+  // chat key, so a draft is never drawn on the row another session has for the same chat id and is still on its own
+  // row when its session is selected again. An entry is written when the composer's thread stops being the one open
+  // (the room closes, or shows another thread). The entry of the open thread is left as it was: its row shows the last
+  // message, as WhatsApp does, and every way out of the room writes the entry again, so typing costs no state update.
+  const draftsRef = useRef(new Map<string, string>());
+  const draftKeyRef = useRef<string | null>(null);
+  const [chatDrafts, setChatDrafts] = useState<Record<string, string>>({});
+  const openChatId = activeChat?.id;
+  useLayoutEffect(() => {
+    const previous = draftKeyRef.current;
+    if (openChatId === undefined) {
+      // A closed room keeps the field's text for the thread last open, whichever session is selected by now.
+      if (previous !== null) setChatDrafts(drafts => withDraft(drafts, previous, messageInput));
+      return;
+    }
+    const key = draftKey(selectedSessionId, openChatId);
+    if (previous === key) return;
+    draftKeyRef.current = key;
+    if (previous !== null) {
+      if (messageInput !== '') draftsRef.current.set(previous, messageInput);
+      setChatDrafts(drafts => withDraft(drafts, previous, messageInput));
+    }
+    setMessageInput(draftsRef.current.get(key) ?? '');
+    draftsRef.current.delete(key);
+  }, [selectedSessionId, openChatId, messageInput]);
+  // The selected session's drafts, by chat id, as the list reads them.
+  const sessionDrafts = useMemo(() => {
+    const prefix = draftKey(selectedSessionId, '');
+    const drafts: Record<string, string> = {};
+    for (const [key, text] of Object.entries(chatDrafts)) {
+      if (key.startsWith(prefix)) drafts[key.slice(prefix.length)] = text;
+    }
+    return drafts;
+  }, [chatDrafts, selectedSessionId]);
 
   // Per-chat scroll-position memory + auto-scroll heuristic.
   // Pass `messages.length > 0` as the loaded signal: it stays stable once the
@@ -363,14 +427,18 @@ export function Chats() {
   // Header phone line. Local formatting handles @c.us ids offline; for anything else personal
   // (notably @lid privacy ids, which are NOT phones and must never be formatted as one) resolve
   // the real number through the engine — cached a day, and only fired when local formatting failed.
+  // A privacy-id chat the gateway lists with its mapped phone needs no engine lookup.
   const activePhoneDisplay = activeChat ? formatPhoneForDisplay(activeChat.id) : null;
-  const needsPhoneResolution = Boolean(activeChat && activeChat.kind === 'individual' && !activePhoneDisplay);
+  const listedPhone = activeChat?.phone ? formatPhoneForDisplay(activeChat.phone) : null;
+  const needsPhoneResolution = Boolean(
+    activeChat && activeChat.kind === 'individual' && !activePhoneDisplay && !listedPhone,
+  );
   const resolvedPhoneQ = useResolvedPhone(
     needsPhoneResolution ? selectedSessionId || undefined : undefined,
     needsPhoneResolution ? activeChat?.id : undefined,
   );
   const activePhoneText =
-    activePhoneDisplay ?? (resolvedPhoneQ.data ? formatPhoneForDisplay(resolvedPhoneQ.data) : null);
+    activePhoneDisplay ?? listedPhone ?? (resolvedPhoneQ.data ? formatPhoneForDisplay(resolvedPhoneQ.data) : null);
 
   // The list loaders below reach the translator and the error toast through a ref, not as
   // dependencies: both change identity on a language switch, which re-ran the session load (it
@@ -439,6 +507,15 @@ export function Chats() {
       if (listedSessionRef.current !== selectedSessionId) return;
       rememberPatch(chatId, { unreadCount: 0 });
       setChats(prev => prev.map(c => (c.id === chatId ? { ...c, unreadCount: 0 } : c)));
+    },
+    [rememberPatch, selectedSessionId],
+  );
+  // The row of a chat that was cleared on opening, back with the count it had: its thread never showed, so it was not read.
+  const markRowUnread = useCallback(
+    (chatId: string, unreadCount: number) => {
+      if (listedSessionRef.current !== selectedSessionId) return;
+      rememberPatch(chatId, { unreadCount });
+      setChats(prev => prev.map(c => (c.id === chatId ? { ...c, unreadCount } : c)));
     },
     [rememberPatch, selectedSessionId],
   );
@@ -591,6 +668,14 @@ export function Chats() {
   const [readsInFlight] = useState(() => new Map<string, Promise<void>>());
   const [keptUnread] = useState(() => new Set<string>());
   const [withheldReads] = useState(() => new Set<string>());
+  // The unread count each chat had when it was opened, for the row that comes back if its thread never shows.
+  const [unreadAtOpen] = useState(() => new Map<string, number>());
+  // The chat on screen, by its session, which a read that falls due later asks whether its chat was left (see the
+  // layout effect that keeps it), and the chats it found left with their thread unseen, whose rows come back unread
+  // in an effect, for the tick that says there are some.
+  const [shown] = useState(() => new Map<string, string>());
+  const [leftUnseen] = useState(() => new Set<string>());
+  const [leftUnseenTick, setLeftUnseenTick] = useState(0);
   // Baileys acknowledges the messages a read names, and without any only the newest one it holds. A read names the
   // incoming messages of the thread that an earlier read has not acknowledged (the ones it named, per chat).
   const [acknowledged] = useState(() => new Map<string, Set<string>>());
@@ -600,8 +685,14 @@ export function Chats() {
     () =>
       createTrailingCoalescer<string>(chatId => {
         const key = readKey(selectedSessionId, chatId);
-        if (document.visibilityState === 'hidden') {
+        const unseen = threadUnseen(queryClient, selectedSessionId, chatId);
+        if (document.visibilityState === 'hidden' || unseen) {
           withheldReads.add(key);
+          // A chat left before its thread showed was not read: its row, cleared when it was opened, is unread again.
+          if (unseen && shown.get(selectedSessionId) !== chatId && unreadAtOpen.has(key)) {
+            leftUnseen.add(key);
+            setLeftUnseenTick(tick => tick + 1);
+          }
           return;
         }
         let named: string[] = [];
@@ -632,7 +723,19 @@ export function Chats() {
           if (readsInFlight.get(key) === read) readsInFlight.delete(key);
         });
       }, MARK_READ_DEBOUNCE_MS),
-    [selectedSessionId, t, showWarningToast, readsInFlight, withheldReads, acknowledged, engineType, queryClient],
+    [
+      selectedSessionId,
+      t,
+      showWarningToast,
+      readsInFlight,
+      withheldReads,
+      unreadAtOpen,
+      shown,
+      leftUnseen,
+      acknowledged,
+      engineType,
+      queryClient,
+    ],
   );
 
   // Flush pending trailing calls on unmount / session switch: the mark-as-read POST is
@@ -672,6 +775,8 @@ export function Chats() {
     chatsRef.current = chats;
     activeChatIdRef.current = activeChat?.id;
     selectedSessionRef.current = selectedSessionId;
+    shown.clear();
+    if (activeChat) shown.set(selectedSessionId, activeChat.id);
   });
   // A request that settles after the page is left no longer finds the chat open, so its follow-ups
   // (the reconnect mark-as-read) do nothing.
@@ -1118,12 +1223,45 @@ export function Chats() {
     markChatRead(activeChat.id);
     // A read-only key sends no mark-as-read, so the chat stays unread on the gateway; clearing the
     // badge here would only have the next chat-list load bring it back.
-    if (canWrite) markRowRead(activeChat.id);
+    if (canWrite) {
+      const unread = chatsRef.current.find(c => c.id === activeChat.id)?.unreadCount ?? 0;
+      unreadAtOpen.set(readKey(selectedSessionId, activeChat.id), unread);
+      markRowRead(activeChat.id);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeChat?.id, markChatRead, canWrite]);
 
-  // On Baileys the read of an opened chat falls due before its thread has loaded, so it names no message. Once
-  // the thread is there the chat is read again, naming what it holds (the coalescer merges the two when close).
+  // The rows of the chats whose read fell due after they were left with their thread unseen come back unread: nobody
+  // saw what they hold. The ones of another session are left to its own list, which asks the gateway.
+  useEffect(() => {
+    for (const key of leftUnseen) {
+      const [sessionId, chatId] = key.split('\u0000');
+      const unread = unreadAtOpen.get(key) ?? 0;
+      if (sessionId === selectedSessionId && unread > 0) markRowUnread(chatId, unread);
+    }
+    leftUnseen.clear();
+  }, [leftUnseenTick, leftUnseen, unreadAtOpen, selectedSessionId, markRowUnread]);
+
+  // A thread that has loaded nothing shows nothing, so the chat cleared on open was not read: a thread that fails to load
+  // brings its badge back, and the read that was withheld while it loaded goes out, with the badge cleared again, once a
+  // later load of the thread succeeds. A refresh that fails after the thread showed leaves what was read as it is.
+  useEffect(() => {
+    if (!activeChat || !canWrite || loadingMessages) return;
+    const key = readKey(selectedSessionId, activeChat.id);
+    if (messagesError && threadUnseen(queryClient, selectedSessionId, activeChat.id)) {
+      const opened = unreadAtOpen.get(key) ?? 0;
+      if (opened > 0) markRowUnread(activeChat.id, opened);
+      return;
+    }
+    if (messagesError || !withheldReads.delete(key)) return;
+    markChatRead(activeChat.id);
+    markRowRead(activeChat.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeChat?.id, loadingMessages, messagesError, canWrite]);
+
+  // On Baileys a read names the incoming messages of the thread. The read of an opened chat waits for its thread
+  // (see threadUnseen), so it names what the thread holds; once the thread is there the chat is read again, which the
+  // coalescer merges with the read that waited when the two are close.
   useEffect(() => {
     if (activeChat && engineType === 'baileys' && !loadingMessages && messages.length > 0) {
       markChatRead(activeChat.id);
@@ -1327,6 +1465,27 @@ export function Chats() {
     return null;
   };
 
+  // A chat opened to write in it takes focus in its message field, so typing can start at once: a click on its row
+  // with a mouse or a pen, or a pick in the New chat panel, which closes and would leave focus on the page. Bumped
+  // when the chat is chosen, so that the focus is made once the room has rendered: a room opened from the placeholder
+  // has no field until then. Never after a tap, where a focused field raises a phone's keyboard over the thread that
+  // was just opened. A read-only key keeps its focus as well, its field being disabled.
+  const [composerFocusSeq, setComposerFocusSeq] = useState(0);
+  const chatPageRef = useRef<HTMLDivElement | null>(null);
+  // How the page was last pressed: the pointerdown's pointerType ('touch' for a tap), '' after a key.
+  const pagePressRef = useRef('');
+  useLayoutEffect(() => {
+    if (composerFocusSeq === 0 || pagePressRef.current === 'touch') return;
+    chatPageRef.current
+      ?.querySelector<HTMLTextAreaElement>('.message-text-input:not(:disabled)')
+      ?.focus({ preventScroll: true });
+  }, [composerFocusSeq]);
+  // A key on a row keeps focus on it, and so does a click on the row of the chat already open, where nothing opens.
+  const handleSelectChat = useCallback((chat: Chat, byPointer?: boolean) => {
+    if (byPointer && chat.id !== activeChatIdRef.current) setComposerFocusSeq(n => n + 1);
+    setActiveChat(chat);
+  }, []);
+
   // Open a chat picked in the new-chat panel. A chat with no history is not in the engine's list, so
   // it is added to the sidebar locally until the first message, or the next list load, settles it.
   // The filter and search are cleared so the opened chat is visible in the list. A chat the panel found
@@ -1340,6 +1499,8 @@ export function Chats() {
     setActiveChannel(null);
     setActiveStatusContactId(null);
     setActiveChat(existing ?? chat);
+    // Whatever opened it, a key included: the panel closes with the control that held focus.
+    setComposerFocusSeq(n => n + 1);
     setShowNewChat(false);
     setChatFilter('all');
     setSearchQuery('');
@@ -1666,9 +1827,20 @@ export function Chats() {
   const activeChatDisplayName = headerChat ? chatHeaderDisplayName(headerChat) : '';
   const activeChatUsername = headerChat ? formatWhatsAppUsername(headerChat.username) : undefined;
   const showTechnicalChatId = headerChat ? shouldShowTechnicalChatId(headerChat, Boolean(activePhoneText)) : false;
+  // An unnamed chat titled by its phone does not show that phone a second time under the title.
+  const titledByPhone = Boolean(activePhoneText) && activeChatDisplayName === isolateNumber(activePhoneText!);
 
   return (
-    <div className="chats-page">
+    <div
+      className="chats-page"
+      ref={chatPageRef}
+      onPointerDownCapture={e => {
+        pagePressRef.current = e.pointerType;
+      }}
+      onKeyDownCapture={() => {
+        pagePressRef.current = '';
+      }}
+    >
       <PageHeader
         title={t('nav.chats')}
         subtitle={t('chats.subtitle')}
@@ -1741,7 +1913,8 @@ export function Chats() {
               chats: filteredChats,
               activeChatId: activeChat?.id,
               pictures: listPics.data,
-              onSelectChat: setActiveChat,
+              drafts: sessionDrafts,
+              onSelectChat: handleSelectChat,
               filter: chatFilter,
               onFilterChange: setChatFilter,
               rowActions,
@@ -1794,10 +1967,12 @@ export function Chats() {
                         @c.us ids, engine-resolved for @lid privacy ids (which are NOT phones and
                         must never be formatted as one). Groups fall back to a semantic label;
                         the raw JID follows below for the technical case. */}
-                    <span className="room-contact-phone">
-                      {activePhoneText ??
-                        (activeChat.isGroup ? t('chats.groupSubtitle') : t('chats.privateContactSubtitle'))}
-                    </span>
+                    {!titledByPhone && (
+                      <span className="room-contact-phone">
+                        {activePhoneText ??
+                          (activeChat.isGroup ? t('chats.groupSubtitle') : t('chats.privateContactSubtitle'))}
+                      </span>
+                    )}
                     {/* Raw JID preserved for the technical case (the gateway speaks JIDs everywhere:
                         webhooks, message rows, lid resolution). Monospace + muted so it doesn't compete
                         with the human-facing name/number. */}

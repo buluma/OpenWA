@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Dashboard: the chat composer is multi-line and grows with its draft (Enter sends, Shift+Enter breaks the line), and an unsent draft is listed on its chat row after a `Draft:` label; each chat keeps its own draft (upstream #2123, #2125).
+- Dashboard: `/name` in the chat composer offers the session's templates by name and inserts the chosen one into the message field, to be sent like any other message.
+- MCP: every tool is advertised with a `title` (upstream #2098), and the opt-in `MCP_MAX_RESULT_BYTES` cuts every tool result to that many bytes of text; unset or `0` keeps results unlimited.
+- `GET /api/sessions/{sessionId}/chats` lists `phone` for a Baileys privacy-id chat the session can map, and the dashboard titles and finds an unnamed one by it (upstream #2134).
 - Add Number Checker page in dashboard for single and bulk WhatsApp recipient pre-validation, in every dashboard language (#1865). Thanks @Purushotham-Prajapati-24.
 - Add the opt-in `message.receipt` event for per-recipient group and status receipts on Baileys, sent to the webhooks and `/events` subscribers that name it (#1748); the JavaScript, Python, Go and Java SDKs list the event name from SDK 0.7.0. Receipts are bounded per webhook: a quarter of `WEBHOOK_DISPATCH_CONCURRENCY` deliveries run at once, shared by a session's receipt webhooks, three quarters of `WEBHOOK_DISPATCH_MAX_QUEUED` events wait for each, and further receipts are dropped and counted in `openwa_webhook_delivery_failures_total`. Thanks @KGMA74, and @berodcdev for the request.
 - Record plugin install, update, uninstall, enable, disable, configuration and session activation changes in the audit log.
@@ -21,6 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Baileys: `GET /api/sessions/{sessionId}/chats` lists `name` as `""` for an unnamed privacy-id chat, where it was the id's own digits; chat names are trimmed, and a blank one falls back to the contact name or the id's digits.
+- MCP: `MessageList` lists a media message without its payload (an `omitted` marker with `sizeBytes`) unless the call sets `inlineMedia: true`.
+- MCP: a tool's `sessionId` takes letters, digits and hyphens, at most 128 characters.
+- The storage export archive is written `0600` in a `0700` `data/exports`.
+- Dashboard: a chat is marked read once its thread has loaded, not when it is opened; a refused stored-message read shows as a failed load instead of falling back to engine history.
 - The SSRF guard also refuses the documentation and benchmarking address ranges (TEST-NET-1 to 3, `2001:db8::/32`, `3fff::/20`, `2001:2::/48`) and the 6a44 relay anycast address `192.88.99.2` in webhook, media, plugin download and plugin request urls; `SSRF_ALLOWED_HOSTS` still names such a host on purpose.
 - The local media store (`STORAGE_LOCAL_PATH`, `./data/media` by default) is owner-only: its root is set `0700` at every boot and new directories and files are written `0700` and `0600`, as the databases and the engine auth directories already are. A process that reads the directory as another user, such as a static file server or a backup job under another uid, loses access; files written earlier keep their mode but sit under the `0700` root. `STORAGE_TYPE=s3` is not affected.
 - Raise the minimum Node.js version for OpenWA to 22.23.4.
@@ -60,6 +69,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Baileys: a reaction, edit or delete no longer keeps memory until the account is unlinked, and a connect or reconnect no longer leaves a key cache timer running.
+- Baileys: a link preview built from a fetched page cuts its title to 256 and its description to 1024 characters.
+- Baileys: a contact name that is only the privacy id's digits is no longer stored or listed as the contact's name.
+- Baileys: an encrypted edit or reaction, pin, keep-in-chat toggle, album header, event RSVP, encrypted comment or lone sender-key distribution no longer lists a chat as unread or brings back a chat deleted on the phone, and an unarchive update alone no longer lists a chat the session never saw.
 - Creating, changing and deleting a webhook write `webhook_created`, `webhook_updated` and `webhook_deleted` audit rows with the key, the session, the URL host and the events, never the secret, headers or URL path and query; they wrote none (upstream).
 - Dashboard: a document in a chat shows as a card with its file name, its size where known and a PDF mark, and a click still downloads it; one left out of the message list showed only `Media` (upstream #2105).
 - Dashboard: a shared contact shows as a card with its name and phone, in the thread, the chat list and a quoted reply, where the raw `BEGIN:VCARD` text was printed (upstream #2110).

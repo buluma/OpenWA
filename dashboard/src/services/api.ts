@@ -251,6 +251,11 @@ export interface Chat {
   id: string;
   name: string;
   username?: string;
+  /**
+   * Phone digits of a chat held under a privacy id (@lid), when the session can map it. Optional: a gateway that does
+   * not fill it leaves the chat titled by its username or its id, as before.
+   */
+  phone?: string;
   isGroup: boolean;
   kind: ChatKind;
   unreadCount: number;

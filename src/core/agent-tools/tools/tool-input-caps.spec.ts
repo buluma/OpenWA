@@ -33,6 +33,8 @@ import { SubscribePresenceDto } from '../../../modules/session/dto/presence.dto'
 import { z } from 'zod';
 import type { AnyToolDescriptor } from '../tool-descriptor';
 import { allAgentTools } from '.';
+import { MAX_SESSION_ID_LENGTH } from '../tool-descriptor';
+import { isSafeSessionName } from '../../../common/utils/path-safety';
 import { messageTools } from './message.tools';
 import { groupTools } from './group.tools';
 
@@ -310,5 +312,54 @@ describe('MCP tool chat ids take the shape the REST bodies require', () => {
       expect({ chatId, toolAccepts }).toEqual({ chatId, toolAccepts: restAccepts });
       expect(restAccepts).toBe(WELL_FORMED.includes(chatId));
     }
+  });
+});
+
+/**
+ * A session id is letters, digits and hyphens (isSafeSessionName, the key the engine factory refuses to run any other
+ * as), at most 128 characters (the cap the realtime subscribe applies to the same ids). The tools call the services
+ * directly, so left as any string, an id of a megabyte or one with a slash reached the lookup. Each tool that names a
+ * session accepts and refuses exactly those ids, a restored id included (those are not UUIDs).
+ */
+describe('MCP tool session ids take the shape a session key has', () => {
+  const tools = allAgentTools({} as never);
+  const sessionFields = tools.flatMap(t => {
+    const shape = (t.inputSchema as unknown as z.ZodObject<Record<string, z.ZodType>>).shape;
+    return 'sessionId' in shape ? [[t.name, shape.sessionId] as const] : [];
+  });
+  const keyAccepts = (id: string): boolean => isSafeSessionName(id) && id.length <= MAX_SESSION_ID_LENGTH;
+  const ids = [
+    's1',
+    'sess-1',
+    '5b8f1c2e-1a2b-4c3d-8e9f-0a1b2c3d4e5f',
+    'a'.repeat(MAX_SESSION_ID_LENGTH),
+    'a'.repeat(MAX_SESSION_ID_LENGTH + 1),
+    'x'.repeat(100_000),
+    'a b',
+    ' s1',
+    's1\n',
+    '../x',
+    'a/b',
+    'a.b',
+    'a_b',
+    'sess:1',
+    'caf\u00e9',
+  ];
+
+  it('finds the session id fields to check', () => {
+    const scoped = tools.filter(t => t.sessionScoped).map(t => t.name);
+    expect(sessionFields.map(([name]) => name)).toEqual(expect.arrayContaining(scoped));
+    expect(sessionFields.length).toBeGreaterThan(30);
+  });
+
+  it.each(sessionFields)('%s accepts and refuses the same ids as a session key', (_name, schema) => {
+    for (const id of ids) {
+      expect({ id: id.slice(0, 24), length: id.length, toolAccepts: schema.safeParse(id).success }).toEqual({
+        id: id.slice(0, 24),
+        length: id.length,
+        toolAccepts: keyAccepts(id),
+      });
+    }
+    expect(ids.filter(keyAccepts)).toContain('a'.repeat(MAX_SESSION_ID_LENGTH));
   });
 });

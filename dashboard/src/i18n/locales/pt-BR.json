@@ -94,6 +94,7 @@
     "loadingChats": "Carregando chats...",
     "empty": "Sem chats",
     "noMessageYet": "Ainda sem mensagens",
+    "draftLabel": "Rascunho:",
     "unreadBadge": "{{count}} mensagem não lida",
     "unreadBadge_other": "{{count}} mensagens não lidas",
     "unreadBadge_many": "{{count}} mensagens não lidas",
@@ -367,6 +368,17 @@
       "count_many": "{{count}} items",
       "missing_one": "{{count}} item without stored media",
       "missing_many": "{{count}} items without stored media"
+    },
+    "slash": {
+      "title": "Respostas rápidas",
+      "hint": "Enter insere o modelo destacado. Envie quando estiver pronto.",
+      "placeholder": "Mensagem ou /modelo…",
+      "empty": "Nenhum modelo corresponde",
+      "needsVars": "Preencha as variáveis do modelo antes de enviar.",
+      "loading": "Carregando modelos… Enter aguarda o carregamento.",
+      "loadError": "Não foi possível carregar os modelos",
+      "close": "Fechar a lista de modelos",
+      "more": "Há mais modelos que correspondem. Continue digitando para reduzir a lista."
     }
   },
   "errorBoundary": {

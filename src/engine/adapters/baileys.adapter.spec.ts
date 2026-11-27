@@ -4200,6 +4200,39 @@ describe('BaileysAdapter inbound fan-out', () => {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
       expect(onMessage.mock.calls[0][0]).toMatchObject({ type: 'text', body: 'hello group' });
     });
+
+    // Baileys merges the decrypted parts of one stanza in the order the stanza lists them, and its content type is the
+    // first key that contains `Message`: the fast-ratchet distribution does, so it can stand for a real message.
+    it.each<[string, Record<string, unknown>]>([
+      [
+        'before',
+        { fastRatchetKeySenderKeyDistributionMessage: { groupId: '120363@g.us' }, conversation: 'hello group' },
+      ],
+      [
+        'after',
+        { conversation: 'hello group', fastRatchetKeySenderKeyDistributionMessage: { groupId: '120363@g.us' } },
+      ],
+    ])(
+      'emits a real message that merged with a fast-ratchet distribution %s it as the text it is',
+      async (_where, message) => {
+        const { onMessage } = await fireLive('FR_TEXT', message);
+        expect(onMessage).toHaveBeenCalledTimes(1);
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+        expect(onMessage.mock.calls[0][0]).toMatchObject({ type: 'text', body: 'hello group' });
+      },
+    );
+
+    it('drops a pin that merged after a fast-ratchet distribution as it drops a pin', async () => {
+      const { onMessage, debug } = await fireLive('FR_PIN', {
+        fastRatchetKeySenderKeyDistributionMessage: { groupId: '120363@g.us' },
+        pinInChatMessage: { key: { id: 'X' } },
+      });
+      expect(onMessage).not.toHaveBeenCalled();
+      expect(debug).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ action: 'baileys_drop_non_content', contentType: 'pinInChatMessage' }),
+      );
+    });
   });
 
   it('learns the lid pair carried on a dropped sender-key distribution before dropping it (#1568)', async () => {
@@ -7775,6 +7808,193 @@ describe('BaileysAdapter sendSeen + markUnread + deleteChat', () => {
     fakeSock.fire('connection.update', { connection: 'open' });
     expect(await adapter.sendSeen('628999@s.whatsapp.net')).toBe(false);
     expect(fakeSock.readMessages).not.toHaveBeenCalled();
+  });
+
+  describe('a chat update that counts a message that is none of its own', () => {
+    // Baileys raises the count for whatever is not a plain reaction, edit, delete or poll vote, and hands the message
+    // it counted along with the update.
+    const counting = (content: Record<string, unknown>, unreadCount = 1, beside: Record<string, unknown> = {}) => [
+      {
+        id: '628111@s.whatsapp.net',
+        unreadCount,
+        conversationTimestamp: 1700000040,
+        messages: [
+          {
+            message: {
+              key: { remoteJid: '628111@s.whatsapp.net', fromMe: beside.fromMe === true, id: 'X1' },
+              message: content,
+              ...(beside.stub ? { messageStubType: beside.stub } : {}),
+            },
+          },
+        ],
+      },
+    ];
+    const unread = async (adapter: BaileysAdapter): Promise<number | undefined> =>
+      (await adapter.getChats()).find(chat => chat.id === '628111@c.us')?.unreadCount;
+    // Baileys merges the decrypted parts of one stanza in the order the stanza lists them.
+    const pinAfterDistribution = { fastRatchetKeySenderKeyDistributionMessage: {}, pinInChatMessage: {} };
+
+    beforeEach(() => {
+      jest
+        .requireMock<Record<string, jest.Mock>>('@whiskeysockets/baileys')
+        .getContentType.mockImplementation(realGetContentType);
+    });
+
+    it.each([
+      ['an encrypted edit', { secretEncryptedMessage: {} }],
+      ['an encrypted reaction', { encReactionMessage: {} }],
+      ['a pin', { pinInChatMessage: {} }],
+      ['an album header', { albumMessage: {} }],
+      ['an event RSVP', { encEventResponseMessage: {} }],
+      // The plain sender-key distribution is skipped by Baileys' own content type; this one is not.
+      ['a fast-ratchet sender-key distribution', { fastRatchetKeySenderKeyDistributionMessage: {} }],
+      ['a pin that merged after a fast-ratchet sender-key distribution', pinAfterDistribution],
+    ])('does not list the chat as unread for %s', async (_what, content) => {
+      const adapter = await readyWithMessage();
+
+      fakeSock.fire('chats.update', counting(content));
+
+      expect(await unread(adapter)).toBe(0);
+    });
+
+    it('lists the chat as unread for a message of its own', async () => {
+      const adapter = await readyWithMessage();
+
+      fakeSock.fire('chats.update', counting({ conversation: 'new' }));
+
+      expect(await unread(adapter)).toBe(1);
+    });
+
+    it.each([
+      ['before', { fastRatchetKeySenderKeyDistributionMessage: {}, conversation: 'new' }],
+      ['after', { conversation: 'new', fastRatchetKeySenderKeyDistributionMessage: {} }],
+    ])(
+      'lists the chat as unread for a text that merged with a fast-ratchet distribution %s it',
+      async (_where, content) => {
+        const adapter = await readyWithMessage();
+
+        fakeSock.fire('chats.update', counting(content));
+
+        expect(await unread(adapter)).toBe(1);
+      },
+    );
+
+    it.each([
+      ['a count', 1],
+      ['a mark set by hand', -1],
+    ])('leaves %s the chat already has', async (_what, held) => {
+      const adapter = await readyWithMessage();
+      fakeSock.fire('chats.update', [{ id: '628111@s.whatsapp.net', unreadCount: held }]);
+
+      fakeSock.fire('chats.update', counting({ secretEncryptedMessage: {} }));
+
+      expect(await unread(adapter)).toBe(held);
+    });
+
+    it('leaves the count of a flush that adds up several messages, which may hold one of its own', async () => {
+      const adapter = await readyWithMessage();
+
+      fakeSock.fire('chats.update', counting({ secretEncryptedMessage: {} }, 2));
+
+      expect(await unread(adapter)).toBe(2);
+    });
+
+    // Baileys adds a received message's count and keeps the last message of the flush alone: after a contact's text,
+    // the account's own pin or edit leaves the text's count beside a message that was never counted.
+    it.each([
+      ["the account's own pin", { pinInChatMessage: {} }, { fromMe: true }],
+      ["the account's own encrypted edit", { secretEncryptedMessage: {} }, { fromMe: true }],
+      ['a message with a stub type', { secretEncryptedMessage: {} }, { stub: 2 }],
+    ])('keeps a count of one that stands beside %s, which Baileys did not count', async (_what, content, beside) => {
+      const adapter = await readyWithMessage();
+
+      fakeSock.fire('chats.update', counting(content, 1, beside));
+
+      expect(await unread(adapter)).toBe(1);
+    });
+
+    it('stays read after a read when a contact then edits a message', async () => {
+      const adapter = await readyWithMessage();
+      fakeSock.fire('chats.update', [{ id: '628111@s.whatsapp.net', unreadCount: 1 }]);
+      expect(await adapter.sendSeen('628111@c.us')).toBe(true);
+
+      fakeSock.fire('chats.update', counting({ secretEncryptedMessage: {} }));
+
+      expect(await unread(adapter)).toBe(0);
+    });
+
+    // The update also carries the message's time and the message itself, which would bring back a chat WhatsApp
+    // deleted, or give a chat the session never knew a row of its own.
+    describe('for a chat deleted on the phone', () => {
+      const raised = (content: Record<string, unknown>, fromMe = false) => [
+        {
+          id: '628111@s.whatsapp.net',
+          ...(fromMe ? {} : { unreadCount: 1 }),
+          conversationTimestamp: 1700000060,
+          messages: [{ message: { key: { remoteJid: '628111@s.whatsapp.net', fromMe, id: 'X1' }, message: content } }],
+        },
+      ];
+      const deletedOnPhone = async (): Promise<BaileysAdapter> => {
+        const adapter = await readyWithMessage();
+        fakeSock.fire('chats.upsert', [{ id: '628111@s.whatsapp.net' }]);
+        fakeSock.fire('chats.delete', ['628111@s.whatsapp.net']);
+        expect(await adapter.getChats()).toEqual([]);
+        return adapter;
+      };
+
+      const KINDS: Array<[string, Record<string, unknown>]> = [
+        ['an encrypted edit', { secretEncryptedMessage: {} }],
+        ['an encrypted reaction', { encReactionMessage: {} }],
+        ['a pin', { pinInChatMessage: {} }],
+        ['a keep-in-chat toggle', { keepInChatMessage: {} }],
+        ['an album header', { albumMessage: {} }],
+        ['an event RSVP', { encEventResponseMessage: {} }],
+        ['an encrypted comment', { encCommentMessage: {} }],
+      ];
+
+      it.each(KINDS)('keeps the chat out of the list when %s arrives from a contact', async (_what, content) => {
+        const adapter = await deletedOnPhone();
+        fakeSock.fire('chats.update', raised(content));
+        expect(await adapter.getChats()).toEqual([]);
+      });
+
+      it.each(KINDS)(
+        'keeps the chat out of the list when %s arrives from another device of the account',
+        async (_what, content) => {
+          const adapter = await deletedOnPhone();
+          fakeSock.fire('chats.update', raised(content, true));
+          expect(await adapter.getChats()).toEqual([]);
+        },
+      );
+
+      it('still applies what else the update carries, a disappearing-messages timer', async () => {
+        const adapter = await deletedOnPhone();
+        fakeSock.fire('chats.update', [{ ...raised({ pinInChatMessage: {} })[0], ephemeralExpiration: 604800 }]);
+        const store = (adapter as unknown as { sessionStore: { getEphemeralExpiration: (id: string) => unknown } })
+          .sessionStore;
+        expect(store.getEphemeralExpiration('628111@c.us')).toBe(604800);
+      });
+
+      it.each([
+        ['a text', { conversation: 'back again' }],
+        [
+          'a text and a fast-ratchet distribution that merged with it',
+          { conversation: 'back', fastRatchetKeySenderKeyDistributionMessage: {} },
+        ],
+      ])('lists the chat again for %s', async (_what, content) => {
+        const adapter = await deletedOnPhone();
+        fakeSock.fire('chats.update', raised(content));
+        expect(await adapter.getChats()).toEqual([expect.objectContaining({ id: '628111@c.us', unreadCount: 1 })]);
+      });
+
+      it('lists no chat the session never knew for a message that is none of its own', async () => {
+        const adapter = newAdapter();
+        await adapter.initialize({});
+        fakeSock.fire('connection.update', { connection: 'open' });
+        fakeSock.fire('chats.update', raised({ pinInChatMessage: {} }));
+        expect(await adapter.getChats()).toEqual([]);
+      });
+    });
   });
 
   it('markUnread marks the chat unread via chatModify with the last message', async () => {

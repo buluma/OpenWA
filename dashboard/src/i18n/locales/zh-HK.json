@@ -92,6 +92,7 @@
     "loadingChats": "正在載入聊天...",
     "empty": "沒有聊天",
     "noMessageYet": "尚無訊息",
+    "draftLabel": "草稿：",
     "unreadBadge": "{{count}} 條未讀訊息",
     "unreadBadge_other": "{{count}} 條未讀訊息",
     "markedUnread": "已標示為未讀",
@@ -360,6 +361,17 @@
       },
       "count_one": "{{count}} item",
       "missing_one": "{{count}} item without stored media"
+    },
+    "slash": {
+      "title": "快速回覆",
+      "hint": "Enter 插入反白的範本。準備好再傳送。",
+      "placeholder": "訊息或 /範本…",
+      "empty": "沒有相符範本",
+      "needsVars": "傳送前請先填寫範本中的佔位符。",
+      "loading": "正在載入範本… 載入完成前，Enter 暫不生效。",
+      "loadError": "無法載入範本",
+      "close": "關閉範本清單",
+      "more": "還有更多相符的範本。繼續輸入以縮小範圍。"
     }
   },
   "errorBoundary": {

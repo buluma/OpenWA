@@ -1,7 +1,22 @@
-import type { z } from 'zod';
+import { z } from 'zod';
 import type { ApiKey } from '../../modules/auth/entities/api-key.entity';
 import type { ApiKeyRole } from '../../modules/auth/entities/api-key.entity';
 import type { ChatScopeService } from '../../modules/auth/chat-scope.service';
+
+/** The longest session id a tool takes: the cap the realtime subscribe applies to the same ids. */
+export const MAX_SESSION_ID_LENGTH = 128;
+
+/**
+ * A session id taken by a tool: letters, digits and hyphens (the only key the engine factory runs a session under; a
+ * restored id is not a UUID), at most MAX_SESSION_ID_LENGTH characters. The tools call the services directly, so no
+ * pipe runs, and any other id would reach the lookup, which has to cut what it quotes in its not-found answer.
+ */
+export const sessionIdSchema = z
+  .string()
+  .min(1)
+  .max(MAX_SESSION_ID_LENGTH)
+  .regex(/^[A-Za-z0-9-]+$/, 'a session id holds only letters, digits and hyphens')
+  .describe('Session UUID (the session id, not the name)');
 
 /** A single agent-invocable capability. Protocol-neutral: no MCP types here. */
 export interface ToolDescriptor<I = unknown> {
@@ -11,6 +26,8 @@ export interface ToolDescriptor<I = unknown> {
   description: string;
   /** Input contract: validates the call AND is advertised to the agent. */
   inputSchema: z.ZodType<I>;
+  /** Human-readable name shown to the user (MCP `title`). Defaults to the name split into words: 'Message send text'. */
+  title?: string;
   tier: 'read' | 'write';
   /** True for irreversible or state-overwriting ops; surfaced to MCP clients as destructiveHint. */
   destructive?: boolean;

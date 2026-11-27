@@ -1130,6 +1130,11 @@ export interface WebhookRedriveResult {
 export interface ChatSummary {
   id: Jid;
   name: string;
+  /**
+   * Phone digits of a 1:1 chat WhatsApp holds under a privacy id (`@lid`), when the session can map
+   * it. Absent for a phone-keyed chat and when the mapping is unknown.
+   */
+  phone?: string;
   /** WhatsApp username, when available. */
   username?: string;
   isGroup: boolean;

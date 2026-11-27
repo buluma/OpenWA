@@ -16,12 +16,19 @@ import {
   BUTTON_TEXT_MAX_LENGTH,
   extractBaileysCommerce,
   extractBaileysContext,
+  type ContentTypeLib,
+  contentTypeOf,
   isBaileysCatalogShare,
+  isNonContent,
+  isNoiseOnly,
   mapBaileysMessageType,
   mapBaileysStatus,
   setBaileysText,
   storedKeyInChatPersisted,
+  withoutFastRatchetDistribution,
+  withoutNonContentMessage,
 } from './baileys-message-mapper';
+import type { Chat, proto } from '@whiskeysockets/baileys';
 
 describe('mapBaileysMessageType (baileys content-type -> neutral MessageType)', () => {
   it.each([
@@ -1335,5 +1342,266 @@ describe('storedKeyInChatPersisted', () => {
     expect(await storedKeyInChatPersisted({ remoteJid: '111@lid' }, '222@lid', () => Promise.resolve('628111'))).toBe(
       false,
     );
+  });
+});
+
+/**
+ * Baileys 7.0.0-rc14 `getContentType` (lib/Utils/messages.js), copied because the library is ESM-only and stubbed here:
+ * the first key that is `conversation` or contains `Message`, except senderKeyDistributionMessage, by name.
+ */
+const libraryContentType: ContentTypeLib['getContentType'] = content =>
+  Object.keys(content ?? {}).find(
+    key => (key === 'conversation' || key.includes('Message')) && key !== 'senderKeyDistributionMessage',
+  ) as keyof proto.IMessage | undefined;
+
+describe('what is no message of its own', () => {
+  const FAST_RATCHET = 'fastRatchetKeySenderKeyDistributionMessage';
+
+  describe('isNoiseOnly', () => {
+    it.each<[string, Record<string, unknown>]>([
+      ['a sender-key distribution', { senderKeyDistributionMessage: {} }],
+      ['a fast-ratchet sender-key distribution', { [FAST_RATCHET]: {} }],
+      ['a distribution with its context info', { [FAST_RATCHET]: {}, messageContextInfo: {} }],
+      ['a history-sync notice', { messageHistoryNotice: {} }],
+      ['a history bundle', { messageHistoryBundle: {} }],
+    ])('holds for %s', (_what, content) => {
+      expect(isNoiseOnly(content)).toBe(true);
+    });
+
+    it.each<[string, Record<string, unknown> | null | undefined]>([
+      ['nothing', undefined],
+      ['null', null],
+      ['an empty message', {}],
+      ['a message context info alone, which real content and a newer type carry', { messageContextInfo: {} }],
+      ['a text', { conversation: 'hi' }],
+      ['a text bundled with a distribution', { conversation: 'hi', [FAST_RATCHET]: {} }],
+      ['a distribution bundled with a text', { [FAST_RATCHET]: {}, conversation: 'hi' }],
+    ])('does not hold for %s', (_what, content) => {
+      expect(isNoiseOnly(content)).toBe(false);
+    });
+
+    it.each<[string, Record<string, unknown> | undefined]>([
+      ['a message context info alone', { messageContextInfo: {} }],
+      ['an empty message', {}],
+      ['nothing', undefined],
+    ])('holds for %s once part of its stanza failed to decrypt', (_what, content) => {
+      expect(isNoiseOnly(content, true)).toBe(true);
+    });
+
+    it('still keeps real content that survived a failed decryption', () => {
+      expect(isNoiseOnly({ conversation: 'hi', messageContextInfo: {} }, true)).toBe(false);
+    });
+  });
+
+  describe('contentTypeOf', () => {
+    it.each<[string, Record<string, unknown> | undefined, string | undefined]>([
+      ['a text', { conversation: 'hi' }, 'conversation'],
+      ['an image with its context info', { messageContextInfo: {}, imageMessage: {} }, 'imageMessage'],
+      [
+        'a text after a sender-key distribution, which the library skips by name',
+        { senderKeyDistributionMessage: {}, conversation: 'hi' },
+        'conversation',
+      ],
+      ['a text after a fast-ratchet distribution', { [FAST_RATCHET]: {}, conversation: 'hi' }, 'conversation'],
+      ['a text before a fast-ratchet distribution', { conversation: 'hi', [FAST_RATCHET]: {} }, 'conversation'],
+      ['a pin after a fast-ratchet distribution', { [FAST_RATCHET]: {}, pinInChatMessage: {} }, 'pinInChatMessage'],
+      ['a fast-ratchet distribution alone', { [FAST_RATCHET]: {} }, undefined],
+      ['a distribution with a message with no type, which nothing names', { [FAST_RATCHET]: {}, call: {} }, undefined],
+      ['no content', undefined, undefined],
+    ])('names %s', (_what, content, expected) => {
+      expect(contentTypeOf(content as proto.IMessage | undefined, libraryContentType)).toBe(expected);
+    });
+
+    it('asks the library once unless it answered with a noise key', () => {
+      const ask = jest.fn(libraryContentType);
+      expect(contentTypeOf({ conversation: 'hi' }, ask)).toBe('conversation');
+      expect(ask).toHaveBeenCalledTimes(1);
+      ask.mockClear();
+      expect(contentTypeOf({ [FAST_RATCHET]: {}, conversation: 'hi' }, ask)).toBe('conversation');
+      expect(ask).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('isNonContent', () => {
+    it.each<[string, Record<string, unknown>]>([
+      ['a pin', { pinInChatMessage: {} }],
+      ['a keep-in-chat toggle', { keepInChatMessage: {} }],
+      ['an album header', { albumMessage: {} }],
+      ['an encrypted comment', { encCommentMessage: {} }],
+      ['a fast-ratchet distribution alone', { [FAST_RATCHET]: {} }],
+      ['a pin that merged after a fast-ratchet distribution', { [FAST_RATCHET]: {}, pinInChatMessage: {} }],
+    ])('holds for %s', (_what, content) => {
+      expect(isNonContent(content as proto.IMessage, libraryContentType)).toBe(true);
+    });
+
+    it.each<[string, Record<string, unknown>]>([
+      ['a text', { conversation: 'hi' }],
+      ['a text that merged after a fast-ratchet distribution', { [FAST_RATCHET]: {}, conversation: 'hi' }],
+      ['a message with no type that is not noise', { [FAST_RATCHET]: {}, call: {} }],
+      ['a message context info alone, which reaches consumers as unknown', { messageContextInfo: {} }],
+    ])('does not hold for %s', (_what, content) => {
+      expect(isNonContent(content as proto.IMessage, libraryContentType)).toBe(false);
+    });
+  });
+
+  describe('withoutNonContentMessage', () => {
+    const lib = { getContentType: libraryContentType, normalizeMessageContent: (content: unknown) => content } as never;
+    const CHAT_ID = '628111@s.whatsapp.net';
+    /** The update Baileys raises for one message: its count (a received one), its time and the message. */
+    const raised = (
+      content: Record<string, unknown>,
+      over: { unreadCount?: number | null; fromMe?: boolean; stub?: number } = {},
+    ): Partial<Chat> => ({
+      id: CHAT_ID,
+      ...(over.fromMe === true ? {} : { unreadCount: over.unreadCount ?? 1 }),
+      conversationTimestamp: 1700000040,
+      messages: [
+        {
+          message: {
+            key: { remoteJid: CHAT_ID, fromMe: over.fromMe === true, id: 'X1' },
+            message: content,
+            ...(over.stub ? { messageStubType: over.stub } : {}),
+          },
+        },
+      ],
+    });
+    const PIN = { pinInChatMessage: {} };
+
+    it.each<[string, Record<string, unknown>]>([
+      ['an encrypted edit', { secretEncryptedMessage: {} }],
+      ['an encrypted reaction', { encReactionMessage: {} }],
+      ['a pin', PIN],
+      ['a keep-in-chat toggle', { keepInChatMessage: {} }],
+      ['an album header', { albumMessage: {} }],
+      ['an event RSVP', { encEventResponseMessage: {} }],
+      ['an encrypted comment', { encCommentMessage: {} }],
+      ['a fast-ratchet distribution alone', { [FAST_RATCHET]: {} }],
+      ['a pin that merged after a fast-ratchet distribution', { [FAST_RATCHET]: {}, pinInChatMessage: {} }],
+    ])('leaves nothing of the update of %s received from a contact but its id', (_what, content) => {
+      expect(withoutNonContentMessage(raised(content), lib)).toBeUndefined();
+    });
+
+    it("leaves nothing of the update of a message of the account's own but its id", () => {
+      expect(withoutNonContentMessage(raised(PIN, { fromMe: true }), lib)).toBeUndefined();
+    });
+
+    it('takes out the count, the time and the message, and keeps what else the update carries', () => {
+      const others = {
+        ephemeralExpiration: 86_400,
+        ephemeralSettingTimestamp: 1700000000,
+        name: 'Rina',
+        muteEndTime: 5,
+        pinned: 3,
+        archived: false,
+        readOnly: false,
+      };
+      for (const update of [
+        { ...raised(PIN), ...others },
+        { ...raised(PIN, { fromMe: true }), ...others },
+      ]) {
+        const before = { ...update };
+        expect(withoutNonContentMessage(update, lib)).toEqual({ id: CHAT_ID, ...others });
+        expect(update).toEqual(before);
+      }
+    });
+
+    it('treats a condition Baileys put on the update as nothing', () => {
+      const update = Object.assign(raised(PIN), { conditional: () => true });
+      expect(withoutNonContentMessage(update, lib)).toBeUndefined();
+    });
+
+    it.each<[string, Record<string, unknown>]>([
+      ['a text', { conversation: 'hi' }],
+      ['a text that merged after a fast-ratchet distribution', { [FAST_RATCHET]: {}, conversation: 'hi' }],
+      ['a text that merged before a fast-ratchet distribution', { conversation: 'hi', [FAST_RATCHET]: {} }],
+    ])('leaves the update of %s whole', (_what, content) => {
+      for (const update of [raised(content), raised(content, { fromMe: true })]) {
+        expect(withoutNonContentMessage(update, lib)).toBe(update);
+      }
+    });
+
+    it.each<[string, Partial<Chat>]>([
+      ['a count above one, which may hold a message of its own', raised(PIN, { unreadCount: 2 })],
+      ['a mark set by hand in place of the count', raised(PIN, { unreadCount: -1 })],
+      ['a stub type', raised(PIN, { stub: 2 })],
+      [
+        "a count beside the account's own message, which is not the message's",
+        { ...raised(PIN, { fromMe: true }), unreadCount: 1 },
+      ],
+      [
+        "a cancelled mark beside the account's own message",
+        { ...raised(PIN, { fromMe: true }), unreadCount: undefined },
+      ],
+      ['no message', { ...raised(PIN), messages: [] }],
+      ['a message with no content', { ...raised(PIN), messages: [{ message: { key: { id: 'X1' } } }] }],
+      ['nothing but its id, which Baileys sent', { id: CHAT_ID }],
+    ])('leaves the update whole for %s', (_what, update) => {
+      expect(withoutNonContentMessage(update, lib)).toBe(update);
+    });
+
+    it('leaves an update alone before the library is loaded', () => {
+      const update = raised(PIN);
+      expect(withoutNonContentMessage(update, undefined)).toBe(update);
+    });
+  });
+
+  describe('withoutFastRatchetDistribution', () => {
+    const SECRET = { messageSecret: 'c2VjcmV0' };
+    const stored = (message: Record<string, unknown> | null) =>
+      ({ key: { id: 'X1', remoteJid: '628111@s.whatsapp.net' }, messageTimestamp: 1700000040, message }) as {
+        key: { id: string; remoteJid: string };
+        messageTimestamp: number;
+        message: proto.IMessage | null;
+      };
+
+    it.each<[string, Record<string, unknown>]>([
+      ['before', { [FAST_RATCHET]: {}, imageMessage: { url: 'u' }, messageContextInfo: SECRET }],
+      ['after', { imageMessage: { url: 'u' }, [FAST_RATCHET]: {}, messageContextInfo: SECRET }],
+    ])('takes out a distribution that merged %s the content, and keeps the rest in its order', (_where, message) => {
+      const msg = stored(message);
+      const out = withoutFastRatchetDistribution(msg);
+      expect(Object.keys(out.message ?? {})).toEqual(['imageMessage', 'messageContextInfo']);
+      expect(out.message?.messageContextInfo).toBe(message.messageContextInfo);
+      expect(out.key).toBe(msg.key);
+      expect(out.messageTimestamp).toBe(1700000040);
+      // Baileys types the message it hands on by its content, as the adapter does.
+      expect(libraryContentType(out.message ?? undefined)).toBe('imageMessage');
+    });
+
+    it('is a copy: the message it is given keeps the distribution', () => {
+      const msg = stored({ [FAST_RATCHET]: { groupId: 'g' }, conversation: 'hi' });
+      const out = withoutFastRatchetDistribution(msg);
+      expect(out).not.toBe(msg);
+      expect(out.message).not.toBe(msg.message);
+      expect(Object.keys(msg.message ?? {})).toEqual([FAST_RATCHET, 'conversation']);
+    });
+
+    it('takes out nothing but the fast-ratchet distribution', () => {
+      const out = withoutFastRatchetDistribution(
+        stored({
+          senderKeyDistributionMessage: {},
+          [FAST_RATCHET]: {},
+          messageHistoryNotice: {},
+          conversation: 'hi',
+          messageContextInfo: SECRET,
+        }),
+      );
+      expect(Object.keys(out.message ?? {})).toEqual([
+        'senderKeyDistributionMessage',
+        'messageHistoryNotice',
+        'conversation',
+        'messageContextInfo',
+      ]);
+    });
+
+    it.each<[string, ReturnType<typeof stored> | null | undefined]>([
+      ['a message with no distribution', stored({ conversation: 'hi', messageContextInfo: SECRET })],
+      ['a message whose distribution is only inherited', stored(Object.create({ [FAST_RATCHET]: null }) as never)],
+      ['a message with no content', stored(null)],
+      ['no message', null],
+      ['nothing', undefined],
+    ])('returns what it is given for %s', (_what, msg) => {
+      expect(withoutFastRatchetDistribution(msg)).toBe(msg);
+    });
   });
 });

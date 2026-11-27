@@ -92,6 +92,7 @@
     "loadingChats": "Chats werden geladen...",
     "empty": "Keine Chats",
     "noMessageYet": "Noch keine Nachrichten",
+    "draftLabel": "Entwurf:",
     "unreadBadge": "{{count}} ungelesene Nachricht",
     "unreadBadge_other": "{{count}} ungelesene Nachrichten",
     "markedUnread": "Als ungelesen markiert",
@@ -360,6 +361,17 @@
       },
       "count_one": "{{count}} item",
       "missing_one": "{{count}} item without stored media"
+    },
+    "slash": {
+      "title": "Schnellantworten",
+      "hint": "Enter fügt die markierte Vorlage ein. Senden, wenn sie fertig ist.",
+      "placeholder": "Nachricht oder /vorlage…",
+      "empty": "Keine passende Vorlage",
+      "needsVars": "Fülle die Platzhalter der Vorlage aus, bevor du sendest.",
+      "loading": "Vorlagen werden geladen… Enter wartet, bis sie da sind.",
+      "loadError": "Vorlagen konnten nicht geladen werden",
+      "close": "Vorlagenliste schließen",
+      "more": "Weitere Vorlagen passen. Tippe weiter, um die Liste einzugrenzen."
     }
   },
   "errorBoundary": {

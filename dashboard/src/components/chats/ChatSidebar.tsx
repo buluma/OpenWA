@@ -17,7 +17,7 @@ import type { UseQueryResult } from '@tanstack/react-query';
 import type { Channel, Chat, ContactStatusGroup, Session } from '../../services/api';
 import { useRole } from '../../hooks/useRole';
 import { CHAT_LIST_FILTERS, type ChatListFilter } from '../../utils/chatFilters';
-import { chatDisplayName } from '../../utils/chatIdentity';
+import { chatDisplayName, savedChatName } from '../../utils/chatIdentity';
 import { contactSnippet, isVCardBody } from '../../utils/vcard';
 import ChatAvatar from './ChatAvatar';
 import ChatRowMenu from './ChatRowMenu';
@@ -52,7 +52,10 @@ interface ChatSidebarProps {
     archive?: { count: number; showing: boolean; onToggle: () => void };
     activeChatId?: string;
     pictures?: Record<string, string | null>;
-    onSelectChat: (chat: Chat) => void;
+    /** Unsent composer text by chat id, for the selected session. The row of the open chat does not show it. */
+    drafts?: Record<string, string>;
+    /** `byPointer` says the row was clicked with a mouse, a pen or a finger, where a key leaves it unset. */
+    onSelectChat: (chat: Chat, byPointer?: boolean) => void;
   };
   channelsTab: {
     engineLoading: boolean;
@@ -105,14 +108,26 @@ function ChatSidebar({
   const renderChatRow = (chat: Chat) => {
     const isActive = chatsTab.activeChatId === chat.id;
     const displayName = chatDisplayName(chat);
+    const draft = chatsTab.drafts?.[chat.id];
+    // Text that is only whitespace is nothing to send, so it is no draft to show either.
+    const showDraft = Boolean(draft?.trim()) && !isActive;
+    const lastSnippet = formatLastMessageSnippet(chat);
     return (
       <div
         key={chat.id}
         role="button"
         tabIndex={0}
         aria-current={isActive ? 'true' : undefined}
+        data-chat-id={chat.id}
         className={`chat-item-card ${isActive ? 'active' : ''}`}
-        onClick={() => chatsTab.onSelectChat(chat)}
+        // A double click's second press would move focus from the message field back to the row, and its click opens
+        // nothing, so nothing would return it: that press is refused.
+        onMouseDown={e => {
+          if (e.detail > 1) e.preventDefault();
+        }}
+        // A click made with a pointer has a count. One with no press behind it (assistive technology, a script) has
+        // none and, like Enter and Space below, leaves focus on the row.
+        onClick={e => chatsTab.onSelectChat(chat, e.detail > 0)}
         onKeyDown={e => {
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
@@ -124,7 +139,8 @@ function ChatSidebar({
 
         <div className="chat-item-info">
           <div className="chat-item-top">
-            <span className="chat-item-name" title={displayName}>
+            {/* The tooltip adds what the text does not say: the id of a chat with no name of its own. */}
+            <span className="chat-item-name" title={savedChatName(chat) ? displayName : chat.id}>
               {displayName}
             </span>
             {chat.kind !== 'individual' && chat.kind !== 'unknown' && (
@@ -137,10 +153,15 @@ function ChatSidebar({
           </div>
           <div className="chat-item-bottom">
             {/* An empty snippet with a timestamp is a message with no text (a voice note, a sticker,
-                an uncaptioned photo), not an empty chat. */}
-            <span className="chat-item-snippet" title={formatLastMessageSnippet(chat)}>
-              {formatLastMessageSnippet(chat) ||
-                (!chat.timestamp && <span className="no-message">{t('chats.noMessageYet')}</span>)}
+                an uncaptioned photo), not an empty chat. A parked draft replaces the last-message
+                preview until the room is open again. Its label stands beside the snippet, not in it:
+                inside, the label's first letter would set the direction of the whole line, and a draft
+                written the other way round would lose its start to the ellipsis. */}
+            {showDraft && <span className="chat-item-draft-label">{t('chats.draftLabel')}</span>}
+            <span className="chat-item-snippet" title={(showDraft ? draft : lastSnippet) || undefined}>
+              {showDraft
+                ? draft
+                : lastSnippet || (!chat.timestamp && <span className="no-message">{t('chats.noMessageYet')}</span>)}
             </span>
             {(chat.muted || chat.pinned) && (
               <span className="chat-item-flags">

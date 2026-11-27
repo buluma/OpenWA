@@ -440,6 +440,7 @@ The key can be passed as `Authorization: Bearer …` or `X-API-Key: …`. Every 
 - Set **`MCP_READONLY=true`** to mount only the read tools (no sends/writes).
 - Set **`MCP_RATE_LIMIT_MAX`** (default `60`) to limit tool calls per API key per window.
 - Set **`MCP_RATE_LIMIT_WINDOW_MS`** (default `60000`) to control the sliding window size in milliseconds.
+- Set **`MCP_MAX_RESULT_BYTES`** (default `0`, no cap) to return every tool result as text cut at that many bytes, for clients such as claude.ai or ChatGPT that put the whole result in the model's context; unset, a result over 4 KB is returned as an embedded base64 resource, which Claude Code saves to a file.
 - **Do not expose `/mcp` to the public internet** without a fronting auth proxy. For a self-hosted, locally-reached deployment the static API key is appropriate; public exposure should use OAuth 2.1 (not yet built).
 
 ---

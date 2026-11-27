@@ -17,27 +17,37 @@ import type { ToolRegistryService } from '../../core/agent-tools/tool-registry.s
 import type { AuthService } from '../auth/auth.service';
 import type { AuditService } from '../audit/audit.service';
 import { LoggerService } from '../../common/services/logger.service';
+import { allAgentTools, type AgentToolDeps } from '../../core/agent-tools/tools';
 
 // The request-handling path news up an McpServer + StreamableHTTPServerTransport per POST. Both SDK
 // classes are mocked so tests can observe the per-request transport (handleRequest args) and invoke
 // the registered tool callbacks exactly as the SDK would — no sockets, no MCP protocol traffic.
 // The closures dereference the mock handles lazily, so the factories stay valid before module init.
 type ToolCallback = (input: Record<string, unknown>, extra: unknown) => Promise<unknown>;
-const mockRegisteredTools: Array<{ name: string; callback: ToolCallback }> = [];
+const mockRegisteredTools: Array<{ name: string; config: Record<string, unknown>; callback: ToolCallback }> = [];
 const mockServerConnect = jest.fn<Promise<void>, unknown[]>();
 const mockServerClose = jest.fn<Promise<void>, unknown[]>();
+// The servers built so far. Each carries the SDK's private createToolError, the method it answers a call whose
+// arguments its schema refuses with, before any registered callback runs.
+type SdkAnswer = { isError?: boolean; content: Array<{ type: string; text: string }> };
+const mockServers: Array<{ createToolError: (message: string) => SdkAnswer }> = [];
 jest.mock('@modelcontextprotocol/sdk/server/mcp.js', () => ({
-  McpServer: jest.fn().mockImplementation(() => ({
-    registerTool: (
-      name: string,
-      _config: unknown,
-      callback: (input: Record<string, unknown>, extra: unknown) => Promise<unknown>,
-    ) => {
-      mockRegisteredTools.push({ name, callback });
-    },
-    connect: (...args: unknown[]) => mockServerConnect(...args),
-    close: () => mockServerClose(),
-  })),
+  McpServer: jest.fn().mockImplementation(() => {
+    const server = {
+      registerTool: (
+        name: string,
+        config: Record<string, unknown>,
+        callback: (input: Record<string, unknown>, extra: unknown) => Promise<unknown>,
+      ) => {
+        mockRegisteredTools.push({ name, config, callback });
+      },
+      createToolError: (message: string): SdkAnswer => ({ isError: true, content: [{ type: 'text', text: message }] }),
+      connect: (...args: unknown[]) => mockServerConnect(...args),
+      close: () => mockServerClose(),
+    };
+    mockServers.push(server);
+    return server;
+  }),
 }));
 
 const mockHandleRequest = jest.fn<Promise<void>, unknown[]>();
@@ -354,6 +364,7 @@ describe('mountMcpServer (raw-Express request-handling path)', () => {
   beforeEach(() => {
     delete process.env.TRUSTED_PROXIES; // resolveClientIp then uses the socket IP, deterministically
     mockRegisteredTools.length = 0;
+    mockServers.length = 0;
     mockServerConnect.mockReset().mockResolvedValue(undefined);
     mockServerClose.mockReset().mockResolvedValue(undefined);
     mockHandleRequest.mockReset().mockResolvedValue(undefined);
@@ -662,6 +673,112 @@ describe('mountMcpServer (raw-Express request-handling path)', () => {
     expect(h.auditService.logWarn).not.toHaveBeenCalled(); // 400 parity with REST: not an auth failure
   });
 
+  describe('result cap (MCP_MAX_RESULT_BYTES)', () => {
+    const prev = process.env.MCP_MAX_RESULT_BYTES;
+    afterEach(() => {
+      if (prev === undefined) delete process.env.MCP_MAX_RESULT_BYTES;
+      else process.env.MCP_MAX_RESULT_BYTES = prev;
+    });
+
+    const callWithBigResult = async (options: MountMcpServerOptions): Promise<{ content: Array<{ type: string }> }> => {
+      const h = mount(options);
+      h.authService.validateApiKey.mockResolvedValue({ id: 'k1' });
+      h.tool.handler = () => Promise.resolve({ rows: 'x'.repeat(50000) });
+      await post(h, { jsonrpc: '2.0', id: 1 });
+      return (await toolCallback()(
+        { sessionId: 's1', to: '123', text: 'hi' },
+        { requestInfo: { headers: { 'x-api-key': 'good-key' } } },
+      )) as { content: Array<{ type: string }> };
+    };
+
+    it('leaves a result alone when no cap is set: over 4096 characters it is the blob, as before', async () => {
+      delete process.env.MCP_MAX_RESULT_BYTES;
+      expect((await callWithBigResult({ readOnly: false })).content.map(c => c.type)).toEqual(['text', 'resource']);
+    });
+
+    it('truncates to the cap set by the maxResultBytes option', async () => {
+      const result = await callWithBigResult({ readOnly: false, maxResultBytes: 1000 });
+      expect(result.content).toHaveLength(1);
+      expect((result.content[0] as unknown as { text: string }).text).toContain('[truncated: 50011 bytes');
+    });
+
+    it('truncates to the cap set by MCP_MAX_RESULT_BYTES, read once when the server is mounted', async () => {
+      process.env.MCP_MAX_RESULT_BYTES = '2000';
+      const result = await callWithBigResult({ readOnly: false });
+      expect(result.content).toHaveLength(1);
+      expect((result.content[0] as unknown as { text: string }).text.length).toBeLessThan(2200);
+    });
+
+    it('lets the option switch the env cap off with 0', async () => {
+      process.env.MCP_MAX_RESULT_BYTES = '2000';
+      expect((await callWithBigResult({ readOnly: false, maxResultBytes: 0 })).content).toHaveLength(2);
+    });
+
+    // A refusal that lists every invalid value of a wide input, as a service's validation does.
+    const refuse = async (options: MountMcpServerOptions): Promise<{ isError?: boolean; text: string }> => {
+      const h = mount(options);
+      h.authService.validateApiKey.mockResolvedValue({ id: 'k1' });
+      const messages = Array.from({ length: 400 }, (_, i) => `vars.v${i} must be a string`);
+      h.tool.handler = () => Promise.reject(new BadRequestException(messages));
+      await post(h, { jsonrpc: '2.0', id: 1 });
+      const result = (await toolCallback()(
+        { sessionId: 's1', to: '123', text: 'hi' },
+        { requestInfo: { headers: { 'x-api-key': 'good-key' } } },
+      )) as { isError?: boolean; content: Array<{ text: string }> };
+      return { isError: result.isError, text: result.content[0].text };
+    };
+
+    it('leaves an error answer whole when no cap is set', async () => {
+      delete process.env.MCP_MAX_RESULT_BYTES;
+      const whole = await refuse({ readOnly: false });
+      expect(whole.isError).toBe(true);
+      expect(whole.text).not.toContain('[truncated:');
+      expect(Buffer.byteLength(whole.text)).toBeGreaterThan(5000);
+    });
+
+    it('cuts an error answer at the cap too, and keeps it an error', async () => {
+      const cut = await refuse({ readOnly: false, maxResultBytes: 1000 });
+      expect(cut.isError).toBe(true);
+      expect(cut.text).toMatch(/\[truncated: \d{4,} bytes in all\]$/);
+      expect(Buffer.byteLength(cut.text)).toBeLessThan(1100);
+    });
+
+    // The answer the SDK writes itself for arguments its schema refuses never reaches a tool callback, so the
+    // callback's own cap above cannot cut it: buildServer has to wrap the server it builds. sdk-error-cap.spec.ts
+    // pins capSdkErrors against the real class; this pins that every per-request server is wrapped with the cap.
+    const sdkRefusal = async (options: MountMcpServerOptions): Promise<{ isError?: boolean; text: string }> => {
+      const h = mount(options);
+      await post(h, { jsonrpc: '2.0', id: 1 });
+      expect(mockServers).toHaveLength(1);
+      const refusal = mockServers[0].createToolError(
+        `Invalid arguments for tool MessageSendTemplate: ${'vars.v0 must be a string; '.repeat(400)}`,
+      );
+      return { isError: refusal.isError, text: refusal.content[0].text };
+    };
+
+    it('leaves the SDK answer for refused arguments whole when no cap is set', async () => {
+      delete process.env.MCP_MAX_RESULT_BYTES;
+      const whole = await sdkRefusal({ readOnly: false });
+      expect(whole.isError).toBe(true);
+      expect(whole.text).not.toContain('[truncated:');
+      expect(Buffer.byteLength(whole.text)).toBeGreaterThan(5000);
+    });
+
+    it('cuts the SDK answer for refused arguments at the maxResultBytes option, and keeps it an error', async () => {
+      const cut = await sdkRefusal({ readOnly: false, maxResultBytes: 1000 });
+      expect(cut.isError).toBe(true);
+      expect(cut.text).toMatch(/\[truncated: \d{4,} bytes in all\]$/);
+      expect(Buffer.byteLength(cut.text)).toBeLessThan(1100);
+    });
+
+    it('cuts the SDK answer at the cap MCP_MAX_RESULT_BYTES sets, read when the server is mounted', async () => {
+      process.env.MCP_MAX_RESULT_BYTES = '2000';
+      const cut = await sdkRefusal({ readOnly: false });
+      expect(cut.text).toMatch(/\[truncated: \d{4,} bytes in all\]$/);
+      expect(Buffer.byteLength(cut.text)).toBeLessThan(2100);
+    });
+  });
+
   it('answers a JSON-RPC 500 when the transport throws', async () => {
     const h = mount();
     mockHandleRequest.mockRejectedValueOnce(new Error('boom'));
@@ -673,5 +790,89 @@ describe('mountMcpServer (raw-Express request-handling path)', () => {
       error: { code: -32603, message: 'Internal server error' },
       id: null,
     });
+  });
+});
+
+describe('tool title (what the SDK is given for each tool)', () => {
+  const drive = async (tools: AnyToolDescriptor[]): Promise<Map<string, Record<string, unknown>>> => {
+    mockRegisteredTools.length = 0;
+    let routeHandlers: unknown[] = [];
+    const adapter = {
+      post: jest.fn((_path: string, ...handlers: unknown[]) => {
+        routeHandlers = handlers;
+      }),
+      get: jest.fn(),
+      delete: jest.fn(),
+    };
+    const authService = { validateApiKey: jest.fn(), hasPermission: jest.fn(() => true) };
+    mockServerConnect.mockReset().mockResolvedValue(undefined);
+    mockServerClose.mockReset().mockResolvedValue(undefined);
+    mockHandleRequest.mockReset().mockResolvedValue(undefined);
+    mockTransportClose.mockReset().mockResolvedValue(undefined);
+    mountMcpServer(
+      adapter as unknown as Parameters<typeof mountMcpServer>[0],
+      { list: jest.fn(() => tools) } as unknown as ToolRegistryService,
+      authService as unknown as AuthService,
+      new KeyRateLimiter(1000, 60_000),
+      new KeyRateLimiter(1000, 60_000),
+      { readOnly: false },
+      { logWarn: jest.fn() } as unknown as AuditService,
+    );
+    const handler = routeHandlers[routeHandlers.length - 1] as (req: Request, res: Response) => Promise<void>;
+    const res = { on: jest.fn(), status: jest.fn(), json: jest.fn(), headersSent: false };
+    res.status.mockReturnValue(res);
+    res.json.mockReturnValue(res);
+    const req = {
+      method: 'POST',
+      path: '/mcp',
+      headers: {},
+      body: { jsonrpc: '2.0', id: 1, method: 'tools/list' },
+      socket: { remoteAddress: '203.0.113.7' },
+    } as unknown as Request;
+    await handler(req, res as unknown as Response);
+    return new Map(mockRegisteredTools.map(t => [t.name, t.config]));
+  };
+
+  const stub = (name: string, extra: Partial<AnyToolDescriptor>): AnyToolDescriptor =>
+    ({
+      name,
+      description: 'd',
+      inputSchema: z.object({}),
+      tier: 'read',
+      handler: jest.fn(),
+      ...extra,
+    }) as unknown as AnyToolDescriptor;
+
+  it('derives the title from the name unless the tool sets one', async () => {
+    const configs = await drive([
+      stub('MessageSendText', { tier: 'write' }),
+      stub('SessionFindAll', {}),
+      stub('SessionGetQRCode', { title: 'QR code for linking' }),
+    ]);
+    expect(configs.get('MessageSendText')?.title).toBe('Message send text');
+    expect(configs.get('SessionFindAll')?.title).toBe('Session find all');
+    expect(configs.get('SessionGetQRCode')?.title).toBe('QR code for linking');
+  });
+
+  // No tool sets openWorldHint: an absent hint is the protocol default, true, and a read that returns what other
+  // WhatsApp users wrote must not tell a client that it stays inside a closed world.
+  it('leaves the annotations at the three hints it sets', async () => {
+    const configs = await drive([stub('R', {}), stub('W', { tier: 'write' })]);
+    expect(configs.get('R')?.annotations).toEqual({ readOnlyHint: true, destructiveHint: false, idempotentHint: true });
+    expect(configs.get('W')?.annotations).toEqual({
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+    });
+  });
+
+  it('every tool of the real surface gets a non-empty title', async () => {
+    const tools = allAgentTools(new Proxy({}, { get: () => ({}) }) as unknown as AgentToolDeps);
+    const configs = await drive(tools);
+    expect(configs.size).toBe(tools.length);
+    for (const config of configs.values()) {
+      expect(typeof config.title).toBe('string');
+      expect((config.title as string).length).toBeGreaterThan(0);
+    }
   });
 });

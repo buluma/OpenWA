@@ -268,3 +268,16 @@ test('a name typed with letters still matches as typed', () => {
   );
   assert.ok(!matches('xyz', 'Ben', '628123456789'));
 });
+
+// A privacy-id chat with no name is titled by the phone its session maps it to, so that phone finds it.
+test('the chat search finds a privacy-id chat by its mapped phone, as typed or as it is written', () => {
+  const lid = { id: '262813461250072@lid', name: '', kind: 'individual', phone: '15550006666' };
+  const other = chat('15550001111@c.us', 'Alice', 'individual');
+  assert.deepEqual(filterChats([lid, other], '5550006'), [lid]);
+  assert.deepEqual(filterChats([lid, other], '+1 555 000 6666'), [lid]);
+  assert.deepEqual(filterChats([lid, other], '+1 (555) 000-1111'), [other]);
+  // A query that is not a number matches names only: its digits list no number that holds them.
+  assert.deepEqual(filterChats([lid, other], 'Shop 6'), []);
+  // A chat with no mapped phone is still found by its id.
+  assert.deepEqual(filterChats([{ ...lid, phone: undefined }], '2628134'), [{ ...lid, phone: undefined }]);
+});

@@ -175,6 +175,9 @@ let sendGate: Promise<void> | null = null;
 // Hold Alice's first page open, so a test can write to the thread before it has any data.
 let firstPageGate: Promise<void> | null = null;
 
+// The status the stored read of Alice's thread answers, 200 for its rows.
+let storedReadStatus = 200;
+
 // Rows Alice's first page serves after the fixture rows, so a test can put its own message in the thread.
 let firstPageExtra: ChatMessage[] = [];
 
@@ -338,6 +341,7 @@ function installFetchStub(): void {
         const gate = isFirstPage ? null : olderPageGate;
         return gate ? gate.then(answer) : Promise.resolve(answer());
       }
+      if (storedReadStatus !== 200) return Promise.resolve(jsonResponse({ message: 'refused' }, storedReadStatus));
       const firstPage = () =>
         jsonResponse({
           messages: [DB_MESSAGE, OMITTED_MEDIA_MESSAGE, OMITTED_MEDIA_MESSAGE_2, ...firstPageExtra],
@@ -435,6 +439,7 @@ afterEach(async () => {
   sendGate = null;
   firstPageGate = null;
   firstPageExtra = [];
+  storedReadStatus = 200;
   sendTextId = 'wamid.out.1';
   olderPageFails = false;
   chatsResponder = null;
@@ -3656,4 +3661,134 @@ test('playing an audio or video element pauses other active media on the page', 
   audio1.remove();
   audio2.remove();
   cleanup();
+});
+
+test('each chat keeps its own draft, shown on its list row after a Draft label until it is opened again', async () => {
+  const { screen, fireEvent, within } = rtl;
+  resetFetchCalls();
+  const { container } = renderChats();
+
+  await screen.findByText('Main (15551234567)');
+  fireEvent.click(await screen.findByText('Alice'));
+  await within(container.querySelector('.room-messages') as HTMLElement).findByText('hello from alice');
+  fireEvent.change(screen.getByPlaceholderText('Type a message...'), { target: { value: 'for alice only' } });
+
+  // Another chat opens on an empty field: Alice's text does not follow into it.
+  fireEvent.click(screen.getByText('Carol'));
+  await within(container.querySelector('.room-header') as HTMLElement).findByText('Carol');
+  assert.equal((screen.getByPlaceholderText('Type a message...') as HTMLTextAreaElement).value, '');
+
+  // Alice's row shows the draft after its label, in place of her last message.
+  const aliceRow = container.querySelector(`[data-chat-id="${CHAT.id}"]`) as HTMLElement;
+  assert.equal(aliceRow.querySelector('.chat-item-draft-label')?.textContent, 'Draft:');
+  assert.equal(aliceRow.querySelector('.chat-item-snippet')?.textContent, 'for alice only');
+
+  // Opening Alice again brings the text back into the field and the row shows her last message.
+  fireEvent.click(within(aliceRow).getByText('Alice'));
+  await within(container.querySelector('.room-header') as HTMLElement).findByText('Alice');
+  assert.equal((screen.getByPlaceholderText('Type a message...') as HTMLTextAreaElement).value, 'for alice only');
+  assert.equal(aliceRow.querySelector('.chat-item-draft-label'), null);
+});
+
+test('a chat opened with a mouse click focuses the message field, and one opened with a tap or a key does not', async () => {
+  const { screen, fireEvent, within } = rtl;
+  resetFetchCalls();
+  const { container } = renderChats();
+
+  await screen.findByText('Main (15551234567)');
+  const page = container.querySelector('.chats-page') as HTMLElement;
+  const aliceRow = (await screen.findByText('Alice')).closest('[role="button"]') as HTMLElement;
+  fireEvent.pointerDown(aliceRow, { pointerType: 'mouse' });
+  fireEvent.click(aliceRow, { detail: 1 });
+  await within(container.querySelector('.room-header') as HTMLElement).findByText('Alice');
+  assert.equal(document.activeElement, screen.getByPlaceholderText('Type a message...'));
+
+  // A tap opens the chat without raising a phone's keyboard over it.
+  const carolRow = screen.getByText('Carol').closest('[role="button"]') as HTMLElement;
+  carolRow.focus();
+  fireEvent.pointerDown(carolRow, { pointerType: 'touch' });
+  fireEvent.click(carolRow, { detail: 1 });
+  await within(container.querySelector('.room-header') as HTMLElement).findByText('Carol');
+  assert.notEqual(document.activeElement, screen.getByPlaceholderText('Type a message...'));
+
+  // A key on a row keeps focus on the row.
+  const row = container.querySelector(`[data-chat-id="${CHAT.id}"]`) as HTMLElement;
+  row.focus();
+  fireEvent.keyDown(page, { key: 'Enter' });
+  fireEvent.keyDown(row, { key: 'Enter' });
+  await within(container.querySelector('.room-header') as HTMLElement).findByText('Alice');
+  assert.equal(document.activeElement, row);
+});
+
+// A thread that fails to load shows nothing, so the chat was not read: its messages were not seen.
+test('a chat whose thread fails to load is not marked read and keeps its unread badge', async () => {
+  const { screen, fireEvent, waitFor } = rtl;
+  storedReadStatus = 503;
+  renderChats();
+  await screen.findByText('Main (15551234567)');
+  resetFetchCalls();
+  assert.ok(await screen.findByLabelText('2 unread messages'), 'the fixture chat shows no unread badge');
+  fireEvent.click(await screen.findByText('Alice'));
+  await screen.findByText("Couldn't load messages. Check the server logs.", {}, { timeout: 5_000 });
+  // Past the quiet window of the read.
+  await new Promise(resolve => setTimeout(resolve, 1_500));
+  assert.ok(!findFetchCall('POST', `/api/sessions/${SESSION.id}/chats/read`), 'a chat that showed no message was read');
+  await waitFor(() =>
+    assert.ok(screen.queryByLabelText('2 unread messages'), 'the badge of an unseen chat was cleared'),
+  );
+});
+
+test('a chat whose thread failed to load is read once a later load of it succeeds', async () => {
+  const { screen, fireEvent, within, waitFor } = rtl;
+  storedReadStatus = 503;
+  const { container } = renderChats();
+  await screen.findByText('Main (15551234567)');
+  resetFetchCalls();
+  fireEvent.click(await screen.findByText('Alice'));
+  await screen.findByText("Couldn't load messages. Check the server logs.", {}, { timeout: 5_000 });
+  await new Promise(resolve => setTimeout(resolve, 1_500));
+  assert.ok(!findFetchCall('POST', `/api/sessions/${SESSION.id}/chats/read`));
+
+  storedReadStatus = 200;
+  await rtl.act(() => queryClient!.invalidateQueries({ queryKey: ['messages', SESSION.id] }));
+  await within(container.querySelector('.room-messages') as HTMLElement).findByText('hello from alice');
+  await waitFor(
+    () =>
+      assert.equal(countFetchCalls('POST', `/api/sessions/${SESSION.id}/chats/read`), 1, 'the chat was not read once'),
+    { timeout: 3_000 },
+  );
+  await waitFor(() => assert.ok(!screen.queryByLabelText('2 unread messages'), 'the badge stayed after the read'));
+});
+
+test('a chat left before its thread showed is unread again, and is not read', async () => {
+  const { screen, fireEvent, waitFor } = rtl;
+  // Alice's thread is held open until the end of the test.
+  let release!: () => void;
+  firstPageGate = new Promise<void>(resolve => {
+    release = resolve;
+  });
+  renderChats();
+  await screen.findByText('Main (15551234567)');
+  resetFetchCalls();
+  assert.ok(await screen.findByLabelText('2 unread messages'), 'the fixture chat shows no unread badge');
+  fireEvent.click(await screen.findByText('Alice'));
+  await waitFor(() => assert.ok(!screen.queryByLabelText('2 unread messages'), 'opening the chat kept its badge'));
+
+  // Leave for another chat while Alice's thread is still loading: her read falls due after that.
+  fireEvent.click(await screen.findByText('Carol'));
+  await waitFor(
+    () => assert.ok(screen.queryByLabelText('2 unread messages'), 'the unseen chat stayed read in the list'),
+    { timeout: 5_000 },
+  );
+  assert.equal(
+    fetchCalls.filter(
+      c =>
+        c.method === 'POST' &&
+        c.path === `/api/sessions/${SESSION.id}/chats/read` &&
+        (c.body as { chatId?: string } | undefined)?.chatId === CHAT.id,
+    ).length,
+    0,
+    'a chat that showed no message was read',
+  );
+  release();
 });

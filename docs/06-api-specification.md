@@ -6032,7 +6032,7 @@ Export all storage files into a `tar.gz` under `data/exports` and return its **s
 { "message": "Storage export completed", "download": "data/exports/storage-export-1750000000000-abc.tar.gz" }
 ```
 
-`download` is a server filesystem path — feed it back to `POST /api/infra/storage/import`. The archive is auto-deleted after `STORAGE_EXPORT_TTL_MS` (default 1h).
+`download` is a server filesystem path — feed it back to `POST /api/infra/storage/import`. The archive is auto-deleted after `STORAGE_EXPORT_TTL_MS` (default 1h). It holds a copy of every stored file, so it is written owner-only (`0600` in a `0700` `data/exports` directory), like the local media store.
 
 **Errors:** `401` · `403` · `409` the local storage directory cannot be enumerated completely, so the archive would leave files out (a symbolic link, a directory the app cannot read, or one nested too deep; `message` names the path relative to the storage root and the cause; nothing is written) · `500` · `503` S3 configured but not reachable since boot (a later outage answers `500`)
 
@@ -6487,7 +6487,7 @@ Key facts:
 
 - **Path is exactly `POST /mcp` — no `/api` prefix.** The global `api` prefix applies only to Nest controllers; this route is mounted straight on Express.
 - Gated by **`MCP_ENABLED=true`**. When off, the module/route is never mounted and `POST /mcp` returns `404`.
-- MCP is **read-only by default**: only read-tier tools are registered unless you set `MCP_READONLY=false` to expose write tools. Per-key sliding-window rate limit: `MCP_RATE_LIMIT_MAX` (default 60) per `MCP_RATE_LIMIT_WINDOW_MS` (default 60000).
+- MCP is **read-only by default**: only read-tier tools are registered unless you set `MCP_READONLY=false` to expose write tools. Per-key sliding-window rate limit: `MCP_RATE_LIMIT_MAX` (default 60) per `MCP_RATE_LIMIT_WINDOW_MS` (default 60000). `MCP_MAX_RESULT_BYTES` (default 0, no cap) returns every tool result as one text item, cut at that many bytes, instead of offloading a large one as an embedded base64 resource.
 - Stateless transport: no session id and no standalone stream. Every POST must send `Content-Type: application/json` and `Accept: application/json, text/event-stream` (both types, even though the answer is a single message). A `200` answer is `text/event-stream` carrying one `event: message` frame whose `data:` line is the JSON-RPC envelope; a POST that carries only notifications gets `202` with an empty body. `GET /mcp` and `DELETE /mcp` answer `405` with `Allow: POST` and a JSON-RPC error body.
 - Pre-auth per-IP throttle: `MCP_IP_RATE_LIMIT_MAX` (default 120) JSON-RPC messages per `MCP_IP_RATE_LIMIT_WINDOW_MS` (default 60000). Each element of a batch counts; an over-budget request gets HTTP `429` with a JSON-RPC error body and runs none of its messages, but still spends whatever budget the IP had left.
 

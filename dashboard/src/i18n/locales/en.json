@@ -92,6 +92,7 @@
     "loadingChats": "Loading chats...",
     "empty": "No chats",
     "noMessageYet": "No messages yet",
+    "draftLabel": "Draft:",
     "unreadBadge": "{{count}} unread message",
     "unreadBadge_other": "{{count}} unread messages",
     "markedUnread": "Marked as unread",
@@ -360,6 +361,17 @@
       },
       "count_one": "{{count}} item",
       "missing_one": "{{count}} item without stored media"
+    },
+    "slash": {
+      "title": "Canned replies",
+      "hint": "Enter inserts the highlighted template. Send it when it is ready.",
+      "placeholder": "Message or /template…",
+      "empty": "No template matches",
+      "needsVars": "Fill in the template's placeholders before sending.",
+      "loading": "Loading templates… Enter waits for them.",
+      "loadError": "Templates could not be loaded",
+      "close": "Close the template list",
+      "more": "More templates match. Keep typing to narrow the list."
     }
   },
   "errorBoundary": {

@@ -20,6 +20,7 @@ import {
 import { RequireRole, RequireUnscopedKey } from '../auth/decorators/auth.decorators';
 import { ApiKeyRole } from '../auth/entities/api-key.entity';
 import { isPathWithin } from '../../common/utils/path-safety';
+import { ensurePrivateDir } from '../../common/utils/private-dir.util';
 import { StorageService } from '../../common/storage/storage.service';
 import { StorageWalkRefusedError } from '../../common/storage/storage-local-files';
 import { createLogger } from '../../common/services/logger.service';
@@ -99,6 +100,11 @@ export class InfraStorageController implements OnApplicationBootstrap {
       }
       return;
     }
+
+    // An archive an earlier version wrote sits in a directory it left 0755, and the migration flow keeps it across
+    // this restart: close the directory, as the media root is at every boot. Only once it was read, so a
+    // deployment that never exported gets no directory made.
+    ensurePrivateDir(exportDir);
 
     const now = Date.now();
     for (const entry of entries) {
@@ -193,12 +199,16 @@ export class InfraStorageController implements OnApplicationBootstrap {
     // unbounded-accumulation leak is addressed by the TTL sweep below + a collision-proof filename
     // (a per-call UUID), not by relocating off the volume.
     const exportDir = path.join(process.cwd(), 'data', 'exports');
+    // The archive is a copy of every stored file, so it is as private as the store: an owner-only directory and
+    // file. mkdir's mode applies only to a directory it creates, so one an earlier version left 0755 is tightened
+    // too (best effort: a directory this process does not own keeps its mode).
     if (!fs.existsSync(exportDir)) {
-      fs.mkdirSync(exportDir, { recursive: true });
+      fs.mkdirSync(exportDir, { recursive: true, mode: 0o700 });
     }
+    ensurePrivateDir(exportDir);
     const exportPath = path.join(exportDir, `storage-export-${Date.now()}-${randomUUID()}.tar.gz`);
 
-    const writeStream = fs.createWriteStream(exportPath);
+    const writeStream = fs.createWriteStream(exportPath, { mode: 0o600 });
     stream.pipe(writeStream);
 
     try {

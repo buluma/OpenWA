@@ -92,6 +92,7 @@
     "loadingChats": "Sohbetler yükleniyor...",
     "empty": "Sohbet yok",
     "noMessageYet": "Henüz mesaj yok",
+    "draftLabel": "Taslak:",
     "unreadBadge": "{{count}} okunmamış mesaj",
     "unreadBadge_other": "{{count}} okunmamış mesaj",
     "markedUnread": "Okunmadı olarak işaretlendi",
@@ -360,6 +361,17 @@
       },
       "count_one": "{{count}} item",
       "missing_one": "{{count}} item without stored media"
+    },
+    "slash": {
+      "title": "Hazır yanıtlar",
+      "hint": "Enter vurgulanan şablonu ekler. Hazır olunca gönderin.",
+      "placeholder": "Mesaj veya /şablon…",
+      "empty": "Eşleşen şablon yok",
+      "needsVars": "Göndermeden önce şablondaki değişkenleri doldurun.",
+      "loading": "Şablonlar yükleniyor… Enter, yükleme bitene kadar bekler.",
+      "loadError": "Şablonlar yüklenemedi",
+      "close": "Şablon listesini kapat",
+      "more": "Eşleşen başka şablonlar da var. Listeyi daraltmak için yazmaya devam edin."
     }
   },
   "errorBoundary": {
