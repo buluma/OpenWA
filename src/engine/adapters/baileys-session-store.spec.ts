@@ -1918,5 +1918,44 @@ describe('BaileysSessionStore', () => {
       expect(s.findContact('62100001@s.whatsapp.net')).not.toBeNull();
       expect(s.findContact('62105000@s.whatsapp.net')).not.toBeNull();
     });
+
+    it('evicts oldest unpinned contact in O(1) without scanning pinned head entries', () => {
+      const s = storeWithCap('2');
+      // Populate many pinned (saved) contacts at the map head.
+      for (let i = 0; i < 200; i++) {
+        s.upsertContacts([{ id: `6280${String(i).padStart(4, '0')}@s.whatsapp.net`, name: `Saved ${i}` }]);
+      }
+      const contactsMap = (s as unknown as { contacts: { pinned: (v: unknown) => boolean } }).contacts;
+      const pinnedSpy = jest.spyOn(contactsMap, 'pinned');
+
+      for (let i = 0; i < 10; i++) {
+        s.upsertContacts([{ id: `6299${String(i).padStart(4, '0')}@s.whatsapp.net`, notify: `Peer ${i}` }]);
+      }
+
+      // O(1) eviction only evaluates the predicate during set/drop, never scanning the 200 pinned entries.
+      expect(pinnedSpy.mock.calls.length).toBeLessThan(40);
+      expect(s.listContacts()).toHaveLength(200);
+      expect(s.findContact('62990000@s.whatsapp.net')).toBeNull();
+      expect(s.findContact('62990008@s.whatsapp.net')?.pushName).toBe('Peer 8');
+      expect(s.findContact('62990009@s.whatsapp.net')?.pushName).toBe('Peer 9');
+    });
+
+    it('preserves LRU recency and pinned transitions across overwrites', () => {
+      const s = storeWithCap('2');
+      // Unpinned -> pinned promotion must remove the key from eviction candidates.
+      s.upsertContacts([{ id: '628111@s.whatsapp.net', notify: 'Peer1' }]);
+      s.upsertContacts([{ id: '628111@s.whatsapp.net', name: 'Saved1' }]);
+      s.upsertContacts([{ id: '628222@s.whatsapp.net', notify: 'Peer2' }]);
+      s.upsertContacts([{ id: '628333@s.whatsapp.net', notify: 'Peer3' }]);
+      // Refresh Peer2 so Peer3 becomes LRU evictable.
+      expect(s.findContact('628222@s.whatsapp.net')?.pushName).toBe('Peer2');
+      s.upsertContacts([{ id: '628444@s.whatsapp.net', notify: 'Peer4' }]);
+
+      expect(s.findContact('628111@s.whatsapp.net')?.name).toBe('Saved1');
+      expect(s.findContact('628222@s.whatsapp.net')?.pushName).toBe('Peer2');
+      expect(s.findContact('628333@s.whatsapp.net')).toBeNull();
+      expect(s.findContact('628444@s.whatsapp.net')?.pushName).toBe('Peer4');
+    });
   });
+
 });

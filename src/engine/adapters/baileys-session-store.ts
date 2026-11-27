@@ -48,13 +48,23 @@ function unarchivesOnly(update: Partial<Chat>): boolean {
 class LruMap<K, V> {
   private readonly map = new Map<K, V>();
 
+  /**
+   * Unpinned keys in LRU order (oldest first), allocated only when `pinned` is configured so
+   * eviction picks the least-recently-used unpinned entry in O(1) without scanning pinned head entries.
+   */
+  private readonly evictable?: Set<K>;
+
   /** Entries the predicate does not protect. The cap is measured against exactly these. */
   private unpinned = 0;
 
   constructor(
     private readonly max: number,
     private readonly pinned?: (value: V) => boolean,
-  ) {}
+  ) {
+    if (pinned) {
+      this.evictable = new Set<K>();
+    }
+  }
 
   private isPinned(value: V): boolean {
     return this.pinned ? this.pinned(value) : false;
@@ -65,7 +75,11 @@ class LruMap<K, V> {
     if (!this.map.has(key)) {
       return;
     }
-    if (!this.isPinned(this.map.get(key) as V)) {
+    if (this.evictable) {
+      if (this.evictable.delete(key)) {
+        this.unpinned--;
+      }
+    } else if (!this.isPinned(this.map.get(key) as V)) {
       this.unpinned--;
     }
     this.map.delete(key);
@@ -86,6 +100,9 @@ class LruMap<K, V> {
     const value = this.map.get(key) as V;
     this.map.delete(key);
     this.map.set(key, value);
+    if (this.evictable?.delete(key)) {
+      this.evictable.add(key);
+    }
     return value;
   }
 
@@ -94,6 +111,7 @@ class LruMap<K, V> {
     this.map.set(key, value);
     if (!this.isPinned(value)) {
       this.unpinned++;
+      this.evictable?.add(key);
     }
     if (!this.max) {
       return;
@@ -109,19 +127,13 @@ class LruMap<K, V> {
 
   /**
    * The least-recently-used entry an eviction may take, or undefined when every entry is pinned.
-   * Without a `pinned` predicate this is the map head, as before.
+   * Without a `pinned` predicate this is the map head; with one it is the head of {@link evictable}.
    */
   private oldestEvictable(): K | undefined {
-    if (!this.pinned) {
-      const oldest = this.map.keys().next().value;
-      return oldest;
+    if (!this.evictable) {
+      return this.map.keys().next().value;
     }
-    for (const [key, value] of this.map) {
-      if (!this.pinned(value)) {
-        return key;
-      }
-    }
-    return undefined;
+    return this.evictable.values().next().value;
   }
 
   /**
@@ -957,7 +969,7 @@ export class BaileysSessionStore {
    * operator would read every history chunk as a reset to unpinned, unarchived and unmuted. A no-op
    * when this session has no store wired (unit tests, wwjs).
    */
-  private persistChatState(id: string, r: Partial<Chat>): void {
+  private persistChatState(id: string, r: Partial<Chat>, lidIndex?: Map<string, string[]>): void {
     if (!this.chatStateStore || !this.sessionId) return;
     const patch: Partial<ChatStateValue> = {};
     if (Object.hasOwn(r, 'muteEndTime')) patch.muteEndTime = this.normalizeMuteEndTime(r.muteEndTime);
@@ -968,7 +980,7 @@ export class BaileysSessionStore {
       // on a read: the store picks the newest row from the table, so a twin the cache happens to hold
       // cannot overwrite a newer row it does not.
       const key = this.stateKey(id);
-      const twins = this.stateTwins([id], key);
+      const twins = this.stateTwins([id], key, lidIndex);
       // Only an app-state action (the update holds the state fields alone) may create a row to hold a
       // default, like an unpin that must outweigh a pin on a twin row. A message carries `archived:
       // false` when the account unarchives on new messages, and a history chat carries its other fields
@@ -1021,8 +1033,10 @@ export class BaileysSessionStore {
     if (parsed.kind !== 'user') return [];
     // A single update scans the mappings for this one phone; building the whole index per update
     // blocked the event loop for seconds when a first sync carried thousands of state fields.
-    const twins = new Set(lidIndex?.get(parsed.userPart));
-    if (!lidIndex) {
+    const twins = new Set<string>();
+    if (lidIndex) {
+      for (const lid of lidIndex.get(parsed.userPart) ?? []) twins.add(`${userPart(lid)}@lid`);
+    } else {
       for (const [lid, pn] of this.lidToPn.entries()) {
         if (userPart(pn) === parsed.userPart) twins.add(`${userPart(lid)}@lid`);
       }
