@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-11-27
+
 ### Added
 
 - `UPDATE_CHECK_REPO` (`owner/name`) picks the GitHub repository whose latest release the dashboard update notice offers.
