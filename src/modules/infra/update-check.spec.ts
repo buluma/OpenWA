@@ -18,6 +18,7 @@ describe('checkForUpdate', () => {
     __resetUpdateCheckCache();
     fetchMock.mockReset();
     delete process.env.UPDATE_CHECK_ENABLED;
+    delete process.env.UPDATE_CHECK_REPO;
   });
 
   it('reports a newer release with a link built from its tag', async () => {
@@ -27,8 +28,45 @@ describe('checkForUpdate', () => {
       current: RUNNING,
       latest: bump(RUNNING),
       updateAvailable: true,
-      releaseUrl: `https://github.com/rmyndharis/OpenWA/releases/tag/v${bump(RUNNING)}`,
+      releaseUrl: `https://github.com/buluma/OpenWA/releases/tag/v${bump(RUNNING)}`,
     });
+  });
+
+  // The fork versions itself, so by default it offers its own releases, not upstream's.
+  it("asks the fork's own repository for its latest release by default", async () => {
+    fetchMock.mockResolvedValueOnce(release(`v${RUNNING}`));
+
+    await checkForUpdate();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.github.com/repos/buluma/OpenWA/releases/latest',
+      expect.anything(),
+    );
+  });
+
+  it('asks the repository UPDATE_CHECK_REPO names and links its release page', async () => {
+    process.env.UPDATE_CHECK_REPO = 'rmyndharis/OpenWA';
+    fetchMock.mockResolvedValueOnce(release('v99.0.0'));
+
+    await expect(checkForUpdate()).resolves.toMatchObject({
+      releaseUrl: 'https://github.com/rmyndharis/OpenWA/releases/tag/v99.0.0',
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.github.com/repos/rmyndharis/OpenWA/releases/latest',
+      expect.anything(),
+    );
+  });
+
+  it('treats a blank UPDATE_CHECK_REPO as unset', async () => {
+    process.env.UPDATE_CHECK_REPO = '  ';
+    fetchMock.mockResolvedValueOnce(release(`v${RUNNING}`));
+
+    await checkForUpdate();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.github.com/repos/buluma/OpenWA/releases/latest',
+      expect.anything(),
+    );
   });
 
   it('reports no update when the latest release is the running one', async () => {

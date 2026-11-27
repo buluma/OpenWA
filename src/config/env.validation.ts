@@ -103,6 +103,16 @@ export function validateEnv(config: EnvConfig): EnvConfig {
   checkEnum('STORAGE_TYPE', ['local', 's3']);
   checkEnum('MESSAGE_INLINE_MEDIA', ['inline', 'archive']);
   checkEnum('SQLITE_JOURNAL_MODE', ['WAL', 'DELETE']);
+  // Spliced into the GitHub API and release-page URLs, so only a plain `owner/name` is accepted: GitHub's
+  // owner rule (alphanumerics and inner hyphens) and repository characters, with no `.`/`..` name.
+  const updateCheckRepo = str('UPDATE_CHECK_REPO');
+  if (
+    updateCheckRepo !== undefined &&
+    (!/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}$/.test(updateCheckRepo) ||
+      /\/\.{1,2}$/.test(updateCheckRepo))
+  ) {
+    errors.push(`UPDATE_CHECK_REPO must be a GitHub "owner/name" (got ${JSON.stringify(updateCheckRepo)})`);
+  }
   // 'archive' drops the inline copy only after the archiver stored the file; with the archiver off
   // nothing is ever stored, so the mode would silently do nothing. Refuse that rather than let an
   // operator believe the inline copies are being reclaimed.
